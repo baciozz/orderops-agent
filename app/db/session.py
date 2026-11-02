@@ -57,9 +57,6 @@ def begin_immediate(session: Session) -> Iterator[Session]:
     token = _BEGIN_IMMEDIATE.set(True)
     try:
         with session.begin():
-            from app.orchestration.state import enforce
-
-            enforce(session)
             yield session
     finally:
         _BEGIN_IMMEDIATE.reset(token)

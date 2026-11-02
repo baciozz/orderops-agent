@@ -1,6 +1,7 @@
 """Restart recovery inspects committed operations before considering takeover."""
 
 from datetime import timedelta
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -13,6 +14,29 @@ from app.orchestration.worker import DEFAULT_LIMITS
 def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
     changed = []
     with factory() as session, begin_immediate(session):
+        # Include terminal tasks: an acknowledgement can precede notification delivery.
+        # Existing pending rows retain their retry schedule and consumer identity.
+        for event in session.scalars(
+            select(Event)
+            .join(Operation, Operation.id == Event.payload_ref)
+            .where(
+                Event.kind == "order.committed",
+                Operation.status == "COMMITTED",
+                ~select(OutboxDelivery.id)
+                .where(OutboxDelivery.event_id == Event.id, OutboxDelivery.consumer == "ui")
+                .exists(),
+            )
+        ):
+            session.add(
+                OutboxDelivery(
+                    id=str(uuid4()),
+                    event_id=event.id,
+                    consumer="ui",
+                    delivery_state="PENDING",
+                    attempts=0,
+                    available_at=clock(),
+                )
+            )
         for task in session.scalars(
             select(Task).where(Task.status.in_(["RUNNING", "COMMITTING", "RECONCILING"]))
         ):
@@ -22,12 +46,6 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                 .where(Plan.task_id == task.id)
             )
             if operation:
-                # Inspect the persisted notification as well; never repeat business writes.
-                list(
-                    session.scalars(
-                        select(OutboxDelivery).join(Event).where(Event.chain_id == task.chain_id)
-                    )
-                )
                 if task.status != "RECONCILING":
                     transition(task, "RECONCILING")
                 transition(task, "SUCCEEDED")

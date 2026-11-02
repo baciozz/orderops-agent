@@ -31,33 +31,32 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
             select(func.count()).select_from(Task).where(Task.status == "RUNNING")
         ) >= min(2, limits.active):
             return None
-        task = session.scalar(select(Task).where(Task.status == "QUEUED").order_by(Task.id))
-        if task is None:
-            return None
-        previous = session.scalar(
-            select(JobAttempt)
-            .where(JobAttempt.task_id == task.id)
-            .order_by(JobAttempt.attempt_no.desc())
-        )
-        number = previous.attempt_no + 1 if previous else 1
-        if number > limits.attempts:
-            transition(task, "FAILED")
-            task.error_code = "ATTEMPT_LIMIT"
-            return None
-        transition(task, "RUNNING")
-        attempt = JobAttempt(
-            id=str(uuid4()),
-            task_id=task.id,
-            attempt_no=number,
-            fencing_token=previous.fencing_token + 1 if previous else 1,
-            lease_owner=owner,
-            lease_until=clock() + timedelta(seconds=limits.lease_seconds),
-            heartbeat_at=clock(),
-            last_progress_at=clock(),
-            step_count=0,
-        )
-        session.add(attempt)
-        return task.id, attempt.fencing_token
+        for task in session.scalars(select(Task).where(Task.status == "QUEUED").order_by(Task.id)):
+            previous = session.scalar(
+                select(JobAttempt)
+                .where(JobAttempt.task_id == task.id)
+                .order_by(JobAttempt.attempt_no.desc())
+            )
+            number = previous.attempt_no + 1 if previous else 1
+            if number > limits.attempts:
+                transition(task, "FAILED")
+                task.error_code = "ATTEMPT_LIMIT"
+                continue
+            transition(task, "RUNNING")
+            attempt = JobAttempt(
+                id=str(uuid4()),
+                task_id=task.id,
+                attempt_no=number,
+                fencing_token=previous.fencing_token + 1 if previous else 1,
+                lease_owner=owner,
+                lease_until=clock() + timedelta(seconds=limits.lease_seconds),
+                heartbeat_at=clock(),
+                last_progress_at=clock(),
+                step_count=0,
+            )
+            session.add(attempt)
+            return task.id, attempt.fencing_token
+        return None
 
 
 def heartbeat(factory, task_id, token, *, progress=False, clock=utcnow, limits=DEFAULT_LIMITS):
@@ -104,10 +103,11 @@ def run_once(
         )
         if attempt.step_count >= limits.steps:
             raise AppError("已达到步骤上限", code="STEP_LIMIT", http_status=409)
+        heartbeat(factory, task_id, fence, clock=clock, limits=limits)
         if caller_hook:
             caller_hook(ctx)
 
-    marker = guard.set((task_id, fence, clock))
+    marker = guard.set((task_id, fence, clock, limits.lease_seconds))
     try:
         outcome = dispatch_text(
             factory,

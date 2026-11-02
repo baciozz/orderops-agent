@@ -3,7 +3,7 @@
 from app.db.models import Task
 from app.db.session import begin_immediate
 from app.orchestration.state import transition
-from app.services.kernel import commit_plan
+from app.services.kernel import acknowledge_commit, commit_plan
 
 
 class ResponseLost(Exception):
@@ -11,17 +11,15 @@ class ResponseLost(Exception):
 
 
 def durable_commit(factory, *, fault=lambda _: None, **request):
-    outcome = commit_plan(factory, **request)
+    outcome = commit_plan(factory, acknowledge=False, **request)
     try:
         fault("after_commit")
     except ResponseLost:
         with factory() as session, begin_immediate(session):
             task = session.get(Task, outcome.task_id)
             # The business transaction is already durable. Only its acknowledgement is unknown.
-            transition(task, "RECONCILING")
+            if task.status == "COMMITTING":
+                transition(task, "RECONCILING")
         raise
-    with factory() as session, begin_immediate(session):
-        task = session.get(Task, outcome.task_id)
-        if task.status == "RECONCILING":
-            transition(task, "SUCCEEDED")
+    acknowledge_commit(factory, outcome.task_id)
     return outcome

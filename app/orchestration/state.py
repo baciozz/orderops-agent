@@ -1,5 +1,6 @@
 """Durable transitions and transaction-scoped fencing."""
 
+from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
@@ -24,12 +25,12 @@ ALLOWED = {
     "AWAITING_APPROVAL": {"QUEUED", "COMMITTING", "CANCELLED", "SUPERSEDED"},
     "COMMITTING": {"SUCCEEDED", "RECONCILING", "FAILED"},
     "RECONCILING": {"SUCCEEDED", "FAILED"},
-    "SUCCEEDED": {"RECONCILING"},
+    "SUCCEEDED": set(),
     "FAILED": set(),
     "CANCELLED": set(),
     "SUPERSEDED": set(),
 }
-guard: ContextVar[tuple[str, int, object] | None] = ContextVar("durable_guard", default=None)
+guard: ContextVar[tuple[str, int, Callable, int] | None] = ContextVar("durable_guard", default=None)
 
 
 def transition(task, target):
@@ -66,7 +67,7 @@ def check_fence(session, task_id, token, now):
 def enforce(session):
     bound = guard.get()
     if bound:
-        task_id, token, clock = bound
+        task_id, token, clock, _lease_seconds = bound
         check_fence(session, task_id, token, clock())
 
 

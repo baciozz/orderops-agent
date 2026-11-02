@@ -6,14 +6,14 @@ Agent payloads are checked, recorded, and then ignored by the precheck.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 from schemas.business import BusinessEvent, ExtractionResult
 from schemas.enums import BusinessEventType, DispatchStatus, TaskStatus
 from schemas.subagent import AgentProposal, SubAgentSpec
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.fixture_model import FixtureLLMClient
@@ -27,8 +27,8 @@ from app.orchestration.fixtures import golden_fixtures
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import Registry, tool_executor
 from app.orchestration.router import PlannedStep, Router
+from app.orchestration.state import enforce, transition
 from app.orchestration.state import guard as durable_guard
-from app.orchestration.state import transition
 from app.orchestration.tools import ToolGateway
 from app.services.kernel import _current_links as current_links
 from app.services.kernel import (
@@ -362,7 +362,6 @@ def _one_attempt(
             except AgentTimeout:
                 code = "TIMEOUT"
                 message = f"{spec.agent_id} 超时，本步结果作废"
-                attempt.fencing_token += 1
             except SchemaInvalid as exc:
                 code = "SCHEMA_INVALID"
                 message = str(exc)
@@ -376,16 +375,16 @@ def _one_attempt(
             finally:
                 work.model_calls = ctx.model_calls
                 tool_executor.reset(token)
-            pending = list(session.new)
-            session.rollback()
-            with begin_immediate(session):
-                task, attempt = _lock(session, task_id)
-                session.add_all(pending)
+            # The runner's session only reads, with autoflush disabled. Persist its
+            # changes through a fresh writer so the fence sees current committed state.
+            with session_factory() as writer, begin_immediate(writer):
+                task, attempt = _lock(writer, task_id)
+                _copy_step_writes(session, writer)
                 if code == "TIMEOUT":
                     attempt.fencing_token += 1
                 if code is None and run is not None:
                     _add_step(
-                        session,
+                        writer,
                         task=task,
                         attempt=attempt,
                         spec=spec,
@@ -399,7 +398,7 @@ def _one_attempt(
                     return run, False, None
                 status = DispatchStatus.TIMEOUT if code == "TIMEOUT" else DispatchStatus.FAILED
                 _add_step(
-                    session,
+                    writer,
                     task=task,
                     attempt=attempt,
                     spec=spec,
@@ -418,7 +417,7 @@ def _one_attempt(
                 task.error_code = code
                 task.result_ref = message[:255]
                 failed = _view(
-                    session,
+                    writer,
                     task,
                     status=TaskStatus.FAILED,
                     error_code=code,
@@ -427,6 +426,25 @@ def _one_attempt(
                 return None, False, failed
     finally:
         session.close()
+
+
+def _copy_step_writes(source: Session, writer: Session) -> None:
+    """Copy changed columns only; never merge a stale snapshot over current rows."""
+    for obj in source.dirty:
+        state = inspect(obj)
+        current = writer.get(type(obj), state.identity)
+        for column in state.mapper.column_attrs:
+            if state.attrs[column.key].history.has_changes():
+                setattr(current, column.key, getattr(obj, column.key))
+    for obj in source.new:
+        writer.add(
+            type(obj)(
+                **{
+                    column.key: getattr(obj, column.key)
+                    for column in inspect(obj).mapper.column_attrs
+                }
+            )
+        )
 
 
 def _precheck(
@@ -608,6 +626,7 @@ def _add_step(
     if durable_guard.get():
         now = durable_guard.get()[2]()
         attempt.heartbeat_at = now
+        attempt.lease_until = now + timedelta(seconds=durable_guard.get()[3])
         attempt.last_progress_at = now
     attempt.step_count += 1
     session.add(
@@ -649,6 +668,7 @@ def _fail(
     session = session_factory()
     try:
         with begin_immediate(session):
+            enforce(session)
             task = session.get(Task, task_id)
             if task is None:
                 raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
@@ -686,6 +706,7 @@ def _fail_if_running(
     session = session_factory()
     try:
         with begin_immediate(session):
+            enforce(session)
             task = session.get(Task, task_id)
             if task is not None and task.status == TaskStatus.RUNNING:
                 transition(task, TaskStatus.FAILED)
@@ -772,6 +793,7 @@ def _step_views(session: Session, task_id: str) -> list[StepView]:
 
 
 def _lock(session: Session, task_id: str) -> tuple[Task, JobAttempt]:
+    enforce(session)
     task = session.get(Task, task_id)
     attempt = session.scalar(
         select(JobAttempt)
