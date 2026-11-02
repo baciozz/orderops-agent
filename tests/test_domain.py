@@ -29,6 +29,18 @@ def test_rebuild_rejects_a_gap() -> None:
         )
 
 
-def test_status_derivation_is_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="stage-1A"):
-        derive_order_status(ordered_by_sku={}, shipped_by_sku={}, cancelled_unshipped=False)
+def test_status_is_derived_from_shipments() -> None:
+    assert (
+        derive_order_status(
+            lines=[("A-BLACK-M", 100, "STOCK"), ("C-BLACK-L", 300, "MTO")],
+            shipped_by_sku={"A-BLACK-M": 60},
+        )
+        == "PARTIALLY_SHIPPED"
+    )
+    assert (
+        derive_order_status(
+            lines=[("A-WHITE-M", 30, "STOCK")],
+            shipped_by_sku={},
+        )
+        == "OPEN"
+    )

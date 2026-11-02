@@ -1,7 +1,5 @@
-"""Atomic commit.
+"""Atomic commit lives in app.services.kernel.
 
-TODO(stage-1A): one BEGIN IMMEDIATE transaction for the order revision, stock
-movements, approval consumption, operation, audit, and outbox.
 TODO(stage-1B): include document revisions and downstream relinks in that same
 transaction (B27).
 """

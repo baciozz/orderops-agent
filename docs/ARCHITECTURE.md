@@ -43,7 +43,7 @@ Stage 0 的 Router 已经能按事件类型选出能力。找不到能力时返�
 6. **估价公式。** `input_tokens × 输入单价 / 1_000_000 + max_output_tokens × 输出单价 / 1_000_000`。已花费 + 预估 **大于** 上限才拒绝，等于上限允许。单价用 `Decimal`，SQLite 里以字符串保存，避免变成 float。
 7. **Fixture 不写 `model_usage`。** 因此不计入 live 熔断。
 8. **Live HTTP 未实现。** 守卫通过后抛出 `LIVE_TRANSPORT_NOT_READY`（`TODO(stage-4)`）。
-9. **建表用 `metadata.create_all`，集中在 `app/db/schema.py`。** Alembic 推迟到阶段 1A 第一次改表，避免把马上会改的迁移冻进仓库。请求处理器不建表。
+9. **建表走 Alembic。** `app/db/schema.py` 的 `init_db` 执行 `upgrade head`。初始修订由模型自动生成。请求处理器不建表。
 10. **SO-1002 的客户定为华南制衣（CUST-HN）。** 修订只说蓝色 L 的 10 件预占来自 SO-1002，没有客户名。
 11. **A-BLACK-M 初始入库 200。** 当前 on_hand 140，发货流水 −60，只有入库 200 才能重建余额。方案没写入库数量。
 12. **C-NAVY-L 的单耗是 FAB-NAVY 每件 2 米。** X2 的核验要求如此。seed 里有主数据，还没有生产单。

@@ -118,6 +118,7 @@ class PlanChangeRequest(ApiModel):
     intent_revision: int
     changes: list[LineChange]
     source_refs: list[SourceRef] = Field(default_factory=list)
+    client_event_key: str | None = None
 
 
 class PlanPreviewResponse(ApiModel):
@@ -140,6 +141,7 @@ class ApproveRequest(ApiModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     plan_hash: str
     expected_intent_revision: int
+    acknowledge_duplicate: bool = False
 
 
 class ApproveResponse(ApiModel):

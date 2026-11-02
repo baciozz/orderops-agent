@@ -1,7 +1,7 @@
-"""Human approval records.
+"""Human approval lives in app.services.kernel.
 
-TODO(stage-1A): create Approval from the server session actor, never from a
-request body or a model field named approved.
+The actor comes from the server demo identity, never from a request body or a
+model field named approved.
 """
 
 
