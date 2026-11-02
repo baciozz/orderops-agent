@@ -24,6 +24,12 @@
 
 `T-STUB` 的 `approvable` 为 false，调度轨迹和结果都是空的。过期批准使 `disabled_reason=EXPIRED` 的行为是 R24，阶段 3 才做。
 
+## Stage 1C
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/dispatch` | 同步 fixture 调度。文本 → Router → 子 Agent → 预检。不占用阶段 2 的 `POST /inputs` |
+
 ## 已冻结、尚未挂载
 
 模型在 `schemas/api.py`。名称对应方案第 8 节，实现阶段见下表。

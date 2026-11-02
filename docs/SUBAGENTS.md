@@ -14,7 +14,7 @@
 
 默认超时 30 秒，最多 8 步，重试 2 次。`parser` 使用模型：每次最多 1000 token，每个任务最多 3 次调用。确定性 Agent 的 `uses_model` 为 false。
 
-`approve_plan`、`commit` 以及 `plans.approve`、`plans.commit`、`order.commit` 永远不在白名单里，即使规格文件写上了也会被拒绝。真正执行只读工具并写审计是 `TODO(stage-1C)`。
+`approve_plan`、`commit` 以及 `plans.approve`、`plans.commit`、`order.commit` 永远不在白名单里，即使规格文件写上了也会被拒绝。调度器在调用前检查白名单，拒绝时写 `audit_record`（`tool.denied`），并把该 DispatchStep 标为 FAILED。没有业务写入。
 
 ## 路由
 
@@ -30,6 +30,8 @@ Router 按「事件类型 → 能力」选 Agent，不写死 Agent 名。
 
 找不到所需能力时，结果是 `ok=false`、`code=CAPABILITY_MISSING`，消息里写明不能静默跳过。
 
-统一输出信封是 `AgentProposal`。`fencing_token` 或 `intent_revision` 不匹配时 `accept_proposal` 丢弃提案。payload 的 schema 校验、超时和晚到结果是阶段 1C。
+统一输出信封是 `AgentProposal`。`fencing_token` 或 `intent_revision` 不匹配时 `accept_proposal` 丢弃提案。输出不合 schema 时按 `max_retries` 重试，仍失败则任务为 `SCHEMA_INVALID`，不进入预检。超时把 DispatchStep 标为 TIMEOUT，并把本次 attempt 的 fencing token 加一；晚到提案对不上 token 就被丢掉。
+
+`POST /dispatch` 是同步的 fixture 入口。方案里的 `POST /inputs` 仍留给阶段 2 的 inbox，这里不占用那个契约。parser 按整段文本精确查找 fixture，找不到就失败，不会改走 live。
 
 外部 Agent 使用同一套契约，kind 为 `external`。Stage 0 拒绝注册。说明文字里可以写「兼容某种 WebAPI 格式的模拟服务，非官方」，但不能用该厂商的名字做产品名。

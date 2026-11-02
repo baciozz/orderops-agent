@@ -1,6 +1,6 @@
 """HTTP bodies for the endpoints listed in plan section 8 and revision section 5.
 
-Stage 0 freezes these models. Only health and the task view are mounted.
+Stage 0 froze these models. Later stages mount the ones they implement.
 """
 
 from typing import Literal
@@ -10,7 +10,7 @@ from pydantic import Field
 from schemas import SCHEMA_VERSION
 from schemas.business import LineChange
 from schemas.common import ApiModel, SourceRef
-from schemas.enums import OrderStatus, TaskStatus
+from schemas.enums import InputMode, OrderStatus, TaskStatus
 
 
 class SourceUploadResponse(ApiModel):
@@ -198,3 +198,39 @@ class PurchaseProposeResponse(ApiModel):
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     proposal_id: str
     status: Literal["DRAFT"]
+
+
+class DispatchRequest(ApiModel):
+    """Synchronous fixture dispatch. Stage 2's POST /inputs stays the inbox contract."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    text: str = Field(min_length=1)
+    input_mode: InputMode = InputMode.TEXT
+    client_event_key: str | None = None
+
+
+class DispatchStepBody(ApiModel):
+    step_no: int
+    agent_id: str
+    agent_version: str
+    capability: str
+    status: str
+    error_code: str | None = None
+    skip_reason: str | None = None
+
+
+class DispatchResponse(ApiModel):
+    request_id: str
+    correlation_id: str
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    task_id: str
+    chain_id: str
+    status: str
+    plan_id: str | None = None
+    order_id: str | None = None
+    intent_revision: int
+    plan_hash: str | None = None
+    requires_human_approval: bool
+    issues: list[str] = Field(default_factory=list)
+    error_code: str | None = None
+    steps: list[DispatchStepBody] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-"""The three P0 sub-agent specs. They are registered, not executed, in Stage 0."""
+"""The three P0 sub-agent specs. Stage 1C executes them from the dispatcher."""
 
 from schemas.enums import AgentKind
 from schemas.subagent import AgentBudget, AgentScope, SchemaRef, SubAgentSpec

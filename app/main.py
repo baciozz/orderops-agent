@@ -14,6 +14,7 @@ from schemas import SCHEMA_VERSION
 
 from app import __version__
 from app.adapters.llm import resolve_mode
+from app.api.dispatch import router as dispatch_router
 from app.api.errors import json_error
 from app.api.health import router as health_router
 from app.api.orders import router as orders_router
@@ -31,7 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="order-ops-superagent",
         version=__version__,
-        description="Stage 1A business kernel. Fixture mode by default. Not a production ERP.",
+        description="Stage 1C sub-agent dispatch. Fixture mode by default. Not a production ERP.",
     )
     engine = make_engine(settings.database_url)
     application.state.engine = engine
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(health_router)
     application.include_router(task_router)
     application.include_router(orders_router)
+    application.include_router(dispatch_router)
     return application
 
 

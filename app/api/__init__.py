@@ -1,1 +1,1 @@
-"""HTTP API. Stage 0 mounts health and the task-view stub only."""
+"""HTTP API. Health, task view, kernel routes, and fixture dispatch."""

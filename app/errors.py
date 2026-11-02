@@ -134,3 +134,11 @@ class InventoryInvariantError(AppError):
 class ProposalRejected(AppError):
     code = "PROPOSAL_REJECTED"
     http_status = 409
+
+
+class SchemaInvalid(AppError):
+    code = "SCHEMA_INVALID"
+    http_status = 422
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, code="SCHEMA_INVALID", http_status=422)

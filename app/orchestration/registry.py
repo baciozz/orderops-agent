@@ -5,11 +5,17 @@ a missing schema, or kind=external fails registration. There is no runtime
 self-registration API.
 """
 
+from collections.abc import Callable
+from contextvars import ContextVar
+
 from schemas.catalog import lookup_schema
 from schemas.enums import AgentKind
 from schemas.subagent import SubAgentSpec
 
-from app.errors import RegistryError, ToolNotAllowed
+from app.errors import AppError, RegistryError, ToolNotAllowed
+
+ToolExecutor = Callable[[SubAgentSpec, str, dict[str, object]], dict[str, object]]
+tool_executor: ContextVar[ToolExecutor | None] = ContextVar("tool_executor", default=None)
 
 # Tools a sub-agent must never receive, even if a spec lists them.
 FORBIDDEN_TOOLS = frozenset(
@@ -98,6 +104,17 @@ def check_tool_whitelist(spec: SubAgentSpec, tool_name: str) -> None:
         )
 
 
-def invoke_tool(spec: SubAgentSpec, tool_name: str, *_args: object, **_kwargs: object) -> None:
-    check_tool_whitelist(spec, tool_name)
-    raise NotImplementedError("TODO(stage-1C): 在查询层按任务范围执行只读工具，并写审计")
+def invoke_tool(spec: SubAgentSpec, tool_name: str, **kwargs: object) -> dict[str, object]:
+    """Run a read-only tool inside the dispatcher, or reject it.
+
+    Forbidden names never reach a handler. The handler itself audits denials.
+    """
+    executor = tool_executor.get()
+    if executor is None:
+        check_tool_whitelist(spec, tool_name)
+        raise AppError(
+            "只读工具只能在子 Agent 调度中调用",
+            code="TOOL_CONTEXT_MISSING",
+            http_status=409,
+        )
+    return executor(spec, tool_name, dict(kwargs))

@@ -58,6 +58,8 @@ _THREAD = "demo"
 
 commit_failpoint: ContextVar[str | None] = ContextVar("commit_failpoint", default=None)
 verify_failpoint: ContextVar[bool] = ContextVar("verify_failpoint", default=False)
+# Set by the dispatcher so plan/approve reuse the task that already owns DispatchSteps.
+bound_task_id: ContextVar[str | None] = ContextVar("bound_task_id", default=None)
 
 
 @dataclass
@@ -1258,22 +1260,57 @@ def _store_failed_task(
         now=now,
     )
     session.flush()
-    session.add(
-        Task(
-            id=_id("T"),
-            chain_id=chain_id,
-            order_id=order_id,
-            status=TaskStatus.FAILED,
-            intent_revision=intent_revision,
-            last_event_id=event.id,
-            cancel_requested=False,
-            deadline_at=None,
-            result_ref=None,
-            error_code=code,
-        )
+    _attach_task(
+        session,
+        chain_id=chain_id,
+        order_id=order_id,
+        status=TaskStatus.FAILED,
+        intent_revision=intent_revision,
+        event_id=event.id,
+        error_code=code,
     )
-    session.flush()
     event.payload_ref = message[:200]
+
+
+def _attach_task(
+    session: Session,
+    *,
+    chain_id: str,
+    order_id: str | None,
+    status: str,
+    intent_revision: int,
+    event_id: str,
+    error_code: str | None,
+) -> Task:
+    """Reuse the dispatcher's task when one is bound. Otherwise insert a new row."""
+    bound = bound_task_id.get()
+    if bound:
+        task = session.get(Task, bound)
+        if task is None:
+            raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
+        task.chain_id = chain_id
+        task.order_id = order_id
+        task.status = status
+        task.intent_revision = intent_revision
+        task.last_event_id = event_id
+        task.error_code = error_code
+        session.flush()
+        return task
+    task = Task(
+        id=_id("T"),
+        chain_id=chain_id,
+        order_id=order_id,
+        status=status,
+        intent_revision=intent_revision,
+        last_event_id=event_id,
+        cancel_requested=False,
+        deadline_at=None,
+        result_ref=None,
+        error_code=error_code,
+    )
+    session.add(task)
+    session.flush()
+    return task
 
 
 def _new_task_plan(
@@ -1295,7 +1332,6 @@ def _new_task_plan(
     error_code: str | None,
     expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> tuple[Task, Plan]:
-    task_id = _id("T")
     plan_id = _id("P")
     event = _add_event(
         session,
@@ -1308,23 +1344,18 @@ def _new_task_plan(
         now=now,
     )
     session.flush()
-    task = Task(
-        id=task_id,
+    task = _attach_task(
+        session,
         chain_id=chain_id,
         order_id=order_id,
         status=task_status,
         intent_revision=intent_revision,
-        last_event_id=event.id,
-        cancel_requested=False,
-        deadline_at=None,
-        result_ref=None,
+        event_id=event.id,
         error_code=error_code,
     )
-    session.add(task)
-    session.flush()
     plan = Plan(
         id=plan_id,
-        task_id=task_id,
+        task_id=task.id,
         plan_kind=plan_kind,
         base_order_revision=base_revision,
         intent_revision=intent_revision,

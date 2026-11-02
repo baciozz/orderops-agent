@@ -1,1 +1,1 @@
-"""Router, registry, and later the worker. Sub-agents only propose."""
+"""Router, registry, and the in-process sub-agent dispatcher. Sub-agents only propose."""

@@ -60,6 +60,7 @@ Stage 0 的 Router 已经能按事件类型选出能力。找不到能力时返�
 23. **调度状态** 定为 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`、`TIMEOUT`、`SKIPPED`。库存流水类型定为 `RECEIPT`、`RESERVE`、`SHIP`、`RELEASE`、`ADJUST`。方案没有逐个列出这些词。`operation.status` 和投递状态不加 CHECK，等真正写入它们的阶段再定。
 24. **Mapper 不声明 relationship。** SQLAlchemy 不会仅凭 `ForeignKey` 排列插入顺序。seed 按父表、子表分段 flush。阶段 1A 的提交要么补 relationship，要么继续按这个顺序写。
 25. **R17、R22、R23 在本阶段有真实测试。** 方案把它们排在 1C 和阶段 4；这次的范围要求注册表、路由失败和预算熔断可用。其余 53 条 B/R 用例以跳过入库，不计入通过。
+26. **Stage 1C 在进程内执行三个子 Agent。** `Router.plan("new_order")` 仍只返回 `check.inventory`。调度器额外写一条 doc-check 的 SKIPPED，原因是「无下游单据」，用来满足 R21。内核重新计算库存和下游结论，不采用提案里的数字。parser 只做 fixture 精确匹配。
 
 ## 停止条件
 
