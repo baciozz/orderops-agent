@@ -27,11 +27,11 @@ from app.db.models import (
     StockBalance,
 )
 from app.errors import AppError
+from app.orchestration.recovery import durable_commit as commit_plan
 from app.services.kernel import (
     DEMO_ACTOR_ID,
     WAREHOUSE_ID,
     approve_plan,
-    commit_plan,
     inspect_downstream,
     plan_change,
 )

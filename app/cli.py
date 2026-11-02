@@ -13,6 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db", help="创建 SQLite 表")
     sub.add_parser("seed", help="载入黄金演示的合成数据")
+    sub.add_parser("worker-once", help="恢复任务，处理一条 fixture 任务并投递 outbox")
     args = parser.parse_args(argv)
     settings = get_settings()
     ensure_sqlite_parent(settings.database_url)
@@ -21,6 +22,16 @@ def main(argv: list[str] | None = None) -> int:
         init_db(engine)
         if args.command == "init-db":
             print(f"已创建表：{settings.database_url}")
+            return 0
+        if args.command == "worker-once":
+            from app.orchestration.outbox import publish_pending
+            from app.orchestration.watchdog import scan
+            from app.orchestration.worker import run_once
+
+            factory = make_session_factory(engine)
+            scan(factory)
+            run_once(factory)
+            publish_pending(factory)
             return 0
         report = load_seed(make_session_factory(engine), database_url=settings.database_url)
     finally:

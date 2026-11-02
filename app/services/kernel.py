@@ -28,6 +28,7 @@ from app.db.models import (
     DocRevision,
     DownstreamLink,
     Event,
+    JobAttempt,
     MaterialUsage,
     Operation,
     OrderLine,
@@ -764,6 +765,8 @@ def _commit_locked(
     task = session.get(Task, plan.task_id)
     if task is None:
         return None, AppError("任务不存在", code="NOT_FOUND", http_status=404)
+    if task.cancel_requested or task.status == TaskStatus.CANCELLED:
+        return _err("任务已取消", "CANCELLED", 409)
     if plan.plan_kind == PlanKind.CHANGE:
         order = _require_order(session, str(task.order_id))
         if order.intent_revision != approval.intent_revision:
@@ -926,7 +929,10 @@ def _commit_locked(
     approval.status = ApprovalStatus.CONSUMED
     approval.consumed_operation_id = operation_id
     plan.status = PlanStatus.COMMITTED
-    task.status = TaskStatus.SUCCEEDED
+    from app.orchestration.state import transition
+
+    transition(task, "COMMITTING")
+    transition(task, "SUCCEEDED")
     task.result_ref = operation_id
     result = {
         "order_id": order.id,
@@ -1290,7 +1296,12 @@ def _attach_task(
             raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
         task.chain_id = chain_id
         task.order_id = order_id
-        task.status = status
+        from app.orchestration.state import transition
+
+        transition(task, status)
+        for attempt in session.scalars(select(JobAttempt).where(JobAttempt.task_id == task.id)):
+            attempt.lease_until = None
+            attempt.lease_owner = None
         task.intent_revision = intent_revision
         task.last_event_id = event_id
         task.error_code = error_code
@@ -1520,7 +1531,9 @@ def _existing_outcome(
     )
 
 
-def _invalidate_order(session: Session, order_id: str) -> None:
+def _invalidate_order(
+    session: Session, order_id: str, *, exclude_task_id: str | None = None
+) -> None:
     tasks = list(session.scalars(select(Task).where(Task.order_id == order_id)).all())
     if not tasks:
         return
@@ -1539,8 +1552,13 @@ def _invalidate_order(session: Session, order_id: str) -> None:
         for approval in approvals:
             approval.status = ApprovalStatus.REVOKED
     for task in tasks:
-        if task.status in {TaskStatus.AWAITING_APPROVAL, TaskStatus.NEEDS_CLARIFICATION}:
-            task.status = TaskStatus.SUPERSEDED
+        if task.id != exclude_task_id and task.status in {
+            TaskStatus.AWAITING_APPROVAL,
+            TaskStatus.NEEDS_CLARIFICATION,
+        }:
+            from app.orchestration.state import transition
+
+            transition(task, TaskStatus.SUPERSEDED)
 
 
 def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:

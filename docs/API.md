@@ -53,3 +53,13 @@
 示例 JSON 在 `schemas/examples/`。`PlanChangeRequest` 拒绝多余字段，包括客户端自带的 `approved`。批准只能由以后的服务端会话创建。
 
 幂等键、plan_hash 和版本冲突的规则沿用方案第 7 节，提交服务还没写。
+
+## Stage 2：持久执行（fixture）
+
+- `POST /inputs` 使用 `InputSubmitRequest`，在一个事务保存 Event、Task、InputPayload 和 InboxDelivery，返回 **202** 的 `InputSubmitResponse`。`client_event_key` 是来源投递 ID / 客户端事件 ID，在 thread 内去重；相同文字的新 key 是新事件。选择订单时，接收事务就递增意图并使旧批准失效，重复投递不递增。
+- `GET /tasks/{id}` 返回持久状态、问题、计划与来源、结果和错误码。
+- `POST /tasks/{id}/answers` 接收同一输入模型，用新 key 保存回答事件并将等待中的任务重新排队。fixture 回答使用完整的已登记语句，不调用模型。
+- `POST /tasks/{id}/cancel` 使用 `TaskCancelRequest`；取消先完成则 commit 返回 `CANCELLED`；commit 先完成则返回 `ALREADY_COMMITTED`，不撤销业务历史。
+- `/dispatch` 保留同步 fixture 行为。commit 保留原幂等合同；响应丢失后必须重用原请求和原 key。
+
+`source_ids` 持久保存；文件内容解析仍属 Stage 3。202 不是业务完成回执。
