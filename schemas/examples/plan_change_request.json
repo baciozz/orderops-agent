@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "order_id": "SO-1001",
+  "base_revision": 1,
+  "intent_revision": 7,
+  "changes": [
+    {
+      "schema_version": "1.0",
+      "mode": "replace_remaining",
+      "from_sku": "A-BLACK-M",
+      "to_sku": "A-WHITE-M",
+      "qty": 40,
+      "source_refs": []
+    }
+  ],
+  "source_refs": [
+    {
+      "schema_version": "1.0",
+      "source_id": "SRC-01",
+      "line_start": 3,
+      "line_end": 3
+    }
+  ]
+}

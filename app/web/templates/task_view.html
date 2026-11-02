@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>任务 {{ view.card.task_id }}</title>
+</head>
+<body>
+  <p>Stage 0 桩页面，没有视觉设计。这不是「订单已修改」。运行模式：{{ view.card.mode }}。</p>
+  <h1>任务卡</h1>
+  <dl>
+    <dt>task_id</dt><dd>{{ view.card.task_id }}</dd>
+    <dt>order_id</dt><dd>{{ view.card.order_id }}</dd>
+    <dt>状态</dt><dd>{{ view.card.status }}</dd>
+    <dt>intent_revision</dt><dd>{{ view.card.intent_revision }}</dd>
+    <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>
+    <dt>模式</dt><dd>{{ view.card.mode }}</dd>
+  </dl>
+  <h1>调度轨迹</h1>
+  {% if view.dispatch %}
+  <ol>
+    {% for step in view.dispatch %}
+    <li>{{ step.agent_id }}@{{ step.agent_version }} {{ step.capability }} {{ step.status }} {{ step.skip_reason or "" }}</li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p>无</p>
+  {% endif %}
+  <h1>旧新版对照</h1>
+  {% if view.line_diffs %}
+  <ul>
+    {% for line in view.line_diffs %}
+    <li>{{ line.sku_id }} 旧 {{ line.old_qty }} 新 {{ line.new_qty }} 差 {{ line.delta }} 锁定 {{ line.locked_qty }} 未执行 {{ line.unexecuted_qty }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>无</p>
+  {% endif %}
+  <h1>下游影响清单</h1>
+  {% if view.downstream %}
+  <ul>
+    {% for doc in view.downstream %}
+    <li>{{ doc.doc_id }} {{ doc.doc_type }} {{ doc.verdict }} {{ doc.reason or "" }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>无</p>
+  {% endif %}
+  <h1>来源定位</h1>
+  <p>{{ view.sources | length }} 条</p>
+  <h1>批准区</h1>
+  <dl>
+    <dt>plan_hash</dt><dd>{{ view.approval.plan_hash }}</dd>
+    <dt>生成时间</dt><dd>{{ view.approval.generated_at }}</dd>
+    <dt>到期时间</dt><dd>{{ view.approval.expires_at }}</dd>
+    <dt>approvable</dt><dd>{{ view.approval.approvable }}</dd>
+    <dt>disabled_reason</dt><dd>{{ view.approval.disabled_reason }}</dd>
+  </dl>
+  <h1>结果</h1>
+  <dl>
+    <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
+    <dt>revision</dt><dd>{{ view.result.revision }}</dd>
+    <dt>核验</dt><dd>{{ view.result.verification }}</dd>
+    <dt>下载</dt><dd>{{ view.result.download_url }}</dd>
+  </dl>
+</body>
+</html>
