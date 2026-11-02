@@ -1,6 +1,6 @@
 """Stage 1A business kernel: plan, approve, and commit.
 
-Downstream document relink is stage 1B. This module does not call a model.
+Downstream documents are relinked in the same commit as the order revision.
 """
 
 from contextvars import ContextVar
@@ -25,12 +25,17 @@ from app.db.models import (
     Approval,
     AuditRecord,
     Customer,
+    DocRevision,
+    DownstreamLink,
     Event,
+    MaterialUsage,
     Operation,
     OrderLine,
     OrderRevision,
     OutboxDelivery,
     Plan,
+    ProductionOrder,
+    PurchaseOrder,
     PurchaseProposal,
     Reservation,
     SalesOrder,
@@ -42,6 +47,7 @@ from app.db.models import (
 )
 from app.db.session import begin_immediate
 from app.domain.changes import ChangeEval, SnapLine, business_error, evaluate_changes
+from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
 from app.domain.orders import derive_order_status
@@ -70,6 +76,7 @@ class PlanOutcome:
     questions: list[str] = field(default_factory=list)
     candidates: list[str] = field(default_factory=list)
     proposal_ids: list[str] = field(default_factory=list)
+    verdicts: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -353,6 +360,60 @@ def record_receipt(
         session.close()
 
 
+def record_production_cut(
+    session_factory: sessionmaker[Session],
+    *,
+    doc_id: str,
+    cut_qty: int,
+    now: datetime | None = None,
+) -> None:
+    """Sandbox cut. Not available to a model. Changes status and doc_revision."""
+    moment = _now(now)
+    session = session_factory()
+    try:
+        with begin_immediate(session):
+            order = session.get(ProductionOrder, doc_id)
+            if order is None:
+                raise AppError(f"没有生产单 {doc_id}", code="NOT_FOUND", http_status=404)
+            if cut_qty < 0 or cut_qty > order.planned_qty:
+                raise AppError("裁剪数量不合法", code="BUSINESS_CONFLICT", http_status=422)
+            order.cut_qty = cut_qty
+            if cut_qty == 0:
+                order.status = "NOT_STARTED"
+            elif cut_qty == order.planned_qty:
+                order.status = "CUT"
+            else:
+                order.status = "PARTIALLY_CUT"
+            order.doc_revision += 1
+            session.add(
+                DocRevision(
+                    id=f"DR-{doc_id}-{order.doc_revision}",
+                    doc_type="production_order",
+                    doc_id=doc_id,
+                    rev_no=order.doc_revision,
+                    snapshot_json={
+                        "sku_id": order.sku_id,
+                        "planned_qty": order.planned_qty,
+                        "cut_qty": order.cut_qty,
+                        "status": order.status,
+                    },
+                    operation_id=None,
+                )
+            )
+            _ = moment
+    finally:
+        session.close()
+
+
+def inspect_downstream(session_factory: sessionmaker[Session]) -> list[dict[str, object]]:
+    """Read-only drift report. Does not write a repair."""
+    session = session_factory()
+    try:
+        return downstream_findings(session)
+    finally:
+        session.close()
+
+
 def _plan_change_locked(
     session: Session,
     *,
@@ -370,10 +431,8 @@ def _plan_change_locked(
         return None, AppError("订单版本已变化", code="STALE_DEPENDENCY", http_status=409)
     if order.intent_revision != intent_revision:
         return None, AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
-    if bump_intent:
-        _invalidate_order(session, order_id)
-        order.intent_revision += 1
     lines = _load_lines(session, order_id)
+    changes = _resolve_choice(changes, lines)
     known = _known_skus(session)
     evaluation = evaluate_changes(
         lines=lines,
@@ -382,7 +441,44 @@ def _plan_change_locked(
         known_skus=known,
         candidates_for={sku: _candidates(session, sku) for sku in _mentioned(changes)},
     )
+    if evaluation.code == "LOCKED_PORTION":
+        return _locked_clarification(
+            session,
+            order=order,
+            lines=lines,
+            source_refs=source_refs,
+            client_event_key=client_event_key,
+            now=now,
+            unexecuted_note=evaluation.message or "",
+        ), None
+    if evaluation.code in {"EXECUTED_PORTION_IMMUTABLE", "INVARIANT_6"}:
+        rejected = business_error(evaluation)
+        assert rejected is not None
+        return None, rejected
+    if bump_intent:
+        _invalidate_order(session, order_id)
+        order.intent_revision += 1
     intent = order.intent_revision
+    documents = _load_documents(session, order_id)
+    usage = _usage_map(session)
+    verdicts: list[dict[str, object]] = []
+    if evaluation.kind == "validated":
+        verdicts, downstream_error = assess_downstream(
+            new_lines=evaluation.lines,
+            production=documents["production"],
+            purchase=documents["purchase"],
+            usage=usage,
+        )
+        if downstream_error:
+            return _locked_clarification(
+                session,
+                order=order,
+                lines=lines,
+                source_refs=source_refs,
+                client_event_key=client_event_key,
+                now=now,
+                unexecuted_note=downstream_error,
+            ), None
     if evaluation.kind == "validated":
         return (
             _store_validated(
@@ -399,6 +495,8 @@ def _plan_change_locked(
                 client_event_key=client_event_key,
                 now=now,
                 suspected_duplicate_of=None,
+                verdicts=verdicts,
+                expected_docs=_doc_fingerprint(documents),
             ),
             None,
         )
@@ -674,6 +772,12 @@ def _commit_locked(
             return None, AppError("订单版本已变化", code="STALE_DEPENDENCY", http_status=409)
         base_lines = _load_lines(session, order.id)
         customer_id = order.customer_id
+        current_docs = _doc_fingerprint_loaded(_load_documents(session, order.id))
+        if _stable(current_docs) != _stable(dict(plan.expected_doc_revisions or {})):
+            _revoke_if_active(approval)
+            return None, AppError(
+                "下游单据版本或状态已变化", code="STALE_DEPENDENCY", http_status=409
+            )
     else:
         order = None
         base_lines = {}
@@ -702,6 +806,19 @@ def _commit_locked(
             code="HASH_MISMATCH",
             http_status=409,
         )
+    verdicts = list((plan.normalized_changes or {}).get("downstream") or [])
+    expected_docs = dict(plan.expected_doc_revisions or {})
+    if plan.plan_kind == PlanKind.CHANGE:
+        assert order is not None
+        verdicts, downstream_error = assess_downstream(
+            new_lines=evaluation.lines,
+            production=_load_documents(session, order.id)["production"],
+            purchase=_load_documents(session, order.id)["purchase"],
+            usage=_usage_map(session),
+        )
+        if downstream_error:
+            _revoke_if_active(approval)
+            return None, AppError(downstream_error, code="HASH_MISMATCH", http_status=409)
     payload = _payload(
         plan_kind=plan.plan_kind,
         order_id=order.id if order is not None else None,
@@ -709,6 +826,8 @@ def _commit_locked(
         intent_revision=plan.intent_revision,
         evaluation=evaluation,
         stock_revisions={sku: balances[sku].revision for sku in balances},
+        verdicts=verdicts,
+        expected_docs=expected_docs,
     )
     recomputed = canonical_hash(payload)
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
@@ -770,6 +889,15 @@ def _commit_locked(
         now=now,
     )
     _hit_failpoint("after_stock")
+    _hit_failpoint("before_downstream")
+    if verdicts:
+        _apply_downstream(
+            session,
+            order_id=order.id,
+            revision_no=revision_no,
+            verdicts=verdicts,
+            operation_id=operation_id,
+        )
     event = Event(
         id=_id("EV"),
         source_event_key=operation_id,
@@ -920,8 +1048,12 @@ def _store_validated(
     client_event_key: str,
     now: datetime,
     suspected_duplicate_of: str | None,
+    verdicts: list[dict[str, object]] | None = None,
+    expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> PlanOutcome:
     stock_revisions = _revisions_for(session, set(evaluation.reservation_delta))
+    verdicts = verdicts or []
+    expected_docs = expected_docs or {}
     payload = _payload(
         plan_kind=plan_kind,
         order_id=order_id,
@@ -929,6 +1061,8 @@ def _store_validated(
         intent_revision=intent_revision,
         evaluation=evaluation,
         stock_revisions=stock_revisions,
+        verdicts=verdicts,
+        expected_docs=expected_docs,
     )
     plan_hash = canonical_hash(payload)
     dependencies = canonical_hash(
@@ -936,6 +1070,7 @@ def _store_validated(
             "base_revision": base_revision,
             "intent_revision": intent_revision,
             "stock_revisions": stock_revisions,
+            "expected_doc_revisions": expected_docs,
         }
     )
     task, plan = _new_task_plan(
@@ -955,11 +1090,13 @@ def _store_validated(
             "changes": changes,
             "suspected_duplicate_of": suspected_duplicate_of,
             "dependencies_hash": dependencies,
+            "downstream": verdicts,
             "outcome": {"kind": "validated"},
         },
         client_event_key=client_event_key,
         now=now,
         error_code=None,
+        expected_docs=expected_docs,
     )
     return PlanOutcome(
         plan_id=plan.id,
@@ -973,6 +1110,7 @@ def _store_validated(
         stock_revisions=stock_revisions,
         requires_human_approval=True,
         issues=["疑似重复，需要逐项确认"] if suspected_duplicate_of else [],
+        verdicts=verdicts,
     )
 
 
@@ -1051,6 +1189,7 @@ def _store_non_validated(
     kind: str,
     code: str,
     message: str,
+    verdicts: list[dict[str, object]] | None = None,
 ) -> PlanOutcome:
     plan_hash = canonical_hash({"kind": kind, "questions": questions, "candidates": candidates})
     task, plan = _new_task_plan(
@@ -1072,6 +1211,7 @@ def _store_non_validated(
                 "message": message,
                 "questions": questions,
                 "candidates": candidates,
+                "verdicts": verdicts or [],
             }
         },
         client_event_key=client_event_key,
@@ -1092,6 +1232,7 @@ def _store_non_validated(
         issues=issues,
         questions=questions,
         candidates=candidates,
+        verdicts=verdicts or [],
     )
 
 
@@ -1152,6 +1293,7 @@ def _new_task_plan(
     client_event_key: str,
     now: datetime,
     error_code: str | None,
+    expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> tuple[Task, Plan]:
     task_id = _id("T")
     plan_id = _id("P")
@@ -1188,7 +1330,7 @@ def _new_task_plan(
         intent_revision=intent_revision,
         chain_intent_revision=intent_revision,
         expected_stock_revisions=stock_revisions,
-        expected_doc_revisions={},
+        expected_doc_revisions=expected_docs or {},
         normalized_changes=normalized,
         source_refs=source_refs,
         plan_hash=plan_hash,
@@ -1207,6 +1349,7 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
             if verify_failpoint.get():
                 raise RuntimeError("injected verification failure")
             problems = consistency_problems(session)
+            problems.extend(downstream_problems(session))
         except Exception as exc:
             problems = [str(exc)]
         session.rollback()
@@ -1274,6 +1417,8 @@ def _payload(
     intent_revision: int,
     evaluation: ChangeEval,
     stock_revisions: dict[str, int],
+    verdicts: list[dict[str, object]] | None = None,
+    expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     return {
         "schema_version": "1.0",
@@ -1294,7 +1439,8 @@ def _payload(
             for sku in sorted(evaluation.reservation_delta)
         ],
         "stock_revisions": {sku: stock_revisions[sku] for sku in sorted(stock_revisions)},
-        "expected_doc_revisions": {},
+        "downstream": sorted(verdicts or [], key=lambda item: str(item["doc_id"])),
+        "expected_doc_revisions": expected_docs or {},
     }
 
 
@@ -1377,6 +1523,7 @@ def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:
     if revision is None:
         return {}
     shipped = _shipped_map(session, order_id)
+    cuts = _cut_by_sku(session, order_id)
     lines: dict[str, SnapLine] = {}
     rows = session.scalars(select(OrderLine).where(OrderLine.revision_id == revision.id)).all()
     for row in rows:
@@ -1385,6 +1532,7 @@ def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:
             row.ordered_qty,
             row.fulfillment_mode,
             int(shipped.get(row.sku_id) or 0),
+            cut_qty=int(cuts.get(row.sku_id) or 0),
         )
     return lines
 
@@ -1562,6 +1710,8 @@ def _clean_change(change: dict[str, object]) -> dict[str, object]:
         "from_sku": change.get("from_sku"),
         "to_sku": change.get("to_sku"),
         "qty": change.get("qty"),
+        "include_executed": bool(change.get("include_executed")),
+        "choice": change.get("choice"),
     }
 
 
@@ -1597,6 +1747,333 @@ def _text(value: object) -> str:
 
 def _id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:12]}"
+
+
+def _resolve_choice(
+    changes: list[dict[str, object]],
+    lines: dict[str, SnapLine],
+) -> list[dict[str, object]]:
+    resolved: list[dict[str, object]] = []
+    for change in changes:
+        item = dict(change)
+        if item.get("choice") == "only_uncut":
+            source = lines.get(str(item.get("from_sku") or ""))
+            if source is not None:
+                floor = source.cut_qty if source.fulfillment_mode == "MTO" else source.shipped_qty
+                item["qty"] = source.ordered_qty - floor
+                item["include_executed"] = False
+        resolved.append(item)
+    return resolved
+
+
+def _locked_clarification(
+    session: Session,
+    *,
+    order: SalesOrder,
+    lines: dict[str, SnapLine],
+    source_refs: list[dict[str, object]],
+    client_event_key: str,
+    now: datetime,
+    unexecuted_note: str,
+) -> PlanOutcome:
+    documents = _load_documents(session, order.id)
+    preview = locked_preview(documents["production"], documents["purchase"])
+    cut = sum(
+        int(row["cut_qty"]) for row in documents["production"] if row["status"] != "CANCELLED"
+    )
+    question = (
+        f"已裁剪的 {cut} 件不能改色。{unexecuted_note}。"
+        "① 只把未开裁的部分改色；② 其他处理（例如追加生产）P0 不支持，请线下决定。"
+    )
+    labels = [f"{item['doc_id']} {item['verdict']}" for item in preview]
+    _ = lines
+    return _store_non_validated(
+        session,
+        order_id=order.id,
+        chain_id=f"CH-{order.id}",
+        base_revision=order.current_revision,
+        intent_revision=order.intent_revision,
+        status=TaskStatus.NEEDS_CLARIFICATION,
+        questions=[question],
+        candidates=[],
+        issues=labels,
+        source_refs=source_refs,
+        client_event_key=client_event_key,
+        now=now,
+        kind="clarify",
+        code="NEEDS_CLARIFICATION",
+        message=question,
+        verdicts=preview,
+    )
+
+
+def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str, object]]]:
+    production: list[dict[str, object]] = []
+    purchase: list[dict[str, object]] = []
+    for link in _current_links(session, order_id):
+        if link.doc_type == "production_order":
+            row = session.get(ProductionOrder, link.doc_id)
+            if row is None:
+                continue
+            production.append(
+                {
+                    "doc_id": row.id,
+                    "sku_id": row.sku_id,
+                    "planned_qty": row.planned_qty,
+                    "cut_qty": row.cut_qty,
+                    "status": row.status,
+                    "doc_revision": row.doc_revision,
+                    "order_line_sku": link.order_line_sku,
+                }
+            )
+        else:
+            row = session.get(PurchaseOrder, link.doc_id)
+            if row is None:
+                continue
+            purchase.append(
+                {
+                    "doc_id": row.id,
+                    "material_id": row.material_id,
+                    "ordered_qty": row.ordered_qty,
+                    "received_qty": row.received_qty,
+                    "status": row.status,
+                    "change_state": row.change_state,
+                    "doc_revision": row.doc_revision,
+                    "production_order_id": row.production_order_id,
+                    "order_line_sku": link.order_line_sku,
+                }
+            )
+    return {"production": production, "purchase": purchase}
+
+
+def _doc_fingerprint(documents: dict[str, list[dict[str, object]]]) -> dict[str, dict[str, object]]:
+    found: dict[str, dict[str, object]] = {}
+    for row in documents["production"]:
+        found[str(row["doc_id"])] = {
+            "doc_type": "production_order",
+            "doc_revision": int(row["doc_revision"]),
+            "status": row["status"],
+            "cut_qty": int(row["cut_qty"]),
+            "planned_qty": int(row["planned_qty"]),
+            "sku_id": row["sku_id"],
+        }
+    for row in documents["purchase"]:
+        found[str(row["doc_id"])] = {
+            "doc_type": "purchase_order",
+            "doc_revision": int(row["doc_revision"]),
+            "status": row["status"],
+            "received_qty": int(row["received_qty"]),
+            "ordered_qty": int(row["ordered_qty"]),
+            "change_state": row["change_state"],
+            "material_id": row["material_id"],
+        }
+    return found
+
+
+def _doc_fingerprint_loaded(
+    documents: dict[str, list[dict[str, object]]],
+) -> dict[str, dict[str, object]]:
+    return _doc_fingerprint(documents)
+
+
+def _usage_map(session: Session) -> dict[str, tuple[str, int]]:
+    rows = session.scalars(select(MaterialUsage)).all()
+    return {row.sku_id: (row.material_id, row.qty_per_piece) for row in rows}
+
+
+def _current_links(session: Session, order_id: str | None = None) -> list[DownstreamLink]:
+    statement = select(DownstreamLink)
+    if order_id is not None:
+        statement = statement.where(DownstreamLink.order_id == order_id)
+    best: dict[tuple[str, str], DownstreamLink] = {}
+    for row in session.scalars(statement).all():
+        key = (row.doc_type, row.doc_id)
+        current = best.get(key)
+        if current is None or row.link_seq > current.link_seq:
+            best[key] = row
+    return list(best.values())
+
+
+def _cut_by_sku(session: Session, order_id: str) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for row in _load_documents(session, order_id)["production"]:
+        if row["status"] == "CANCELLED":
+            continue
+        sku = str(row["sku_id"])
+        totals[sku] = totals.get(sku, 0) + int(row["cut_qty"])
+    return totals
+
+
+def _next_link_seq(session: Session, doc_type: str, doc_id: str) -> int:
+    current = session.scalar(
+        select(func.max(DownstreamLink.link_seq)).where(
+            DownstreamLink.doc_type == doc_type,
+            DownstreamLink.doc_id == doc_id,
+        )
+    )
+    return int(current or 0) + 1
+
+
+def _apply_downstream(
+    session: Session,
+    *,
+    order_id: str,
+    revision_no: int,
+    verdicts: list[dict[str, object]],
+    operation_id: str,
+) -> None:
+    for verdict in sorted(verdicts, key=lambda item: str(item["doc_id"])):
+        doc_type = str(verdict["doc_type"])
+        doc_id = str(verdict["doc_id"])
+        after = verdict.get("after")
+        if verdict["verdict"] in {"CHANGE_DRAFT", "CANCEL_DRAFT"} and isinstance(after, dict):
+            if doc_type == "production_order":
+                row = session.get(ProductionOrder, doc_id)
+                if row is None:
+                    raise AppError(f"没有生产单 {doc_id}", code="NOT_FOUND", http_status=404)
+                row.sku_id = str(after["sku_id"])
+                row.planned_qty = int(after["planned_qty"])
+                row.cut_qty = int(after["cut_qty"])
+                row.status = str(after["status"])
+                row.doc_revision += 1
+                rev_no = row.doc_revision
+            else:
+                row_po = session.get(PurchaseOrder, doc_id)
+                if row_po is None:
+                    raise AppError(f"没有采购单 {doc_id}", code="NOT_FOUND", http_status=404)
+                row_po.material_id = str(after["material_id"])
+                row_po.ordered_qty = int(after["ordered_qty"])
+                row_po.received_qty = int(after["received_qty"])
+                row_po.status = str(after["status"])
+                row_po.change_state = str(after["change_state"])
+                row_po.doc_revision += 1
+                rev_no = row_po.doc_revision
+            session.add(
+                DocRevision(
+                    id=f"DR-{doc_id}-{rev_no}",
+                    doc_type=doc_type,
+                    doc_id=doc_id,
+                    rev_no=rev_no,
+                    snapshot_json=dict(after),
+                    operation_id=operation_id,
+                )
+            )
+        session.add(
+            DownstreamLink(
+                id=_id("LNK"),
+                doc_type=doc_type,
+                doc_id=doc_id,
+                order_id=order_id,
+                order_revision=revision_no,
+                order_line_sku=str(verdict["order_line_sku"]),
+                link_seq=_next_link_seq(session, doc_type, doc_id),
+                operation_id=operation_id,
+            )
+        )
+
+
+def downstream_findings(session: Session) -> list[dict[str, object]]:
+    findings: list[dict[str, object]] = []
+    orders = list(session.scalars(select(SalesOrder)).all())
+    usage = _usage_map(session)
+    for order in orders:
+        links = _current_links(session, order.id)
+        for link in links:
+            if link.order_revision != order.current_revision:
+                findings.append(
+                    {
+                        "doc_id": link.doc_id,
+                        "problem": (
+                            f"{link.doc_id} 仍链接到修订 {link.order_revision}，"
+                            f"当前修订是 {order.current_revision}"
+                        ),
+                        "repair": {
+                            "action": "relink",
+                            "order_id": order.id,
+                            "order_revision": order.current_revision,
+                        },
+                    }
+                )
+            if link.doc_type == "production_order":
+                row = session.get(ProductionOrder, link.doc_id)
+                snapshot = session.scalar(
+                    select(DocRevision).where(
+                        DocRevision.doc_type == "production_order",
+                        DocRevision.doc_id == link.doc_id,
+                        DocRevision.rev_no == (row.doc_revision if row else -1),
+                    )
+                )
+                if row is not None and snapshot is not None:
+                    recorded = snapshot.snapshot_json or {}
+                    if (
+                        recorded.get("planned_qty") != row.planned_qty
+                        or recorded.get("sku_id") != row.sku_id
+                    ):
+                        findings.append(
+                            {
+                                "doc_id": row.id,
+                                "problem": f"{row.id} 当前内容与单据修订 {row.doc_revision} 不一致",
+                                "repair": {
+                                    "action": "draft",
+                                    "sku_id": recorded.get("sku_id"),
+                                    "planned_qty": recorded.get("planned_qty"),
+                                },
+                            }
+                        )
+        line_map = _load_lines(session, order.id)
+        for sku, line in line_map.items():
+            if line.fulfillment_mode != "MTO":
+                continue
+            planned = 0
+            for link in links:
+                if link.doc_type != "production_order":
+                    continue
+                row = session.get(ProductionOrder, link.doc_id)
+                if row is None or row.status == "CANCELLED" or row.sku_id != sku:
+                    continue
+                planned += row.planned_qty
+            if planned != line.ordered_qty:
+                findings.append(
+                    {
+                        "doc_id": sku,
+                        "problem": f"{sku} 生产计划 {planned} 与订单行 {line.ordered_qty} 不一致",
+                        "repair": {"action": "draft", "ordered_qty": line.ordered_qty},
+                    }
+                )
+        expected: dict[str, int] = {}
+        actual: dict[str, int] = {}
+        for link in links:
+            if link.doc_type == "production_order":
+                row = session.get(ProductionOrder, link.doc_id)
+                if row is None or row.status == "CANCELLED":
+                    continue
+                material = usage.get(row.sku_id)
+                if material is None:
+                    continue
+                material_id, per_piece = material
+                expected[material_id] = expected.get(material_id, 0) + row.planned_qty * per_piece
+            else:
+                row_po = session.get(PurchaseOrder, link.doc_id)
+                if row_po is None or row_po.status == "CANCELLED":
+                    continue
+                actual[row_po.material_id] = actual.get(row_po.material_id, 0) + row_po.ordered_qty
+        if expected != actual:
+            findings.append(
+                {
+                    "doc_id": order.id,
+                    "problem": f"{order.id} 面料采购 {actual} 与单耗 {expected} 不一致",
+                    "repair": {"action": "draft", "expected": expected},
+                }
+            )
+    return findings
+
+
+def downstream_problems(session: Session) -> list[str]:
+    return [str(item["problem"]) for item in downstream_findings(session)]
+
+
+def _stable(value: dict[str, dict[str, object]]) -> str:
+    return canonical_hash(value)
 
 
 _COLOR = {

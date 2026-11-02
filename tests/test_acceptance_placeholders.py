@@ -12,12 +12,11 @@ def test_acceptance_checklist_covers_every_case() -> None:
         "R17",
         "R22",
         "R23",
-        *[f"B{index:02d}" for index in range(1, 19)],
-        *[f"B{index:02d}" for index in range(28, 33)],
+        *[f"B{index:02d}" for index in range(1, 33)],
     }
-    assert len(PENDING) == 30
-    assert "B19" in {case.case_id for case in PENDING}
+    assert len(PENDING) == 21
     assert "R18" in {case.case_id for case in PENDING}
+    assert "B19" not in {case.case_id for case in PENDING}
 
 
 @pytest.mark.parametrize("case", PENDING, ids=[case.case_id for case in PENDING])

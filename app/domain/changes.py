@@ -16,6 +16,7 @@ class SnapLine:
     ordered_qty: int
     fulfillment_mode: str
     shipped_qty: int = 0
+    cut_qty: int = 0
 
 
 @dataclass
@@ -41,7 +42,13 @@ def evaluate_changes(
 ) -> ChangeEval:
     """known_skus maps sku_id to fulfillment mode. candidates_for is for unknown ids."""
     working = {
-        sku: SnapLine(sku, line.ordered_qty, line.fulfillment_mode, line.shipped_qty)
+        sku: SnapLine(
+            sku,
+            line.ordered_qty,
+            line.fulfillment_mode,
+            line.shipped_qty,
+            line.cut_qty,
+        )
         for sku, line in lines.items()
     }
     for change in changes:
@@ -61,6 +68,7 @@ def evaluate_changes(
                     qty=qty,
                     known_skus=known_skus,
                     candidates_for=candidates_for,
+                    include_executed=bool(change.get("include_executed")),
                 )
             elif mode == LineMode.SET_TOTAL:
                 problem = _set_total(
@@ -88,8 +96,11 @@ def evaluate_changes(
                 f"{line.sku_id} 的订购量不能低于已发货 {line.shipped_qty}",
                 "BUSINESS_CONFLICT",
             )
-        if line.fulfillment_mode == FulfillmentMode.MTO and _touched(line.sku_id, lines, line):
-            return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
+        if line.fulfillment_mode == FulfillmentMode.MTO and line.ordered_qty < line.cut_qty:
+            return _reject(
+                f"{line.sku_id} 总量低于已裁剪 {line.cut_qty}，违反不变量 6",
+                "INVARIANT_6",
+            )
     deltas: dict[str, int] = {}
     skus = set(lines) | set(working)
     for sku in skus:
@@ -117,11 +128,10 @@ def evaluate_changes(
     return ChangeEval(kind="validated", lines=working, reservation_delta=deltas)
 
 
-def _touched(sku_id: str, before: dict[str, SnapLine], after: SnapLine) -> bool:
-    old = before.get(sku_id)
-    if old is None:
-        return True
-    return old.ordered_qty != after.ordered_qty
+def _floor(line: SnapLine) -> int:
+    if line.fulfillment_mode == FulfillmentMode.MTO:
+        return line.cut_qty
+    return line.shipped_qty
 
 
 def _reserved(line: SnapLine | None) -> int:
@@ -152,8 +162,6 @@ def _require_sku(
     if not sku_id or sku_id not in known_skus:
         found = candidates_for.get(sku_id, [])
         return _clarify(f"未知 SKU {sku_id or '（空）'}，请从候选中选择", found)
-    if known_skus[sku_id] == FulfillmentMode.MTO:
-        return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
     return known_skus[sku_id]
 
 
@@ -165,32 +173,41 @@ def _replace(
     qty: int,
     known_skus: dict[str, str],
     candidates_for: dict[str, list[str]],
+    include_executed: bool,
 ) -> ChangeEval | None:
     if qty <= 0:
         return _reject("replace_remaining 的数量必须是正整数", "BUSINESS_CONFLICT")
     source = working.get(from_sku)
     if source is None:
         return _clarify(f"订单上没有 {from_sku}", candidates_for.get(from_sku, []))
-    if source.fulfillment_mode == FulfillmentMode.MTO:
-        return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
-    unexecuted = source.ordered_qty - source.shipped_qty
+    locked = _floor(source)
+    unexecuted = source.ordered_qty - locked
     if qty > unexecuted:
-        return _reject(
-            f"已发货的 {source.shipped_qty} 件不能改，{from_sku} 未发货只有 {unexecuted}",
-            "EXECUTED_PORTION_IMMUTABLE",
+        if include_executed or source.fulfillment_mode == FulfillmentMode.STOCK:
+            noun = "已裁剪" if source.fulfillment_mode == FulfillmentMode.MTO else "已发货"
+            return _reject(
+                f"{noun}的 {locked} 件不能改，{from_sku} 未执行只有 {unexecuted}",
+                "EXECUTED_PORTION_IMMUTABLE",
+            )
+        return ChangeEval(
+            kind="clarify",
+            code="LOCKED_PORTION",
+            message=f"未执行量只有 {unexecuted}",
+            questions=[f"未执行量只有 {unexecuted}"],
+            issues=[f"未执行量只有 {unexecuted}"],
         )
     target_mode = _require_sku(to_sku, known_skus, candidates_for)
     if isinstance(target_mode, ChangeEval):
         return target_mode
+    if target_mode != source.fulfillment_mode:
+        return _reject("不能在现货和按单生产之间改码", "BUSINESS_CONFLICT")
     source.ordered_qty -= qty
     target = working.get(to_sku)
     if target is None:
-        working[to_sku] = SnapLine(to_sku, qty, target_mode, 0)
+        working[to_sku] = SnapLine(to_sku, qty, target_mode, 0, cut_qty=0)
     else:
-        if target.fulfillment_mode != FulfillmentMode.STOCK:
-            return _reject("不能把现货改到 MTO 行上", "STAGE_1B_REQUIRED")
         target.ordered_qty += qty
-    if source.ordered_qty == 0 and source.shipped_qty == 0:
+    if source.ordered_qty == 0 and locked == 0:
         del working[from_sku]
     return None
 
@@ -206,9 +223,13 @@ def _set_total(
     if qty < 0:
         return _reject("总量不能为负", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
-    if current is not None and current.fulfillment_mode == FulfillmentMode.MTO:
-        return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
     shipped = current.shipped_qty if current else 0
+    cut = current.cut_qty if current else 0
+    if current is not None and current.fulfillment_mode == FulfillmentMode.MTO and qty < cut:
+        return _reject(
+            f"{sku_id} 总量 {qty} 低于已裁剪 {cut}，违反不变量 6",
+            "INVARIANT_6",
+        )
     if qty < shipped:
         return _reject(
             f"{sku_id} 总量 {qty} 低于已发货 {shipped}",
@@ -217,10 +238,12 @@ def _set_total(
     mode = _require_sku(sku_id, known_skus, candidates_for)
     if isinstance(mode, ChangeEval):
         return mode
-    if qty == 0 and shipped == 0:
+    if current is not None and mode != current.fulfillment_mode:
+        return _reject("不能改变履约方式", "BUSINESS_CONFLICT")
+    if qty == 0 and shipped == 0 and cut == 0:
         working.pop(sku_id, None)
         return None
-    working[sku_id] = SnapLine(sku_id, qty, mode, shipped)
+    working[sku_id] = SnapLine(sku_id, qty, mode, shipped, cut_qty=cut)
     return None
 
 
@@ -235,14 +258,15 @@ def _increment(
     if qty <= 0:
         return _reject("增加的数量必须是正整数", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
-    if current is not None and current.fulfillment_mode == FulfillmentMode.MTO:
-        return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
     mode = _require_sku(sku_id, known_skus, candidates_for)
     if isinstance(mode, ChangeEval):
         return mode
+    if current is not None and mode != current.fulfillment_mode:
+        return _reject("不能改变履约方式", "BUSINESS_CONFLICT")
     shipped = current.shipped_qty if current else 0
+    cut = current.cut_qty if current else 0
     ordered = (current.ordered_qty if current else 0) + qty
-    working[sku_id] = SnapLine(sku_id, ordered, mode, shipped)
+    working[sku_id] = SnapLine(sku_id, ordered, mode, shipped, cut_qty=cut)
     return None
 
 
@@ -250,9 +274,7 @@ def _cancel(working: dict[str, SnapLine], sku_id: str) -> ChangeEval | None:
     current = working.get(sku_id)
     if current is None:
         return _reject(f"订单上没有 {sku_id}", "BUSINESS_CONFLICT")
-    if current.fulfillment_mode == FulfillmentMode.MTO:
-        return _reject("MTO 行的变更属于阶段 1B", "STAGE_1B_REQUIRED")
-    current.ordered_qty = current.shipped_qty
+    current.ordered_qty = _floor(current)
     if current.ordered_qty == 0:
         del working[sku_id]
     return None

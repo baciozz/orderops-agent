@@ -32,6 +32,7 @@ from app.services.kernel import (
     WAREHOUSE_ID,
     approve_plan,
     commit_plan,
+    inspect_downstream,
     plan_change,
 )
 
@@ -204,3 +205,13 @@ def get_stock(
         )
     finally:
         session.close()
+
+
+@router.get("/inspections/downstream")
+def downstream_inspection(request: Request) -> dict[str, object]:
+    return {
+        "request_id": request.state.request_id,
+        "correlation_id": request.state.correlation_id,
+        "schema_version": "1.0",
+        "drifts": inspect_downstream(request.app.state.session_factory),
+    }
