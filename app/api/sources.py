@@ -5,6 +5,7 @@ from email.parser import BytesParser
 from hashlib import sha256
 from pathlib import Path, PureWindowsPath
 from tempfile import mkdtemp
+from typing import cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
@@ -57,7 +58,7 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
         elif name == "task_id":
             if name in fields:
                 raise ValueError("task_id 不能重复")
-            fields[name] = (part.get_payload(decode=True) or b"").decode("utf-8")
+            fields[name] = cast(bytes, part.get_payload(decode=True) or b"").decode("utf-8")
     if (
         len(file_parts) != 1
         or file_parts[0].get_param("name", header="content-disposition") != "file"
@@ -66,7 +67,11 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
     if not fields.get("task_id"):
         raise ValueError("上传必须提供 task_id")
     file = file_parts[0]
-    return fields["task_id"], file.get_filename(), file.get_payload(decode=True) or b""
+    return (
+        fields["task_id"],
+        cast(str, file.get_filename()),
+        cast(bytes, file.get_payload(decode=True) or b""),
+    )
 
 
 def task_spans(session, task_id: str, source_id: str | None = None) -> list[SourceRef]:

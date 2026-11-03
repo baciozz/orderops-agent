@@ -4,6 +4,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Literal, cast
 
 import httpx
 from schemas.common import UsageReport
@@ -15,7 +16,7 @@ from app.errors import AppError, LiveStartRefused, SchemaInvalid
 
 
 class LiveLLMClient:
-    mode = "LIVE"
+    mode: Literal["FIXTURE", "LIVE"] = "LIVE"
 
     def __init__(
         self,
@@ -58,7 +59,7 @@ class LiveLLMClient:
         )
         estimate = max(request.input_tokens, prompt_bytes + 256)
         key = self._settings.llm_api_key_value()
-        body = {
+        body: dict[str, object] = {
             "model": self._settings.llm_model,
             "input": [
                 {"role": "system", "content": request.system_prompt},
@@ -78,7 +79,7 @@ class LiveLLMClient:
         }
         reservation_id = self._ledger.reserve(
             provider="openai",
-            model=self._settings.llm_model,
+            model=cast(str, self._settings.llm_model),
             input_tokens=estimate,
             max_output_tokens=request.max_output_tokens,
             task_id=request.task_id,
@@ -133,7 +134,7 @@ class LiveLLMClient:
             usage=UsageReport(
                 mode="LIVE",
                 provider="openai",
-                model=self._settings.llm_model,
+                model=cast(str, self._settings.llm_model),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=format(row.cost_usd, "f"),

@@ -11,9 +11,10 @@ import contextvars
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from sqlite3 import Connection as SQLiteConnection
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 _BEGIN_IMMEDIATE: contextvars.ContextVar[bool] = contextvars.ContextVar(
@@ -29,18 +30,18 @@ def make_engine(url: str, *, busy_timeout_ms: int = 5000) -> Engine:
     )
 
     @event.listens_for(engine, "connect")
-    def _on_connect(dbapi_connection: object, connection_record: object) -> None:
-        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+    def _on_connect(dbapi_connection: SQLiteConnection, connection_record: object) -> None:
+        cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
         cursor.close()
-        dbapi_connection.isolation_level = None  # type: ignore[attr-defined]
+        dbapi_connection.isolation_level = None
 
     @event.listens_for(engine, "begin")
-    def _on_begin(connection: object) -> None:
+    def _on_begin(connection: Connection) -> None:
         statement = "BEGIN IMMEDIATE" if _BEGIN_IMMEDIATE.get() else "BEGIN"
-        connection.exec_driver_sql(statement)  # type: ignore[attr-defined]
+        connection.exec_driver_sql(statement)
 
     return engine
 

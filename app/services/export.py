@@ -53,7 +53,7 @@ def export_change_list(rows: list[dict], *, fmt: str = "csv") -> bytes:
         for cell in sheet[sheet.max_row]:
             if isinstance(cell.value, str):
                 cell.data_type = "s"
-    output = BytesIO()
-    workbook.save(output)
+    binary_output = BytesIO()
+    workbook.save(binary_output)
     workbook.close()
-    return output.getvalue()
+    return binary_output.getvalue()

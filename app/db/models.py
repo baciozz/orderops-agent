@@ -8,6 +8,7 @@ the plans left unnamed.
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Any
 
 from schemas.enums import (
@@ -42,7 +43,7 @@ from app.db.base import Base
 from app.db.types import Money
 
 
-def _in_enum(column: str, enum_cls: type, name: str) -> CheckConstraint:
+def _in_enum(column: str, enum_cls: type[Enum], name: str) -> CheckConstraint:
     values = ", ".join(f"'{item.value}'" for item in enum_cls)
     return CheckConstraint(f"{column} IN ({values})", name=name)
 

@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.mode_resolution = resolution
 
     @application.middleware("http")
-    async def attach_ids(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def attach_ids(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or str(uuid4())
         correlation_id = request.headers.get("x-correlation-id") or request_id
         request.state.request_id = request_id
