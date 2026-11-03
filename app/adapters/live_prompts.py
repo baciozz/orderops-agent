@@ -170,17 +170,17 @@ def to_extraction(payload: dict, *, text: str, spans: list[SourceRef], catalog: 
     if parsed.event_type == "CHANGE_ORDER":
         if parsed.order_id not in order_ids or not changes:
             questions.append("请确认范围内的订单号和变更行。")
-        for line in parsed.line_changes:
-            if line.mode == "replace_remaining":
-                if not line.from_sku or not line.to_sku:
+        for change in parsed.line_changes:
+            if change.mode == "replace_remaining":
+                if not change.from_sku or not change.to_sku:
                     questions.append("请确认原 SKU 和目标 SKU。")
-                if line.qty is None and parsed.clarification_choice != "only_uncut":
+                if change.qty is None and parsed.clarification_choice != "only_uncut":
                     questions.append("请确认改色数量；全部改色请提供总件数，或明确只改未开裁。")
-            elif not line.sku_id:
+            elif not change.sku_id:
                 questions.append("请确认 SKU。")
-            if line.mode in ("increment", "set_total") and line.qty is None:
+            if change.mode in ("increment", "set_total") and change.qty is None:
                 questions.append("请确认数量。")
-            if line.qty is not None and line.qty < 0:
+            if change.qty is not None and change.qty < 0:
                 questions.append("请确认非负数量。")
     if parsed.event_type == "NEW_ORDER":
         if parsed.customer_candidate not in customer_names:

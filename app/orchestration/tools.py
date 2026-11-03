@@ -5,9 +5,11 @@ kernel runs the same checks again before anything is written.
 """
 
 from datetime import datetime
+from typing import Any, cast
 from uuid import uuid4
 
 from schemas.downstream import DocCheckOutput, DocVerdict
+from schemas.enums import DocType, Verdict
 from schemas.inventory import InventoryCheckOutput, SkuInventoryResult
 from schemas.subagent import SubAgentSpec
 from sqlalchemy.orm import Session
@@ -214,16 +216,16 @@ class ToolGateway:
 
     def _from_assess(
         self,
-        documents: dict[str, list[dict[str, object]]],
-        verdicts: list[dict[str, object]],
-    ) -> dict[str, object]:
+        documents: dict[str, list[dict[str, Any]]],
+        verdicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         revisions = _doc_revisions(documents)
         rows = [
             DocVerdict(
-                doc_type=str(item["doc_type"]),  # type: ignore[arg-type]
+                doc_type=cast(DocType, str(item["doc_type"])),
                 doc_id=str(item["doc_id"]),
                 base_doc_revision=revisions[str(item["doc_id"])],
-                verdict=str(item["verdict"]),  # type: ignore[arg-type]
+                verdict=cast(Verdict, str(item["verdict"])),
                 before=item.get("before") if isinstance(item.get("before"), dict) else None,
                 after=item.get("after") if isinstance(item.get("after"), dict) else None,
                 reason=str(item.get("reason") or ""),
@@ -232,7 +234,7 @@ class ToolGateway:
         ]
         return DocCheckOutput(verdicts=rows).model_dump(mode="json")
 
-    def _from_locked(self, documents: dict[str, list[dict[str, object]]]) -> dict[str, object]:
+    def _from_locked(self, documents: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
         """Map the kernel's locked/changeable preview into the verdict enum.
 
         CHANGEABLE is not a stored verdict. The proposal uses CHANGE_DRAFT for
@@ -248,10 +250,10 @@ class ToolGateway:
             reason = f"{item['doc_id']} {label}"
             rows.append(
                 DocVerdict(
-                    doc_type=item["doc_type"],  # type: ignore[arg-type]
+                    doc_type=item["doc_type"],
                     doc_id=item["doc_id"],
                     base_doc_revision=revisions[item["doc_id"]],
-                    verdict=verdict,  # type: ignore[arg-type]
+                    verdict=cast(Verdict, verdict),
                     before=content.get(item["doc_id"]),
                     after=None,
                     reason=reason,
@@ -260,7 +262,7 @@ class ToolGateway:
         return DocCheckOutput(verdicts=rows).model_dump(mode="json")
 
 
-def _doc_revisions(documents: dict[str, list[dict[str, object]]]) -> dict[str, int]:
+def _doc_revisions(documents: dict[str, list[dict[str, Any]]]) -> dict[str, int]:
     revisions: dict[str, int] = {}
     for rows in documents.values():
         for row in rows:
@@ -268,8 +270,8 @@ def _doc_revisions(documents: dict[str, list[dict[str, object]]]) -> dict[str, i
     return revisions
 
 
-def _doc_content(documents: dict[str, list[dict[str, object]]]) -> dict[str, dict[str, object]]:
-    content: dict[str, dict[str, object]] = {}
+def _doc_content(documents: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    content: dict[str, dict[str, Any]] = {}
     for rows in documents.values():
         for row in rows:
             content[str(row["doc_id"])] = {

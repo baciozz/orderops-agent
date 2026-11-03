@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
-from schemas.enums import RuntimeMode
+from schemas.enums import RuntimeMode, TaskStatus, WaitingOn
 from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
 from sqlalchemy import inspect
 
@@ -34,9 +34,9 @@ def build_stub_task_view(
         card=TaskCard(
             task_id=STUB_TASK_ID,
             order_id=None,
-            status="RECEIVED",
+            status=TaskStatus.RECEIVED,
             intent_revision=0,
-            waiting_on="none",
+            waiting_on=WaitingOn.NONE,
             mode=mode,
         ),
         dispatch=[],

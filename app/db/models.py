@@ -8,6 +8,7 @@ the plans left unnamed.
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Any
 
 from schemas.enums import (
@@ -42,7 +43,7 @@ from app.db.base import Base
 from app.db.types import Money
 
 
-def _in_enum(column: str, enum_cls: type, name: str) -> CheckConstraint:
+def _in_enum(column: str, enum_cls: type[Enum], name: str) -> CheckConstraint:
     values = ", ".join(f"'{item.value}'" for item in enum_cls)
     return CheckConstraint(f"{column} IN ({values})", name=name)
 
@@ -561,6 +562,9 @@ class ModelUsage(Base):
     __table_args__ = (
         CheckConstraint("input_tokens >= 0", name="ck_in_tok"),
         CheckConstraint("output_tokens >= 0", name="ck_out_tok"),
+        CheckConstraint(
+            "status IN ('RESERVED', 'SETTLED', 'ORPHANED')", name="ck_model_usage_status"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -572,7 +576,14 @@ class ModelUsage(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     cost_usd: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     price_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    price_in_per_mtok: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
+    price_out_per_mtok: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="SETTLED", server_default="SETTLED"
+    )
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class InputPayload(Base):

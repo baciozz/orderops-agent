@@ -204,7 +204,7 @@ class DispatchRequest(ApiModel):
     """Synchronous fixture dispatch. Stage 2's POST /inputs stays the inbox contract."""
 
     schema_version: Literal["1.0"] = SCHEMA_VERSION
-    text: str = Field(min_length=1)
+    text: str
     input_mode: InputMode = InputMode.TEXT
     client_event_key: str | None = None
 

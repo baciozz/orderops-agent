@@ -158,7 +158,7 @@ def get_order(order_id: str, request: Request) -> OrderGetResponse:
                     OrderLineView(
                         sku_id=row.sku_id,
                         ordered_qty=row.ordered_qty,
-                        fulfillment_mode=row.fulfillment_mode,  # type: ignore[arg-type]
+                        fulfillment_mode=row.fulfillment_mode,
                         shipped_qty=shipped.get(row.sku_id, 0),
                         cut_qty=cut,
                     )
@@ -169,7 +169,7 @@ def get_order(order_id: str, request: Request) -> OrderGetResponse:
             order_id=order.id,
             current_revision=order.current_revision,
             intent_revision=order.intent_revision,
-            status=order.status,  # type: ignore[arg-type]
+            status=order.status,
             lines=lines,
         )
     finally:
