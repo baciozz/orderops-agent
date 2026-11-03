@@ -6,6 +6,7 @@ Downstream documents are relinked in the same commit as the order revision.
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 from schemas.enums import (
@@ -378,7 +379,10 @@ def acknowledge_commit(session_factory: sessionmaker[Session], task_id: str) -> 
     """Complete a durable commit without reopening an already acknowledged task."""
     with session_factory() as session, begin_immediate(session):
         task = session.get(Task, task_id)
-        if task.status in {TaskStatus.COMMITTING, TaskStatus.RECONCILING}:
+        if task is None:
+            raise AppError("任务不存在", code="NOT_FOUND", http_status=404)
+        acknowledged_statuses: set[str] = {TaskStatus.COMMITTING, TaskStatus.RECONCILING}
+        if task.status in acknowledged_statuses:
             transition(task, TaskStatus.SUCCEEDED)
 
 
@@ -1915,9 +1919,9 @@ def _locked_clarification(
     )
 
 
-def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str, object]]]:
-    production: list[dict[str, object]] = []
-    purchase: list[dict[str, object]] = []
+def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str, Any]]]:
+    production: list[dict[str, Any]] = []
+    purchase: list[dict[str, Any]] = []
     for link in _current_links(session, order_id):
         if link.doc_type == "production_order":
             row = session.get(ProductionOrder, link.doc_id)
@@ -1935,27 +1939,27 @@ def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str,
                 }
             )
         else:
-            row = session.get(PurchaseOrder, link.doc_id)
-            if row is None:
+            purchase_row = session.get(PurchaseOrder, link.doc_id)
+            if purchase_row is None:
                 continue
             purchase.append(
                 {
-                    "doc_id": row.id,
-                    "material_id": row.material_id,
-                    "ordered_qty": row.ordered_qty,
-                    "received_qty": row.received_qty,
-                    "status": row.status,
-                    "change_state": row.change_state,
-                    "doc_revision": row.doc_revision,
-                    "production_order_id": row.production_order_id,
+                    "doc_id": purchase_row.id,
+                    "material_id": purchase_row.material_id,
+                    "ordered_qty": purchase_row.ordered_qty,
+                    "received_qty": purchase_row.received_qty,
+                    "status": purchase_row.status,
+                    "change_state": purchase_row.change_state,
+                    "doc_revision": purchase_row.doc_revision,
+                    "production_order_id": purchase_row.production_order_id,
                     "order_line_sku": link.order_line_sku,
                 }
             )
     return {"production": production, "purchase": purchase}
 
 
-def _doc_fingerprint(documents: dict[str, list[dict[str, object]]]) -> dict[str, dict[str, object]]:
-    found: dict[str, dict[str, object]] = {}
+def _doc_fingerprint(documents: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    found: dict[str, dict[str, Any]] = {}
     for row in documents["production"]:
         found[str(row["doc_id"])] = {
             "doc_type": "production_order",
@@ -1979,8 +1983,8 @@ def _doc_fingerprint(documents: dict[str, list[dict[str, object]]]) -> dict[str,
 
 
 def _doc_fingerprint_loaded(
-    documents: dict[str, list[dict[str, object]]],
-) -> dict[str, dict[str, object]]:
+    documents: dict[str, list[dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
     return _doc_fingerprint(documents)
 
 

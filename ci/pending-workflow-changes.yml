@@ -1,0 +1,49 @@
+# PENDING workflow change — NOT active yet.
+#
+# The gh token used by the agents lacks the `workflow` scope, so pushes that
+# touch .github/workflows/* are rejected. Once Qi grants workflow permission,
+# move this file over .github/workflows/ci.yml in one go (full replacement):
+#
+#   git mv -f ci/pending-workflow-changes.yml .github/workflows/ci.yml
+#
+# Until then the same steps run locally via:
+#   make lint && make typecheck && make cov
+#
+# Changes vs. the current .github/workflows/ci.yml (lint-and-test):
+#   + Typecheck            (mypy, config in pyproject [tool.mypy])
+#   + Test with coverage   (pytest-cov, fail_under in pyproject [tool.coverage.report])
+#   + Offline eval (FIXTURE)
+#       NOTE: scripts/eval_offline.py lands with PR #9 and is not on main yet;
+#       this step only works after #9 is merged.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: make lint
+      - name: Typecheck
+        run: make typecheck
+      - name: Test with coverage
+        run: make cov
+        env:
+          OOS_LIVE_ENABLED: "false"
+      # Requires PR #9 (scripts/eval_offline.py) to be merged first.
+      - name: Offline eval (FIXTURE)
+        run: python scripts/eval_offline.py
+        env:
+          OOS_LIVE_ENABLED: "false"

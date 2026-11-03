@@ -20,6 +20,7 @@ from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.llm import LLMClient, resolve_mode
+from app.adapters.uploads import validate_text
 from app.config import Settings, get_settings
 from app.db.models import (
     AuditRecord,
@@ -113,6 +114,7 @@ def dispatch_text(
     client_factory: Callable[[Settings, BudgetLedger], LLMClient] | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
+    validate_text(text, allow_empty=bool(source_ids))
     moment = _moment(now)
     registered = registry or build_default_registry()
     router = Router(registered)
@@ -129,6 +131,7 @@ def dispatch_text(
             price_in_per_mtok=configured.price_in_per_mtok,
             price_out_per_mtok=configured.price_out_per_mtok,
         )
+        # LiveLLMClient selects/validates llm_provider; all providers share this ledger.
         client = (client_factory or LiveLLMClient)(configured, ledger)
     task_id = durable_task_id or _open_task(session_factory, moment)
     enrich(**task_fields_from_factory(session_factory, task_id))
@@ -440,6 +443,7 @@ def _one_attempt(
                 if code is None and run is not None:
                     if run.extraction is not None and task.last_event_id:
                         receipt = writer.get(InputPayload, task.last_event_id)
+                        assert receipt is not None  # last_event_id refers to persisted input.
                         receipt.body = {
                             **receipt.body,
                             "extraction": run.extraction.model_dump(mode="json"),
@@ -546,6 +550,8 @@ def _precheck(
                 if durable_guard.get():
                     with session_factory() as read_session:
                         durable_task = read_session.get(Task, task_id)
+                        if durable_task is None:
+                            raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
                         if durable_task.order_id:
                             if durable_task.order_id != event.order_id:
                                 raise AppError(
@@ -688,10 +694,11 @@ def _add_step(
     agent_id: str | None = None,
     agent_version: str | None = None,
 ) -> None:
-    if durable_guard.get():
-        now = durable_guard.get()[2]()
+    guard = durable_guard.get()
+    if guard is not None:
+        now = guard[2]()
         attempt.heartbeat_at = now
-        attempt.lease_until = now + timedelta(seconds=durable_guard.get()[3])
+        attempt.lease_until = now + timedelta(seconds=guard[3])
         attempt.last_progress_at = now
     attempt.step_count += 1
     session.add(

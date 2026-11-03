@@ -176,6 +176,7 @@ def compare_sheet_quantities(
                     continue
                 sheet_qty = int(raw_qty)
                 if sheet_qty != chat_qty:
+                    assert qty_ref is not None  # A numeric raw_qty came from this cell.
                     location = f"{source_id} / {sheet}!{qty_ref.cell_range}"
                     extracted.conflicts.append(
                         f"{label}：聊天数量 {chat_qty}，表格数量 {sheet_qty}（{location}）。"
