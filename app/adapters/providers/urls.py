@@ -8,7 +8,7 @@ from app.errors import LiveStartRefused
 def validate_compatible_url(base_url: str | None) -> bool:
     """Return whether the host is allowlisted loopback, or refuse the URL."""
     if not base_url:
-        raise LiveStartRefused("BASE_URL_UNSUPPORTED")
+        raise LiveStartRefused("BASE_URL_NOT_CONFIGURED")
     try:
         url = urlsplit(base_url)
         # Reject normalization ambiguities, invalid ports, and empty delimiters too.

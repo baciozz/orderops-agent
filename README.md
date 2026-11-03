@@ -78,7 +78,11 @@ Stage 4 已实现 OpenAI Responses API 的严格 JSON 解析，默认关闭。Li
 
 配置键及价格占位符见 `.env.example`；密钥只在运行时经进程环境注入，不写进 `.env`。不要把密钥写进仓库或提示词。真实模型的理解质量需由操作者手动评估。
 
-兼容 Chat（DeepSeek / vLLM / Ollama）的接口、配置、价格和安全策略见 [模型提供方](docs/MODEL_PROVIDERS.md)（仅 mock 验证）。
+## 替换模型
+
+启用 Live 后，兼容 Chat（DeepSeek / vLLM / Ollama）需配置 `OOS_LLM_PROVIDER=openai_compatible`、必填的 `OOS_LLM_BASE_URL` 和 `OOS_LLM_MODEL`，并在运行时环境注入 `OOS_LLM_API_KEY`。URL 必须 HTTPS；仅主机名为 `localhost`、`127.0.0.1`、`::1` 时允许 HTTP 和免密钥，按主机名字符串判定、不做 DNS 解析。输入/输出单价 `OOS_PRICE_IN_PER_MTOK` / `OOS_PRICE_OUT_PER_MTOK` 必须明确配置，本地模型无需计费时也须显式设为 `0`。
+
+`OOS_LLM_JSON_SCHEMA_SUPPORTED` 默认 `false`（使用 `json_object`），确认服务支持严格 `json_schema` 后才设为 `true`。启动 INFO 日志只记录 provider 和 URL 主机名。兼容 provider 不发送 `store`，是否留存数据取决于提供方政策；操作者配置的任何 HTTPS 地址都会收到 key。目前仅 mock 测试，未实测各家 `json_object` / `json_schema` 支持、usage 字段与错误体格式。详见[模型提供方](docs/MODEL_PROVIDERS.md)。
 
 ## 禁区
 

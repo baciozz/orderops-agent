@@ -12,6 +12,7 @@ from app.adapters.budget import BudgetLedger
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.live_prompts import parser_schema
 from app.adapters.llm import StructuredCallRequest, resolve_mode
+from app.adapters.providers.schema import ensure_supported_schema
 from app.config import Settings
 from app.db.models import Approval, DispatchStep, ModelUsage, Operation, SalesOrder
 from app.db.schema import init_db
@@ -106,6 +107,23 @@ def response_data():
         "choices": [{"message": {"content": json.dumps(intent())}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 1000, "completion_tokens": 200},
     }
+
+
+def test_compat_startup_logs_only_provider_and_hostname(session_factory, caplog):
+    settings = configured(
+        llm_base_url="https://provider.example/v1/secret-path", llm_api_key=MOCK_KEY
+    )
+    with caplog.at_level(logging.INFO, logger="app.adapters.live_model"):
+        LiveLLMClient(
+            settings,
+            ledger(session_factory, settings),
+            transport=httpx.MockTransport(lambda req: pytest.fail("Startup reached HTTP")),
+        )
+    records = [record for record in caplog.records if record.name == "app.adapters.live_model"]
+    assert len(records) == 1 and records[0].levelno == logging.INFO
+    message = records[0].getMessage()
+    assert message == "live model provider=openai_compatible host=provider.example"
+    assert all(value not in message for value in ("/v1", "secret-path", MOCK_KEY))
 
 
 @pytest.mark.parametrize("strict", [False, True], ids=["json_object", "json_schema"])
@@ -402,8 +420,8 @@ def test_compat_task_call_limit_counts_failures_across_clients(session_factory, 
     "overrides,reason",
     [
         ({"live_enabled": False}, "LIVE_DISABLED"),
-        ({"llm_base_url": None}, "BASE_URL_UNSUPPORTED"),
-        ({"llm_base_url": ""}, "BASE_URL_UNSUPPORTED"),
+        ({"llm_base_url": None}, "BASE_URL_NOT_CONFIGURED"),
+        ({"llm_base_url": ""}, "BASE_URL_NOT_CONFIGURED"),
         ({"llm_model": None}, "MODEL_NOT_CONFIGURED"),
         ({"llm_model": " "}, "MODEL_NOT_CONFIGURED"),
         ({"llm_base_url": "https://provider.example/v1"}, "KEY_NOT_CONFIGURED"),
@@ -440,6 +458,16 @@ def test_compat_invalid_config_stays_fixture_and_refuses_start(session_factory, 
         )
     assert caught.value.reason == reason
     assert MOCK_KEY not in str(caught.value) + str(caught.value.details)
+
+
+@pytest.mark.parametrize("base_url", [None, ""])
+def test_compat_missing_base_url_has_actionable_startup_error(session_factory, base_url):
+    settings = configured(llm_base_url=base_url)
+    with pytest.raises(LiveStartRefused) as caught:
+        LiveLLMClient(settings, ledger(session_factory, settings))
+    assert caught.value.code == "BASE_URL_NOT_CONFIGURED"
+    assert caught.value.reason == caught.value.details["reason"] == "BASE_URL_NOT_CONFIGURED"
+    assert "openai_compatible 必须配置 OOS_LLM_BASE_URL" in str(caught.value)
 
 
 def test_compat_requires_explicit_base_url_and_env_mapping(monkeypatch):
@@ -618,9 +646,10 @@ def test_dispatch_compat_matches_openai_kernel_outcome(tmp_path, strict, caplog,
     assert MOCK_KEY not in caplog.text
 
 
-def test_compat_missing_prices_dispatch_card_stays_fixture(session_factory, database_url):
+@pytest.mark.parametrize("missing", [{"price_in_per_mtok": None}, {"llm_base_url": None}])
+def test_compat_missing_config_dispatch_card_stays_fixture(session_factory, database_url, missing):
     load_seed(session_factory, database_url=database_url)
-    settings = configured(price_in_per_mtok=None)
+    settings = configured(**missing)
     accept_input(
         session_factory,
         text=TEXT_BLACK_TO_WHITE,
@@ -632,7 +661,7 @@ def test_compat_missing_prices_dispatch_card_stays_fixture(session_factory, data
         session_factory,
         settings=settings,
         clock=lambda: NOW,
-        client_factory=lambda *_: pytest.fail("Missing prices must not construct a live client"),
+        client_factory=lambda *_: pytest.fail("Missing config must not construct a live client"),
     )
     assert outcome.status == "AWAITING_APPROVAL"
     with session_factory() as session:
@@ -760,18 +789,8 @@ def test_compat_token_limits_refuse_before_reservation_or_http(session_factory, 
             {"value": True},
             False,
         ),
-        (
-            {"type": "object", "properties": {"value": {"$ref": "https://schema.example/schema"}}},
-            {"value": "ok"},
-            False,
-        ),
-        (
-            {"type": "object", "properties": {"value": {"type": "integer", "minimum": 10}}},
-            {"value": 1},
-            False,
-        ),
     ],
-    ids=["custom_nullable_const", "strict_bool", "remote_ref_refused", "unsupported_constraint"],
+    ids=["custom_nullable_const", "strict_bool"],
 )
 def test_compat_validates_the_requested_schema_locally(session_factory, schema, payload, valid):
     settings = configured()
@@ -787,3 +806,71 @@ def test_compat_validates_the_requested_schema_locally(session_factory, schema, 
         with pytest.raises(SchemaInvalid):
             client.structured_call(request(response_schema=schema))
     assert book.spent() == Decimal("0.000200")
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"type": "object", "properties": {"absent": {"type": "string", "pattern": "^x"}}},
+        {"type": "object", "properties": {"absent": {"type": "integer", "minimum": 10}}},
+        {"type": "object", "properties": {"absent": {"$ref": "https://schema.example/schema"}}},
+    ],
+    ids=["absent_property", "unsupported_constraint", "remote_ref_refused"],
+)
+def test_compat_unsupported_schema_refused_before_reservation_or_http(
+    session_factory, monkeypatch, schema
+):
+    settings = configured()
+    book = ledger(session_factory, settings)
+    monkeypatch.setattr(book, "reserve", lambda **kw: pytest.fail("Unsupported schema reserved"))
+    data = response_data()
+    data["choices"][0]["message"]["content"] = "{}"
+    calls = []
+
+    def handle(req):
+        calls.append(req)
+        return httpx.Response(200, json=data)
+
+    client = LiveLLMClient(settings, book, transport=httpx.MockTransport(handle))
+    with pytest.raises(SchemaInvalid, match="^响应 schema 含本地校验器不支持的关键字$"):
+        client.structured_call(request(response_schema=schema))
+    assert calls == []
+    assert book.spent() == 0
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ModelUsage)) == 0
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"pattern": "^x"},
+        {"$defs": {"unused": {"type": "string", "pattern": "^x"}}},
+        {"items": {"pattern": "^x"}},
+        {"anyOf": [{"type": "object"}, {"pattern": "^x"}]},
+        {"additionalProperties": {"pattern": "^x"}},
+        {"$ref": "#/$defs/missing"},
+        {"$ref": "#"},
+        {"$ref": "https://schema.example/schema"},
+        {"$defs": []},
+        {"properties": []},
+        {"anyOf": {}},
+        {"required": "value"},
+    ],
+)
+def test_ensure_supported_schema_refuses_unsupported_nodes_and_shapes(schema):
+    with pytest.raises(SchemaInvalid, match="^响应 schema 含本地校验器不支持的关键字$"):
+        ensure_supported_schema(schema)
+
+
+def test_ensure_supported_schema_limits_recursion():
+    schema = {"type": "object"}
+    for _ in range(66):
+        schema = {"items": schema}
+    for unsupported in (schema, {"$defs": {"loop": {"$ref": "#/$defs/loop"}}}):
+        with pytest.raises(SchemaInvalid):
+            ensure_supported_schema(unsupported)
+
+
+def test_ensure_supported_schema_accepts_all_parser_schemas():
+    """parser_schema() is the only schema sent by parsers in app/."""
+    ensure_supported_schema(parser_schema())

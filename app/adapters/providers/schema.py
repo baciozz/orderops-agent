@@ -22,6 +22,46 @@ _ASSERTIONS = {
 }
 
 
+def ensure_supported_schema(schema: dict[str, object]) -> None:
+    """Refuse unsupported schemas before billing, including unused branches."""
+
+    def check(node, depth=0):
+        if depth > 64 or not isinstance(node, dict):
+            raise ValueError
+        if node.keys() - _ANNOTATIONS - _ASSERTIONS:
+            raise ValueError
+        if "$ref" in node:
+            ref = node["$ref"]
+            if not isinstance(ref, str) or not ref.startswith("#/"):
+                raise ValueError
+            target = schema
+            for part in ref[2:].split("/"):
+                target = target[part.replace("~1", "/").replace("~0", "~")]
+            check(target, depth + 1)
+        for keyword in ("$defs", "properties"):
+            if keyword in node:
+                if not isinstance(node[keyword], dict):
+                    raise ValueError
+                for child in node[keyword].values():
+                    check(child, depth + 1)
+        if "anyOf" in node:
+            if not isinstance(node["anyOf"], list):
+                raise ValueError
+            for child in node["anyOf"]:
+                check(child, depth + 1)
+        if "required" in node and not isinstance(node["required"], list):
+            raise ValueError
+        if "items" in node:
+            check(node["items"], depth + 1)
+        if isinstance(node.get("additionalProperties"), dict):
+            check(node["additionalProperties"], depth + 1)
+
+    try:
+        check(schema)
+    except (ValueError, KeyError, TypeError, RecursionError):
+        raise SchemaInvalid("响应 schema 含本地校验器不支持的关键字") from None
+
+
 def validate_payload(payload: dict[str, object], schema: dict[str, object]) -> None:
     def equal(left, right):
         # JSON booleans are not numbers, despite Python's bool/int relationship.

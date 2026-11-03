@@ -13,6 +13,8 @@
 
 提供方不发送 HTTP、不构造鉴权头、不记账。`LiveLLMClient` 选择提供方，统一执行 token 上限检查、输入估计、`BudgetLedger.reserve`、HTTP 请求、错误映射、密钥回显拒绝和一次 `finally` 结算，返回 `UsageReport(mode="LIVE")`。现有 dispatch 构造同一个客户端，按 `settings.llm_provider` 选择；未知提供方启动时抛出 `LiveStartRefused("PROVIDER_UNSUPPORTED")`。
 
+客户端通过提供方配置校验并构造成功后，模块 logger 发出一条 INFO：`live model provider=<name> host=<hostname>`。只记录提供方和 URL 主机名，不包含路径、query 或密钥。
+
 | 配置值 | 实现 | 接口 |
 |---|---|---|
 | `openai` | `OpenAIResponsesProvider` | `/responses`；保持 `input`、`text.format` 严格 schema、`reasoning.effort`、`max_output_tokens`、`store=false` 及原 URL 限制 |
@@ -61,7 +63,7 @@ OOS_PRICE_OUT_PER_MTOK=<EXPLICIT_OUTPUT_PRICE_OR_ZERO>
 OOS_LLM_JSON_SCHEMA_SUPPORTED=false
 ```
 
-`openai_compatible` 的 base URL **没有默认值**，模型名必填。`.env.example` 保留原 OpenAI 默认 URL，切换兼容提供方时必须显式替换这一行，不能只修改 provider。缺配置时 `resolve_mode` 保持 FIXTURE；直接构造 LIVE 客户端抛出 `LiveStartRefused`，原因保存在 `reason` / `details.reason`。
+`openai_compatible` 的 base URL **没有默认值**，模型名必填。`.env.example` 保留原 OpenAI 默认 URL，切换兼容提供方时必须显式替换这一行，不能只修改 provider。缺配置时 `resolve_mode` 保持 FIXTURE；直接构造 LIVE 客户端抛出 `LiveStartRefused`，原因保存在 `reason` / `details.reason`。缺少或空的 base URL 返回 `BASE_URL_NOT_CONFIGURED`，提示「openai_compatible 必须配置 OOS_LLM_BASE_URL」。
 
 ## 价格与限额
 
@@ -80,6 +82,8 @@ OOS_LLM_JSON_SCHEMA_SUPPORTED=false
 两种兼容 Chat 模式都读取 `choices[0].message.content` 的 JSON 字符串，并按本次请求的 `response_schema` 本地校验。`finish_reason="stop"` 才算完成，`length` 或其他未完成标志返回 `MODEL_INCOMPLETE`。额外 `approved` 字段、错误类型/枚举、缺字段、Markdown 包裹和非对象输出都返回 `SCHEMA_INVALID`，错误不包含响应内容。
 
 仓库未声明/安装 `jsonschema`，因此使用无新增依赖的严格子集校验器：支持 object/properties/required/additionalProperties、array/items、type（含 null 联合）、enum、const、anyOf 和本地 `$defs`/JSON Pointer `$ref`。整数不会接受 bool 或数字字符串；不解析远端引用，不认识的约束拒绝通过。title/description/default 等注释不参与校验。这覆盖当前 `parser_schema()`；扩展 schema 约束时需同步扩展校验器。之后仍经过既有 Pydantic 抽取模型及业务内核校验。
+
+兼容路径在预算预留和 HTTP 前用 `ensure_supported_schema` 检查完整 schema（含未使用的属性、`$defs`、items、anyOf 和 schema 形式的 additionalProperties），并限制递归深度。不支持的关键字、非本地或无法解析的引用、无效容器形状会提前返回 `SCHEMA_INVALID`，不预留、不计费、不发送请求；响应到达后仍逐节点校验 payload。
 
 兼容 Chat **不发送 `store` 字段**，因为各兼容服务不一定支持；不据此承诺服务端零留存。OpenAI Responses 继续发送 `store=false`。
 

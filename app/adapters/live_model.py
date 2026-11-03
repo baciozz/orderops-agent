@@ -1,9 +1,11 @@
 """Guarded synchronous model transport. Providers never send or manage billing."""
 
 import json
+import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import httpx
 from schemas.common import UsageReport
@@ -11,9 +13,11 @@ from schemas.common import UsageReport
 from app.adapters.budget import BudgetLedger
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult, resolve_mode
 from app.adapters.providers import provider_for_settings
-from app.adapters.providers.schema import validate_payload
+from app.adapters.providers.schema import ensure_supported_schema, validate_payload
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
+
+logger = logging.getLogger(__name__)
 
 
 class LiveLLMClient:
@@ -36,6 +40,11 @@ class LiveLLMClient:
         self._ledger = ledger
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(UTC))
+        logger.info(
+            "live model provider=%s host=%s",
+            self._provider.name,
+            urlsplit(settings.llm_base_url).hostname,
+        )
 
     def structured_call(self, request: StructuredCallRequest) -> StructuredCallResult:
         if request.max_output_tokens > self._settings.model_max_tokens:
@@ -48,6 +57,8 @@ class LiveLLMClient:
             "required": [],
             "additionalProperties": False,
         }
+        if self._provider.validate_payload:
+            ensure_supported_schema(schema)
         wire = self._provider.build_request(request, schema)
         # One token per UTF-8 byte is a conservative byte-token upper bound,
         # including CJK (unlike characters/4 or bytes/2). Add 256 for framing.
