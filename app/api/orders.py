@@ -21,7 +21,6 @@ from sqlalchemy import func, select
 from app.db.models import (
     OrderLine,
     OrderRevision,
-    ProductionOrder,
     SalesOrder,
     ShipmentRecord,
     StockBalance,
@@ -32,6 +31,7 @@ from app.services.kernel import (
     DEMO_ACTOR_ID,
     WAREHOUSE_ID,
     approve_plan,
+    cut_by_sku,
     inspect_downstream,
     plan_change,
 )
@@ -140,20 +140,12 @@ def get_order(order_id: str, request: Request) -> OrderGetResponse:
         }
         lines: list[OrderLineView] = []
         if revision is not None:
+            cuts = cut_by_sku(session, order_id)
             rows = session.scalars(
                 select(OrderLine).where(OrderLine.revision_id == revision.id)
             ).all()
             for row in rows:
-                cut = 0
-                if row.fulfillment_mode == "MTO":
-                    cut = int(
-                        session.scalar(
-                            select(func.sum(ProductionOrder.cut_qty)).where(
-                                ProductionOrder.sku_id == row.sku_id
-                            )
-                        )
-                        or 0
-                    )
+                cut = cuts.get(row.sku_id, 0) if row.fulfillment_mode == "MTO" else 0
                 lines.append(
                     OrderLineView(
                         sku_id=row.sku_id,

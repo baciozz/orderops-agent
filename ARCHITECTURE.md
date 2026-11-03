@@ -135,6 +135,9 @@ actor 来自服务端 `DEMO_ACTOR_ID="demo-user"`，默认有效期 approval_ttl
 批准绑定 plan_hash、intent_revision、dependencies_hash；疑似重复订单要求 acknowledge_duplicate。
 
 `POST /plans/{plan_id}/commit` 经 `durable_commit` 调用 kernel 的 `commit_plan`。
+当前提交由该 HTTP 请求同步执行，业务写入在一个 BEGIN IMMEDIATE 事务内原子完成。
+方案中的「批准后排队新的 commit job，领取新 lease 和 fencing_token」尚未实现；
+worker 的 lease / fencing 只用于规划阶段的 JobAttempt，提交不领取新租约或 token。
 写事务用 BEGIN IMMEDIATE，在读取依赖前获得 SQLite 写锁：
 
 - 优先查询 `Operation` / `operation` 的唯一 idempotency_key。

@@ -897,6 +897,7 @@ def _commit_locked(
     payload = _payload(
         plan_kind=plan.plan_kind,
         order_id=order.id if order is not None else None,
+        customer_id=customer_id,
         base_revision=plan.base_order_revision,
         intent_revision=plan.intent_revision,
         evaluation=evaluation,
@@ -1132,6 +1133,7 @@ def _store_validated(
     payload = _payload(
         plan_kind=plan_kind,
         order_id=order_id,
+        customer_id=customer_id,
         base_revision=base_revision,
         intent_revision=intent_revision,
         evaluation=evaluation,
@@ -1518,6 +1520,7 @@ def _payload(
     *,
     plan_kind: str,
     order_id: str | None,
+    customer_id: str,
     base_revision: int,
     intent_revision: int,
     evaluation: ChangeEval,
@@ -1529,6 +1532,7 @@ def _payload(
         "schema_version": "1.0",
         "plan_kind": plan_kind,
         "order_id": order_id,
+        "customer_id": customer_id,
         "base_revision": base_revision,
         "intent_revision": intent_revision,
         "lines": [
@@ -1633,7 +1637,7 @@ def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:
     if revision is None:
         return {}
     shipped = _shipped_map(session, order_id)
-    cuts = _cut_by_sku(session, order_id)
+    cuts = cut_by_sku(session, order_id)
     lines: dict[str, SnapLine] = {}
     rows = session.scalars(select(OrderLine).where(OrderLine.revision_id == revision.id)).all()
     for row in rows:
@@ -2004,7 +2008,8 @@ def _current_links(session: Session, order_id: str | None = None) -> list[Downst
     return list(best.values())
 
 
-def _cut_by_sku(session: Session, order_id: str) -> dict[str, int]:
+def cut_by_sku(session: Session, order_id: str) -> dict[str, int]:
+    """Sum non-cancelled production cuts linked to this order, once per document."""
     totals: dict[str, int] = {}
     for row in _load_documents(session, order_id)["production"]:
         if row["status"] == "CANCELLED":
