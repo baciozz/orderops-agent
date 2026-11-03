@@ -32,6 +32,19 @@ NOTE = (
     "FIXTURE results measure the pipeline/kernel given explicit structured answers, "
     "not model understanding of input wording. No model or HTTP calls are made."
 )
+GROUPS = (
+    {
+        "name": "safeguards",
+        "label": "兜底能力",
+        "categories": ("invalid_qty", "unknown_order", "injection"),
+    },
+    {
+        "name": "pipeline regression",
+        "label": "管道回归",
+        "categories": ("alias", "ambiguous_wording", "multi_line_change", "golden"),
+        "disclaimer": "不代表模型理解准确率",
+    },
+)
 DIFF_KEYS = ("mode", "sku_id", "from_sku", "to_sku", "qty")
 
 
@@ -118,6 +131,10 @@ def load_cases():
                 raise ValueError(f"Case missing {key}")
         if case["id"] in ids:
             raise ValueError("Duplicate case id")
+        if case["category"] not in {name for group in GROUPS for name in group["categories"]}:
+            raise ValueError(f"Unknown category: {case['category']}")
+        if "product_question" in case and not isinstance(case["product_question"], str):
+            raise ValueError("product_question must be a string")
         ids.add(case["id"])
         expected = case["expected"]
         if expected["outcome"] in {"AWAITING_APPROVAL", "COMMITTED"}:
@@ -283,7 +300,29 @@ def evaluate(cases=None):
         for totals in categories.values():
             totals["total"] = totals["pass"] + totals["fail"]
             totals["pass_rate"] = round(100 * totals["pass"] / totals["total"], 1)
+        groups = []
+        for definition in GROUPS:
+            totals = {
+                key: sum(
+                    categories.get(name, {}).get(source, 0) for name in definition["categories"]
+                )
+                for key, source in (
+                    ("pass", "pass"),
+                    ("fail", "fail"),
+                    ("known_issues", "known_issue"),
+                )
+            }
+            total = totals["pass"] + totals["fail"]
+            groups.append(
+                {
+                    **definition,
+                    **totals,
+                    "total": total,
+                    "pass_rate": round(100 * totals["pass"] / total, 1) if total else 0.0,
+                }
+            )
         return {
+            "groups": groups,
             "mode": "FIXTURE",
             "note": NOTE,
             "case_count": len(records),
@@ -298,14 +337,32 @@ def evaluate(cases=None):
 
 
 def format_table(report):
-    lines = [
-        "| Category | Pass | Fail | Known issues | Pass rate |",
-        "|---|---:|---:|---:|---:|",
-    ]
-    for name, totals in report["categories"].items():
+    lines = []
+    for group in report["groups"]:
+        title = f"### {group['label']}（{group['name']}）"
+        if group.get("disclaimer"):
+            title += "：" + group["disclaimer"]
+        if lines:
+            lines.append("")
+        lines.extend(
+            [
+                title,
+                "",
+                "| Category | Pass | Fail | Known issues | Pass rate |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        for name in group["categories"]:
+            if name not in report["categories"]:
+                continue
+            totals = report["categories"][name]
+            lines.append(
+                f"| {name} | {totals['pass']} | {totals['fail']} | "
+                f"{totals['known_issue']} | {totals['pass_rate']:.1f}% |"
+            )
         lines.append(
-            f"| {name} | {totals['pass']} | {totals['fail']} | "
-            f"{totals['known_issue']} | {totals['pass_rate']:.1f}% |"
+            f"| 小计 | {group['pass']} | {group['fail']} | "
+            f"{group['known_issues']} | {group['pass_rate']:.1f}% |"
         )
     return "\n".join(lines)
 

@@ -13,6 +13,8 @@ make eval-offline PY=.venv/bin/python
 默认只向 stdout 输出类别表格及失败明细；`--out` 另外写 JSON 报告。
 JSON 包含 `mode: "FIXTURE"`、评测局限说明、逐条实际状态/错误码/计划 diff、
 Approval/Operation/Outbox 行数增量、类别通过率及失败原因。
+`groups` 提供组名称、中文标签、类别列表、pass/fail/known_issues/pass_rate 小计，
+保留原有 `categories` 等字段。
 任何没有标注 `known_issue` 的失败使退出码非零；`known_issue` 仍计为失败，
 不把已知问题算成通过。
 
@@ -20,6 +22,7 @@ Approval/Operation/Outbox 行数增量、类别通过率及失败原因。
 
 数据在 [`evals/offline_cases.json`](../evals/offline_cases.json)。每条包含唯一
 `id`、`category`、`input_text`、`expected` 和完整的 `fixture_payload`。
+`product_question` 是可选的产品问题注释字段。
 这里选择现有 fixture 的 `ExtractionResult` 结构（含 `business_event`），
 直接通过 `dispatch_text(..., fixtures={完整输入: 显式payload})` 注入
 `FixtureLLMClient`；没有关键词/正则“理解”，没有改变原有默认 fixtures。
@@ -59,18 +62,27 @@ FIXTURE。测试额外禁止创建任何 socket，并验证网络 guard 在系�
 
 ## 最新结果（FIXTURE，2026-11-03）
 
+### 兜底能力（safeguards）
+
+| Category | Pass | Fail | Known issues | Pass rate |
+|---|---:|---:|---:|---:|
+| invalid_qty | 8 | 0 | 0 | 100.0% |
+| unknown_order | 7 | 0 | 0 | 100.0% |
+| injection | 8 | 0 | 0 | 100.0% |
+| 小计 | 23 | 0 | 0 | 100.0% |
+
+### 管道回归（pipeline regression）：不代表模型理解准确率
+
 | Category | Pass | Fail | Known issues | Pass rate |
 |---|---:|---:|---:|---:|
 | alias | 9 | 0 | 0 | 100.0% |
 | ambiguous_wording | 9 | 0 | 0 | 100.0% |
-| golden | 1 | 0 | 0 | 100.0% |
-| injection | 8 | 0 | 0 | 100.0% |
-| invalid_qty | 8 | 0 | 0 | 100.0% |
 | multi_line_change | 8 | 0 | 0 | 100.0% |
-| unknown_order | 7 | 0 | 0 | 100.0% |
+| golden | 1 | 0 | 0 | 100.0% |
+| 小计 | 27 | 0 | 0 | 100.0% |
 
-合计 **50/50**，当前没有 `known_issue`。0/负数在数量校验拒绝，非整数在
-schema 拒绝，不存在订单返回 NOT_FOUND。未修改生产代码或业务检查。
+合计 **50/50**，当前没有 `known_issue`。0/负数返回 BUSINESS_CONFLICT，非整数返回
+SCHEMA_INVALID，不存在订单返回 NOT_FOUND。未修改生产代码或业务检查。
 
 ## 诚实说明：这不是模型理解能力分数
 
@@ -89,3 +101,12 @@ schema 拒绝，不存在订单返回 NOT_FOUND。未修改生产代码或业务
 真实模型理解结果只见 [`docs/LIVE_EVAL.md`](LIVE_EVAL.md)（14 条 live 样本），
 本表不可与 live 结果合并计分。扩展数据时，如果观察到不安全行为，请保留原始
 payload，写明 `known_issue`，让报告保持失败；不要为通过评测修改生产规则。
+
+兜底能力（safeguards）覆盖非法数量、不存在订单及注入的 schema/kernel 边界。
+管道回归（pipeline regression）覆盖显式结构化答案下的别名、含糊措辞、多行变更和黄金链。
+管道回归不代表模型理解准确率，不得表述为模型 100% 准确率（如简历）。
+
+待 Qi 确认的产品问题：服装批发里把某行改成 0 可能表示取消这一行。
+当前 qty=0 仍按 BUSINESS_CONFLICT 拒绝，评测仅锁定当前行为，不调整业务规则；
+负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。改单和新建的零数量样本
+均带有 `product_question` 注释；是否支持取消行及适用操作需另行确认。

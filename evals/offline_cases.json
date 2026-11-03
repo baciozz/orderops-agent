@@ -1269,7 +1269,8 @@
         "clarification_choice": null,
         "source_refs": []
       }
-    }
+    },
+    "product_question": "待 Qi 确认：服装批发中把某行改为 0 可能表示取消这一行；当前按 BUSINESS_CONFLICT 拒绝，评测仅锁定当前行为"
   },
   {
     "id": "qty-replace-negative",
@@ -1404,7 +1405,8 @@
         "clarification_choice": null,
         "source_refs": []
       }
-    }
+    },
+    "product_question": "待 Qi 确认：服装批发中把某行改为 0 可能表示取消这一行；当前按 BUSINESS_CONFLICT 拒绝，评测仅锁定当前行为"
   },
   {
     "id": "qty-increment-negative",
@@ -1486,7 +1488,8 @@
         "clarification_choice": null,
         "source_refs": []
       }
-    }
+    },
+    "product_question": "待 Qi 确认：服装批发中把某行改为 0 可能表示取消这一行；当前按 BUSINESS_CONFLICT 拒绝，评测仅锁定当前行为"
   },
   {
     "id": "qty-new-negative",

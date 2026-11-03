@@ -80,6 +80,19 @@ def test_script_end_to_end_without_opening_any_socket(tmp_path, monkeypatch, cap
     assert "not model understanding" in report["note"]
     assert report["case_count"] == len(cases)
     assert set(report["categories"]) == CATEGORIES
+    assert len(report["groups"]) == 2
+    for group in report["groups"]:
+        categories = [report["categories"][name] for name in group["categories"]]
+        assert group["label"]
+        for key, source in (
+            ("pass", "pass"),
+            ("fail", "fail"),
+            ("known_issues", "known_issue"),
+            ("total", "total"),
+        ):
+            assert group[key] == sum(category[source] for category in categories)
+        assert group["pass_rate"] == round(100 * group["pass"] / group["total"], 1)
+    assert "不代表模型理解准确率" in report["groups"][1]["disclaimer"]
     assert report["blocked_network_attempts"] == 0
     assert report["unexpected_failures"] == 0
     assert set(seen) == set(answers)
@@ -94,6 +107,7 @@ def test_script_end_to_end_without_opening_any_socket(tmp_path, monkeypatch, cap
             assert row["row_count_delta"]["approval"] == 1
             assert row["row_count_delta"]["operation"] == 1
     table = eval_offline.format_table(report)
+    assert "不代表模型理解准确率" in table
     assert table in capsys.readouterr().out
     docs = eval_offline.CASE_PATH.parents[1] / "docs" / "OFFLINE_EVAL.md"
     assert table in docs.read_text()
@@ -173,5 +187,38 @@ def test_failures_and_known_issues_are_reported_without_masking_scores(monkeypat
     assert report["failures"] == 1 and report["unexpected_failures"] == 0
     assert report["categories"]["golden"]["pass_rate"] == 0
     assert report["samples"][0]["known_issue"]
+    group = report["groups"][1]
+    assert (group["pass"], group["fail"], group["known_issues"], group["pass_rate"]) == (
+        0,
+        1,
+        1,
+        0.0,
+    )
     monkeypatch.setattr(eval_offline, "load_cases", lambda: [known])
     assert eval_offline.main([]) == 0
+
+
+def test_group_coverage_and_zero_quantity_annotations():
+    grouped = [name for group in eval_offline.GROUPS for name in group["categories"]]
+    assert set(grouped) == CATEGORIES
+    assert len(grouped) == len(set(grouped))
+    zero_cases = []
+    for case in eval_offline.load_cases():
+        event = case["fixture_payload"]["business_event"]
+        if event and any(
+            row.get("qty") == 0 for key in ("line_changes", "new_lines") for row in event[key]
+        ):
+            zero_cases.append(case)
+            assert "待 Qi 确认" in case["product_question"]
+            assert case["expected"]["error_code"] == "BUSINESS_CONFLICT"
+    assert len(zero_cases) == 3
+
+
+def test_unknown_category_is_rejected(tmp_path, monkeypatch):
+    cases = eval_offline.load_cases()
+    cases[0]["category"] = "unmapped"
+    path = tmp_path / "cases.json"
+    path.write_text(json.dumps(cases))
+    monkeypatch.setattr(eval_offline, "CASE_PATH", path)
+    with pytest.raises(ValueError, match="Unknown category"):
+        eval_offline.load_cases()
