@@ -18,6 +18,7 @@ from app.adapters.uploads import MAX_FILE_BYTES, MAX_FILES, MAX_NONEMPTY_ROWS, M
 from app.db.models import InputSource, SourceSpan, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
+from app.services.source_spans import task_spans
 
 router = APIRouter()
 LIMITS = {
@@ -67,36 +68,6 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
         raise ValueError("上传必须提供 task_id")
     file = file_parts[0]
     return fields["task_id"], file.get_filename(), file.get_payload(decode=True) or b""
-
-
-def task_spans(session, task_id: str, source_id: str | None = None) -> list[SourceRef]:
-    query = (
-        select(SourceSpan)
-        .join(TaskSource, TaskSource.source_id == SourceSpan.source_id)
-        .where(TaskSource.task_id == task_id)
-        .order_by(SourceSpan.source_id, SourceSpan.sheet, SourceSpan.line_start, SourceSpan.id)
-    )
-    if source_id is not None:
-        if session.get(TaskSource, (task_id, source_id)) is None:
-            raise AppError("来源不存在或不属于此任务", code="SOURCE_NOT_FOUND", http_status=404)
-        query = query.where(SourceSpan.source_id == source_id)
-    return [
-        SourceRef(
-            **{
-                key: getattr(span, key)
-                for key in (
-                    "source_id",
-                    "sheet",
-                    "cell_range",
-                    "line_start",
-                    "line_end",
-                    "message_index",
-                    "text_excerpt",
-                )
-            }
-        )
-        for span in session.scalars(query)
-    ]
 
 
 @router.post("/sources", response_model=SourceUploadResponse)

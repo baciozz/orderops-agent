@@ -27,6 +27,7 @@ DEFAULT_LIMITS = Limits()
 
 def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
     with factory() as session, begin_immediate(session):
+        # Keep the hard ceiling of two RUNNING tasks, even when limits.active is higher.
         if session.scalar(
             select(func.count()).select_from(Task).where(Task.status == "RUNNING")
         ) >= min(2, limits.active):

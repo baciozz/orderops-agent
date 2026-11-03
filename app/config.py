@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     model_max_tokens: int = 1000
     model_max_calls_per_task: int = 3
 
+    @field_validator("worker_max_active")
+    @classmethod
+    def validate_worker_max_active(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Worker 最大并发任务数必须大于等于 1")
+        return value
+
     @field_validator("price_in_per_mtok", "price_out_per_mtok", mode="before")
     @classmethod
     def parse_optional_price(cls, value: object) -> Decimal | None:

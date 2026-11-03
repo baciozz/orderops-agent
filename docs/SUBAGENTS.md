@@ -1,4 +1,4 @@
-# 子 Agent 契约（Stage 0）
+# 子 Agent 契约（Stage 4）
 
 事务、库存、版本、批准和提交属于确定性内核。子 Agent 只读数据、出提案，不能写业务表，也不能调用 approve 或 commit。预检会重新读数据库，不采信提案里的库存或版本。
 
@@ -32,6 +32,8 @@ Router 按「事件类型 → 能力」选 Agent，不写死 Agent 名。
 
 统一输出信封是 `AgentProposal`。`fencing_token` 或 `intent_revision` 不匹配时 `accept_proposal` 丢弃提案。输出不合 schema 时按 `max_retries` 重试，仍失败则任务为 `SCHEMA_INVALID`，不进入预检。超时把 DispatchStep 标为 TIMEOUT，并把本次 attempt 的 fencing token 加一；晚到提案对不上 token 就被丢掉。
 
-`POST /dispatch` 是同步的 fixture 入口。`POST /inputs` 已由 Stage 2 的持久 inbox 接管；worker 复用此调度器，在结果写入前检查租约与 fencing。parser 按整段文本精确查找 fixture，找不到就失败，不会改走 live。
+`POST /dispatch` 是同步调度入口。`POST /inputs` 由持久 inbox 接收，worker 复用调度器，在结果写入前检查租约与 fencing。默认 parser 按整段文本精确查找 fixture，找不到就失败；上传的静态 spans 按任务隔离，可参与数量核对和澄清。
 
-外部 Agent 使用同一套契约，kind 为 `external`。Stage 0 拒绝注册。说明文字里可以写「兼容某种 WebAPI 格式的模拟服务，非官方」，但不能用该厂商的名字做产品名。
+Stage 4 已实现可选 OpenAI Responses 严格 JSON 解析。需显式启用 live 并配置价格、密钥、提供方和模型；调用前预留预算，费用与调用次数持久记账，硬预算上限为 5 美元。缺必要配置保持 FIXTURE；fixture 未命中不会自动开启 live。批准和提交仍由内核负责。
+
+外部 Agent 使用同一套契约，kind 为 `external`，当前仍拒绝注册。说明文字里可以写「兼容某种 WebAPI 格式的模拟服务，非官方」，但不能用该厂商的名字做产品名。

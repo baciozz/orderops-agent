@@ -8,6 +8,7 @@ from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
 from app.orchestration.state import transition, utcnow
+from app.services.kernel import invalidate_order
 
 
 def latest_input(session, task):
@@ -68,10 +69,8 @@ def accept_input(
             session.add(task)
             session.flush()
         if task.order_id:
-            from app.services.kernel import _invalidate_order
-
             order = session.get(SalesOrder, task.order_id)
-            _invalidate_order(session, order.id, exclude_task_id=task.id)
+            invalidate_order(session, order.id, exclude_task_id=task.id)
             order.intent_revision += 1
             task.intent_revision = order.intent_revision
         event = Event(
