@@ -123,7 +123,9 @@ async def upload_source(request: Request):
     except ValueError as exc:
         response.parser_status = "rejected"
         code = getattr(exc, "code", "UPLOAD_REJECTED")
-        error = AppError(str(exc), code=code, http_status=400)
+        error = AppError(
+            str(exc), code=code, http_status=400, details=getattr(exc, "details", None)
+        )
         return JSONResponse(
             status_code=error.http_status,
             content={

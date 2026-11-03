@@ -14,7 +14,6 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from schemas import SCHEMA_VERSION
-from sqlalchemy import inspect
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
@@ -29,6 +28,7 @@ from app.api.orders import router as orders_router
 from app.api.sources import router as sources_router
 from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
+from app.db.schema import schema_ready
 from app.db.session import make_engine, make_session_factory
 from app.errors import AppError
 from app.orchestration.defaults import build_default_registry
@@ -52,14 +52,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # server must not create a database just to reconcile an empty ledger.
         engine = app.state.engine
         database = engine.url.database
-        present = database == ":memory:" or (database and Path(database).is_file())
-        if present and inspect(engine).has_table("model_usage"):
-            reconcile_reservations(
-                app.state.session_factory,
-                now=datetime.now(UTC),
-                ttl=timedelta(seconds=settings.effective_budget_reservation_ttl_s),
-            )
+        present = database in (None, "", ":memory:") or Path(database).is_file()
         try:
+            if present and schema_ready(engine):
+                reconcile_reservations(
+                    app.state.session_factory,
+                    now=datetime.now(UTC),
+                    ttl=timedelta(seconds=settings.effective_budget_reservation_ttl_s),
+                )
             yield
         finally:
             engine.dispose()

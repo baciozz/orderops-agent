@@ -575,6 +575,8 @@ class ModelUsage(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     cost_usd: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     price_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    price_in_per_mtok: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
+    price_out_per_mtok: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="SETTLED", server_default="SETTLED"

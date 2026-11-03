@@ -128,6 +128,8 @@ class BudgetLedger:
             output_tokens=max_output_tokens,
             cost_usd=estimate,
             price_version=price_version,
+            price_in_per_mtok=self.price_in_per_mtok,
+            price_out_per_mtok=self.price_out_per_mtok,
             at=reserved_at,
             status="RESERVED",
             reserved_at=reserved_at,
@@ -176,12 +178,6 @@ class BudgetLedger:
         ORPHANED rows accept late actual usage. Identical repeated settlements
         are no-ops; conflicting repeats are rejected so the first result wins.
         """
-        cost = quote_cost(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            price_in_per_mtok=self.price_in_per_mtok,
-            price_out_per_mtok=self.price_out_per_mtok,
-        )
         session = self._sessions()
         try:
             with begin_immediate(session):
@@ -194,7 +190,20 @@ class BudgetLedger:
                     return row
                 row.input_tokens = input_tokens
                 row.output_tokens = output_tokens
-                row.cost_usd = cost
+                row.cost_usd = quote_cost(
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    price_in_per_mtok=(
+                        row.price_in_per_mtok
+                        if row.price_in_per_mtok is not None
+                        else self.price_in_per_mtok
+                    ),
+                    price_out_per_mtok=(
+                        row.price_out_per_mtok
+                        if row.price_out_per_mtok is not None
+                        else self.price_out_per_mtok
+                    ),
+                )
                 row.status = "SETTLED"
                 row.settled_at = at or datetime.now(UTC)
         finally:

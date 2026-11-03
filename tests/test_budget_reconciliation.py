@@ -103,6 +103,51 @@ def test_settlement_is_idempotent_and_allows_late_actual_usage(session_factory, 
         assert len(list(session.scalars(select(ModelUsage)))) == 1
 
 
+@pytest.mark.parametrize("late", [False, True])
+@pytest.mark.parametrize("new_prices", [(Decimal("90"), Decimal("80")), (None, None)])
+def test_settlement_uses_reserved_prices_after_configuration_change(
+    session_factory, late, new_prices
+):
+    first = BudgetLedger(
+        session_factory,
+        cap_usd=Decimal("1"),
+        price_in_per_mtok=Decimal("9"),
+        price_out_per_mtok=Decimal("2"),
+    )
+    reservation = first.reserve(
+        provider="test",
+        model="fixture",
+        input_tokens=1000,
+        max_output_tokens=500,
+        at=NOW - TTL - timedelta(seconds=1),
+    )
+    if late:
+        assert reconcile_reservations(session_factory, now=NOW, ttl=TTL) == 1
+    second = BudgetLedger(
+        session_factory,
+        cap_usd=Decimal("1"),
+        price_in_per_mtok=new_prices[0],
+        price_out_per_mtok=new_prices[1],
+    )
+    row = second.settle(reservation, input_tokens=100, output_tokens=50, at=NOW)
+    assert row.status == "SETTLED"
+    assert row.price_in_per_mtok == Decimal("9")
+    assert row.price_out_per_mtok == Decimal("2")
+    assert row.cost_usd == second.spent() == Decimal("0.001000")
+    assert aware(second.settle(reservation, input_tokens=100, output_tokens=50).settled_at) == NOW
+
+
+def test_unknown_historical_prices_fall_back_to_ledger(session_factory):
+    book = ledger(session_factory)
+    reservation = reserve(book, NOW)
+    with session_factory() as session, session.begin():
+        row = session.get(ModelUsage, reservation)
+        row.price_in_per_mtok = row.price_out_per_mtok = None
+    assert book.settle(reservation, input_tokens=100, output_tokens=0).cost_usd == Decimal(
+        "0.000900"
+    )
+
+
 def test_startup_reconciles_existing_ledger(session_factory, database_url):
     now = datetime.now(UTC)
     book = ledger(session_factory)
@@ -185,6 +230,65 @@ def test_migration_backfills_historical_usage_as_settled(tmp_path):
         with engine.connect() as connection:
             cfg.attributes["connection"] = connection
             command.downgrade(cfg, "source_stage3")
+        init_db(engine)
+    finally:
+        engine.dispose()
+
+
+def test_price_snapshot_migration_backfills_versions_and_downgrades(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    engine = make_engine(f"sqlite:///{tmp_path / 'historical-prices.db'}")
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+    versions = [
+        "in=1.25;out=10.5",
+        "in=0;out=2e-2",
+        "test",
+        "in=NaN;out=1",
+        "in=1;out=Infinity",
+        "in=-1;out=2",
+        "in=1;out=bad",
+        "in=1;out=2;extra=3",
+    ]
+    try:
+        with engine.connect() as connection:
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "budget_reservations")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO model_usage "
+                    "(id, provider, model, input_tokens, output_tokens, cost_usd, price_version, "
+                    "at, reserved_at, settled_at) "
+                    "VALUES (:id, 'test', 'fixture', 1, 2, '0.003', :version, :at, :at, :at)"
+                ),
+                [
+                    {"id": str(index), "version": version, "at": NOW.isoformat()}
+                    for index, version in enumerate(versions)
+                ],
+            )
+        init_db(engine)
+        with engine.connect() as connection:
+            rows = (
+                connection.execute(text("SELECT * FROM model_usage ORDER BY id")).mappings().all()
+            )
+            for row, version in zip(rows, versions, strict=True):
+                assert row["price_version"] == version
+                assert row["status"] == "SETTLED"
+                assert row["at"] == row["reserved_at"] == row["settled_at"]
+                assert Decimal(row["cost_usd"]) == Decimal("0.003")
+            assert Decimal(rows[0]["price_in_per_mtok"]) == Decimal("1.25")
+            assert Decimal(rows[0]["price_out_per_mtok"]) == Decimal("10.5")
+            assert Decimal(rows[1]["price_in_per_mtok"]) == Decimal("0")
+            assert Decimal(rows[1]["price_out_per_mtok"]) == Decimal("0.02")
+            for row in rows[2:]:
+                assert row["price_in_per_mtok"] is row["price_out_per_mtok"] is None
+        with engine.connect() as connection:
+            cfg.attributes["connection"] = connection
+            command.downgrade(cfg, "budget_reservations")
+            columns = connection.execute(text("PRAGMA table_info(model_usage)")).all()
+            assert "price_in_per_mtok" not in {column[1] for column in columns}
+            assert "price_out_per_mtok" not in {column[1] for column in columns}
         init_db(engine)
     finally:
         engine.dispose()

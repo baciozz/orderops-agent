@@ -1,7 +1,10 @@
 """Real HTTP error paths must reject input without any persistent side effect."""
 
 import json
+import logging
 from io import BytesIO
+from xml.etree.ElementTree import ParseError
+from xml.parsers.expat import ExpatError
 from zipfile import ZipFile
 
 import openpyxl
@@ -118,6 +121,82 @@ def test_upload_rejection_is_atomic(error_app, name, content, code):
     before = snapshot(factory, storage)
     response = client.post("/sources", data={"task_id": task_id}, files={"file": (name, content)})
     assert_rejected(response, code, before, factory, storage)
+
+
+@pytest.mark.parametrize(
+    "exception_type", [TypeError, IndexError, AttributeError, RuntimeError, NotImplementedError]
+)
+@pytest.mark.parametrize("phase", ["load", "read"])
+def test_xlsx_parser_defect_has_traceable_private_error(
+    error_app, monkeypatch, caplog, exception_type, phase
+):
+    client, _, factory, task_id, storage = error_app
+    marker = "PRIVATE-CELL-7f60bc159d"
+    book = openpyxl.Workbook()
+    book.active["A1"] = marker
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    content = stream.getvalue()
+    original_load = openpyxl.load_workbook
+
+    def fail(*args, **kwargs):
+        # Even exception messages/chains containing source values must be redacted.
+        try:
+            raise ValueError(marker)
+        except ValueError as exc:
+            raise exception_type(marker) from exc
+
+    def fail_on_read(*args, **kwargs):
+        workbook = original_load(*args, **kwargs)
+        sheet = workbook.worksheets[0]
+
+        def iter_rows(*args, **kwargs):
+            fail()  # Fail during static validation.
+
+        monkeypatch.setattr(sheet, "iter_rows", iter_rows)
+        return workbook
+
+    before = snapshot(factory, storage)
+    monkeypatch.setattr(openpyxl, "load_workbook", fail if phase == "load" else fail_on_read)
+    with caplog.at_level(logging.ERROR, logger="app.adapters.uploads"):
+        response = client.post(
+            "/sources", data={"task_id": task_id}, files={"file": ("valid.xlsx", content)}
+        )
+    assert response.status_code == 400
+    assert_rejected(response, "UPLOAD_PARSE_FAILED", before, factory, storage)
+    error_id = response.json()["error"]["details"]["error_id"]
+    assert error_id.startswith("ERR-") and len(error_id) == 36
+    records = [record for record in caplog.records if error_id in record.getMessage()]
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.ERROR
+    assert record.exc_info and record.exc_info[2] is not None
+    assert "suffix=.xlsx" in record.getMessage()
+    assert f"size_bytes={len(content)}" in record.getMessage()
+    assert "Traceback (most recent call last)" in caplog.text
+    assert exception_type.__name__ in caplog.text
+    assert marker not in caplog.text
+    assert marker not in response.text
+
+
+@pytest.mark.parametrize("exception_type", [ValueError, ParseError, ExpatError, EOFError, KeyError])
+def test_xlsx_format_errors_remain_corrupt(error_app, monkeypatch, caplog, exception_type):
+    client, _, factory, task_id, storage = error_app
+    content = workbook_content()
+
+    def fail(*args, **kwargs):
+        raise exception_type("invalid workbook format")
+
+    monkeypatch.setattr(openpyxl, "load_workbook", fail)
+    before = snapshot(factory, storage)
+    response = client.post(
+        "/sources", data={"task_id": task_id}, files={"file": ("invalid.xlsx", content)}
+    )
+    assert response.status_code == 400
+    assert_rejected(response, "UPLOAD_CORRUPT", before, factory, storage)
+    assert "error_id" not in response.json()["error"]["details"]
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 @pytest.mark.parametrize("endpoint", ["/inputs", "/dispatch", "/tasks/{task_id}/answers"])
