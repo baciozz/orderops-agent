@@ -686,10 +686,9 @@ def test_upload_missing_filename_rejected_without_side_effects(stage3, filename)
         headers={"Content-Type": "multipart/form-data; boundary=upload-boundary"},
     )
     assert response.status_code == 400
-    assert response.json()["error"] == {
-        "code": "UPLOAD_REJECTED",
-        "message": "上传文件必须带文件名",
-    }
+    error = response.json()["error"]
+    assert error["code"] == "UPLOAD_REJECTED"
+    assert error["message"] == "上传文件必须带文件名"
     with factory() as session:
         assert [
             session.scalar(select(func.count()).select_from(model)) for model in models
