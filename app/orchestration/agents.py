@@ -11,8 +11,8 @@ from schemas.inventory import InventoryCheckOutput
 from schemas.subagent import AgentProposal, SubAgentSpec
 from sqlalchemy.orm import Session
 
-from app.adapters.fixture_model import FixtureLLMClient
-from app.adapters.llm import StructuredCallRequest
+from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
+from app.adapters.llm import LLMClient, StructuredCallRequest
 from app.api.sources import task_spans
 from app.db.models import SalesOrder, Task
 from app.domain.hashing import canonical_hash
@@ -30,7 +30,7 @@ class StepContext:
     text: str
     input_mode: str
     source_id: str
-    llm: FixtureLLMClient
+    llm: LLMClient
     intent: int
     fence: int
     model_calls: int = 0
@@ -57,6 +57,20 @@ def run_parser(ctx: StepContext) -> AgentRun:
         )
     ctx.model_calls += 1
     limit = ctx.spec.budget.max_tokens_per_call or 1000
+    spans = [
+        span
+        for source_id in dict.fromkeys(ctx.source_ids)
+        for span in task_spans(ctx.session, ctx.task.id, source_id)
+    ]
+    prompt_options = {}
+    if ctx.llm.mode == "LIVE":
+        catalog = catalog_context(ctx.session, ctx.task.order_id)
+        system, user = build_prompts(ctx.text, catalog, spans)
+        prompt_options = {
+            "system_prompt": system,
+            "user_prompt": user,
+            "response_schema": parser_schema(),
+        }
     result = ctx.llm.structured_call(
         StructuredCallRequest(
             fixture_key=ctx.text,
@@ -64,11 +78,15 @@ def run_parser(ctx: StepContext) -> AgentRun:
             agent_id=ctx.spec.agent_id,
             max_output_tokens=limit,
             response_schema_id=ctx.spec.output_schema.model_id,
-            prompt_ref="fixture://parser",
+            prompt_ref="live://parser" if ctx.llm.mode == "LIVE" else "fixture://parser",
+            **prompt_options,
         )
     )
+    payload = result.payload
+    if ctx.llm.mode == "LIVE":
+        payload = to_extraction(payload, text=ctx.text, spans=spans, catalog=catalog)
     extracted = bind_extraction(
-        result.payload,
+        payload,
         task_id=ctx.task.id,
         intent=ctx.intent,
         mode=ctx.input_mode,
@@ -83,17 +101,12 @@ def run_parser(ctx: StepContext) -> AgentRun:
         ctx.task.chain_id = f"CH-{order.id}"
         ctx.task.intent_revision = order.intent_revision
         extracted = bind_extraction(
-            result.payload,
+            payload,
             task_id=ctx.task.id,
             intent=ctx.intent,
             mode=ctx.input_mode,
         )
     if ctx.source_ids:
-        spans = [
-            span
-            for source_id in dict.fromkeys(ctx.source_ids)
-            for span in task_spans(ctx.session, ctx.task.id, source_id)
-        ]
         extracted = compare_sheet_quantities(extracted, spans)
     _accept(ctx, extracted.model_dump(mode="json"), result.usage)
     tokens = result.usage.input_tokens + result.usage.output_tokens

@@ -18,6 +18,7 @@ def dispatch_input(body: DispatchRequest, request: Request) -> DispatchResponse:
         input_mode=body.input_mode.value,
         client_event_key=body.client_event_key or str(uuid4()),
         registry=request.app.state.registry,
+        settings=request.app.state.settings,
     )
     return DispatchResponse(
         request_id=request.state.request_id,

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_provider: str | None = None
     llm_model: str | None = None
+    llm_base_url: str = "https://api.openai.com/v1"
+    model_reasoning_effort: str = "none"
     database_url: str = "sqlite:///./data/oos.db"
     approval_ttl_seconds: int = 600
     worker_max_active: int = 2

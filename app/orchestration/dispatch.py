@@ -16,8 +16,20 @@ from schemas.subagent import AgentProposal, SubAgentSpec
 from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
-from app.db.models import AuditRecord, DispatchStep, InputPayload, JobAttempt, SalesOrder, Task
+from app.adapters.live_model import LiveLLMClient
+from app.adapters.llm import LLMClient, resolve_mode
+from app.config import Settings, get_settings
+from app.db.models import (
+    AuditRecord,
+    DispatchStep,
+    InputPayload,
+    JobAttempt,
+    ModelUsage,
+    SalesOrder,
+    Task,
+)
 from app.db.session import begin_immediate
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, ProposalRejected, SchemaInvalid, ToolNotAllowed
@@ -89,6 +101,8 @@ def dispatch_text(
     timeout_agent: str | None = None,
     durable_task_id: str | None = None,
     source_ids: list[str] | None = None,
+    settings: Settings | None = None,
+    client_factory: Callable[[Settings, BudgetLedger], LLMClient] | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
     moment = _moment(now)
@@ -97,7 +111,16 @@ def dispatch_text(
     library = golden_fixtures()
     if fixtures:
         library.update(fixtures)
-    client = FixtureLLMClient(library)
+    configured = settings or get_settings()
+    client: LLMClient = FixtureLLMClient(library)
+    if resolve_mode(configured).mode == "LIVE":
+        ledger = BudgetLedger(
+            session_factory,
+            cap_usd=configured.effective_live_budget_usd,
+            price_in_per_mtok=configured.price_in_per_mtok,
+            price_out_per_mtok=configured.price_out_per_mtok,
+        )
+        client = (client_factory or LiveLLMClient)(configured, ledger)
     task_id = durable_task_id or _open_task(session_factory, moment)
     routed = router.plan("unstructured", input_mode=input_mode)
     if not routed.ok:
@@ -251,7 +274,7 @@ def _run_planned(
     registry: Registry,
     text: str,
     input_mode: str,
-    client: FixtureLLMClient,
+    client: LLMClient,
     work: _Work,
     moment: datetime,
     before_step: Callable[[StepContext], None] | None,
@@ -322,7 +345,7 @@ def _one_attempt(
     capability: str,
     text: str,
     input_mode: str,
-    client: FixtureLLMClient,
+    client: LLMClient,
     work: _Work,
     moment: datetime,
     runner: Callable[[StepContext], AgentRun],
@@ -331,6 +354,10 @@ def _one_attempt(
 ) -> tuple[AgentRun | None, bool, DispatchOutcome | None]:
     """Return (run, should_retry, abort outcome)."""
     session = session_factory()
+    with session_factory() as usage_session:
+        previous_usage = set(
+            usage_session.scalars(select(ModelUsage.id).where(ModelUsage.task_id == task_id))
+        )
     try:
         with session.no_autoflush:
             task, attempt = _lock(session, task_id)
@@ -388,6 +415,14 @@ def _one_attempt(
             # changes through a fresh writer so the fence sees current committed state.
             with session_factory() as writer, begin_immediate(writer):
                 task, attempt = _lock(writer, task_id)
+                usage_rows = writer.scalars(
+                    select(ModelUsage).where(
+                        ModelUsage.task_id == task_id,
+                        ModelUsage.id.not_in(previous_usage),
+                    )
+                ).all()
+                live_tokens = sum(row.input_tokens + row.output_tokens for row in usage_rows)
+                live_cost = sum((row.cost_usd for row in usage_rows), Decimal("0"))
                 _copy_step_writes(session, writer)
                 if code == "TIMEOUT":
                     attempt.fencing_token += 1
@@ -408,8 +443,8 @@ def _one_attempt(
                         status=DispatchStatus.SUCCEEDED,
                         now=moment,
                         output_ref=canonical_hash(run.payload),
-                        tokens=run.tokens,
-                        cost=Decimal("0"),
+                        tokens=live_tokens if usage_rows else run.tokens,
+                        cost=live_cost,
                     )
                     return run, False, None
                 status = DispatchStatus.TIMEOUT if code == "TIMEOUT" else DispatchStatus.FAILED
@@ -422,8 +457,10 @@ def _one_attempt(
                     status=status,
                     now=moment,
                     error_code=code,
-                    tokens=0 if code == "SCHEMA_INVALID" else None,
-                    cost=Decimal("0") if code == "SCHEMA_INVALID" else None,
+                    tokens=live_tokens if usage_rows else (0 if code == "SCHEMA_INVALID" else None),
+                    cost=live_cost
+                    if usage_rows
+                    else (Decimal("0") if code == "SCHEMA_INVALID" else None),
                 )
                 if retry:
                     return None, True, None
@@ -725,9 +762,13 @@ def _fail_if_running(
     session = session_factory()
     try:
         with begin_immediate(session):
-            enforce(session)
             task = session.get(Task, task_id)
             if task is not None and task.status == TaskStatus.RUNNING:
+                # The kernel may already have persisted FAILED and released the
+                # lease before raising its business error. A no-op must not mask
+                # that error with STALE_ATTEMPT. Every mutation still requires
+                # the current running attempt's fence.
+                enforce(session)
                 transition(task, TaskStatus.FAILED)
                 task.error_code = code
                 task.result_ref = message[:255]

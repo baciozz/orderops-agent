@@ -71,7 +71,6 @@ def _view(task_id: str, request: Request) -> TaskView:
                     task_id,
                     request_id=request.state.request_id,
                     correlation_id=request.state.correlation_id,
-                    mode=request.app.state.mode_resolution.mode,
                     now=utcnow(),
                 )
     if task_id == STUB_TASK_ID:

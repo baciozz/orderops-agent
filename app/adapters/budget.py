@@ -1,16 +1,16 @@
 """Persistent live-model budget ledger.
 
-Before a live call, estimate input tokens × input price plus max output tokens
-× output price. Refuse when spent + estimate is greater than the cap. The cap
-is min(configured, 5.00 USD). Prices are never guessed. Fixture calls do not
-write this ledger.
+Before a live call, atomically reserve estimated input plus maximum output cost
+and a per-task call slot. Settle the same row after the call. A crash leaves the
+pessimistic reservation charged. The cap is min(configured, 5.00 USD). Prices
+are never guessed. Fixture calls do not write this ledger.
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import HARD_BUDGET_CEILING_USD
@@ -78,53 +78,22 @@ class BudgetLedger:
             session.close()
         return len(rows)
 
-    def authorize(
-        self,
-        *,
-        input_tokens: int,
-        max_output_tokens: int,
-        task_id: str | None = None,
-        max_calls_per_task: int | None = None,
-    ) -> Decimal:
-        """Return the estimate, or refuse before any provider call."""
-        estimate = quote_cost(
-            input_tokens=input_tokens,
-            output_tokens=max_output_tokens,
-            price_in_per_mtok=self.price_in_per_mtok,
-            price_out_per_mtok=self.price_out_per_mtok,
-        )
-        if task_id is not None and max_calls_per_task is not None:
-            used = self.calls_for_task(task_id)
-            if used >= max_calls_per_task:
-                raise CallLimitExceeded(
-                    f"任务 {task_id} 已达到模型调用次数上限 {max_calls_per_task}",
-                    details={"task_id": task_id, "calls": used},
-                )
-        spent = self.spent()
-        if spent + estimate > self.cap_usd:
-            raise BudgetExceeded(
-                details={
-                    "spent_usd": format(spent, "f"),
-                    "estimate_usd": format(estimate, "f"),
-                    "cap_usd": format(self.cap_usd, "f"),
-                }
-            )
-        return estimate
-
-    def record(
+    def reserve(
         self,
         *,
         provider: str,
         model: str,
         input_tokens: int,
-        output_tokens: int,
+        max_output_tokens: int,
         task_id: str | None = None,
         agent_id: str | None = None,
+        max_calls_per_task: int | None = None,
         at: datetime | None = None,
-    ) -> ModelUsage:
-        cost = quote_cost(
+    ) -> str:
+        """Check both limits and persist the reservation under one writer lock."""
+        estimate = quote_cost(
             input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            output_tokens=max_output_tokens,
             price_in_per_mtok=self.price_in_per_mtok,
             price_out_per_mtok=self.price_out_per_mtok,
         )
@@ -136,15 +105,61 @@ class BudgetLedger:
             provider=provider,
             model=model,
             input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost,
+            output_tokens=max_output_tokens,
+            cost_usd=estimate,
             price_version=price_version,
             at=at or datetime.now(UTC),
         )
         session = self._sessions()
         try:
             with begin_immediate(session):
+                if task_id is not None and max_calls_per_task is not None:
+                    used = session.scalar(
+                        select(func.count())
+                        .select_from(ModelUsage)
+                        .where(ModelUsage.task_id == task_id)
+                    )
+                    if used >= max_calls_per_task:
+                        raise CallLimitExceeded(
+                            f"任务 {task_id} 已达到模型调用次数上限 {max_calls_per_task}",
+                            details={"task_id": task_id, "calls": used},
+                        )
+                # Sum Decimals in Python: SQLite's SUM would use floating point.
+                spent = sum(session.scalars(select(ModelUsage.cost_usd)), Decimal("0"))
+                if spent + estimate > self.cap_usd:
+                    raise BudgetExceeded(
+                        details={
+                            "spent_usd": format(spent, "f"),
+                            "estimate_usd": format(estimate, "f"),
+                            "cap_usd": format(self.cap_usd, "f"),
+                        }
+                    )
                 session.add(row)
+        finally:
+            session.close()
+        return row.id
+
+    def settle(self, reservation_id: str, *, input_tokens: int, output_tokens: int) -> ModelUsage:
+        """Replace the estimate with actual usage; retain the row as a call.
+
+        Provider-reported usage is recorded even if it exceeds the reservation.
+        Unknown usage should be settled at the reserved token estimates.
+        """
+        cost = quote_cost(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            price_in_per_mtok=self.price_in_per_mtok,
+            price_out_per_mtok=self.price_out_per_mtok,
+        )
+        session = self._sessions()
+        try:
+            with begin_immediate(session):
+                row = session.get(ModelUsage, reservation_id)
+                if row is None:
+                    raise ValueError("模型用量预留不存在")
+                row.input_tokens = input_tokens
+                row.output_tokens = output_tokens
+                row.cost_usd = cost
         finally:
             session.close()
         return row
