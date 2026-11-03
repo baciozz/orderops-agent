@@ -69,3 +69,12 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = ["openpyxl", "openpyxl.*", "defusedxml", "defusedxml.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["app"]
+branch = false
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 90

@@ -1,4 +1,4 @@
-.PHONY: install test lint run seed init-db
+.PHONY: install test lint typecheck cov check run seed init-db
 
 PY ?= python
 
@@ -11,6 +11,16 @@ test:
 lint:
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
+
+typecheck:
+	$(PY) -m mypy
+
+# Coverage report for app/; fails below [tool.coverage.report] fail_under.
+cov:
+	$(PY) -m pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=xml
+
+# Everything CI runs, in one target.
+check: lint typecheck cov
 
 run:
 	$(PY) -m uvicorn app.main:app --host 127.0.0.1 --port 8000
