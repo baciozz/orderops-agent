@@ -15,6 +15,8 @@
 | `app/adapters/` | Fixture 客户端、live 守卫、预算账本。文件解析未实现 |
 | `app/api/` | `/health`、`/tasks/{id}/view`、`/ui/tasks/{id}` |
 
+> 2026-11-03 注：上表 `app/services/` 中的占位文件（approval、commit、inspection、precheck、verification）已在 #15 删除，业务逻辑在 `app/services/kernel.py`。
+
 业务校验不写在提示词里。模型调用不放进持有写锁的事务里。Stage 0 的 live 客户端在记账检查之后、打开网络之前失败。
 
 ## 为何用 SQLite

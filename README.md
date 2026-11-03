@@ -4,7 +4,7 @@ OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分�
 
 OrderOps SuperAgent: a multi-agent coordination layer for garment-wholesale order changes.
 
-**状态：Stage 1C（子 Agent 接口）在当前分支。** `POST /dispatch` 用 Fixture 跑 parser、inventory-check、doc-check，再进入已有的预检、批准、提交和回读核验。不调用 live 模型。持久任务和完整界面还没做。
+**状态：Stage 4 已实现，Stage 5（冻结和交接）尚未开始。** 已接通持久 inbox、worker、子 Agent 调度、预检、人工批准、原子提交和回读核验，并支持静态文件上传、数据库任务视图及导出。默认 FIXTURE，可显式启用受预算限制的 OpenAI 解析；完整聊天与审批交互界面尚未实现。
 
 ## 架构
 
@@ -24,7 +24,7 @@ flowchart LR
   Commit --> Verify["回读核验"]
 ```
 
-子 Agent 只出提案，不能批准或提交。内核在批准后的提交里重算库存和下游单据。inbox、租约和完整任务页还没接上。
+子 Agent 只出提案，不能批准或提交。内核在批准后的提交里重算库存和下游单据。持久任务通过租约与 fencing 隔离旧 attempt，任务页展示调度、来源、差量和结果。
 
 ## 如何运行
 
@@ -39,12 +39,14 @@ make run
 ```
 
 - 健康检查：<http://127.0.0.1:8000/health>
-- 任务视图桩：<http://127.0.0.1:8000/tasks/T-STUB/view>
-- 同一结构的朴素页面：<http://127.0.0.1:8000/ui/tasks/T-STUB>
+- 任务视图：`/tasks/{task_id}/view`，演示桩：<http://127.0.0.1:8000/tasks/T-STUB/view>
+- HTML 任务页：`/ui/tasks/{task_id}`，演示桩：<http://127.0.0.1:8000/ui/tasks/T-STUB>
+
+`POST /inputs` 入队后，运行 `python -m app.cli worker-once` 扫描恢复、处理一条任务并投递 outbox；按需重复运行。
 
 等价脚本：`scripts/seed.sh`、`scripts/run.sh`、`scripts/test.sh`、`scripts/lint.sh`。
 
-停止：在运行 `make run` 的终端按 Ctrl+C。Stage 0 没有后台 worker，也没有常驻的模型调用。
+停止：在运行 `make run` 的终端按 Ctrl+C。worker 由命令或 Python 调用驱动，没有常驻调度服务；模型只在显式启用 live 后按任务调用。
 
 ## 测试
 
@@ -59,7 +61,7 @@ make check       # lint + typecheck + cov，一次跑完
 当前 GitHub Actions 只跑 `make lint` 和 `make test`。类型检查、覆盖率和离线评测这几步写在
 `ci/pending-workflow-changes.yml` 里，等仓库补上 workflow 权限后整份替换 `.github/workflows/ci.yml`。
 
-`pytest` 会列出跳过的 B/R 用例和原因。跳过不是通过。清单在 `tests/acceptance_cases.py`。
+56 个 B/R 用例均已接入真实测试，当前没有占位跳过。清单在 `tests/acceptance_cases.py`。
 
 ## 数据
 

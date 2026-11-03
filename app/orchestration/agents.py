@@ -14,13 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
 from app.adapters.llm import LLMClient, StructuredCallRequest
-from app.api.sources import task_spans
 from app.db.models import SalesOrder, Task
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, CallLimitExceeded, SchemaInvalid
 from app.orchestration.fixtures import compare_sheet_quantities
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import invoke_tool
+from app.services.source_spans import task_spans
 
 
 @dataclass

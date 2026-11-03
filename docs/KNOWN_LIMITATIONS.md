@@ -2,7 +2,7 @@
 
 Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB 任务视图上加入可选 OpenAI Responses 解析。默认仍为精确 FIXTURE；live 必须由操作者显式启用并配置价格、环境密钥、提供方和模型。库存和下游数字由内核重算。
 
-- Worker 由 `worker-once` / Python 调用驱动，没有常驻调度服务；outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。
+- Worker 由 `worker-once` / Python 调用驱动，没有常驻调度服务；`OOS_WORKER_MAX_ACTIVE` 必须大于等于 1，默认 2。`claim()` 保留 `min(2, limits.active)` 的硬上限，配置大于 2 时，`worker-once` 在 logger `oos.worker` 上记录 WARNING，并按 2 生效，仍限制为 2 条 RUNNING 任务。outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。
 - 上传为 `POST /sources` 的 multipart `task_id` + `file`，一次一个文件，每任务最多三个；任务须已存在。服务端生成存储路径，通过 `task_source` 关联限制 spans 查询，原始文件放在服务端临时目录，生产持久存储/清理策略尚未实现。拒绝返回 HTTP 400、parser_status=rejected 和中文原因，不保存部分 spans。
 - UTF-8 TXT/MD 按非空行、静态 XLSX 按单元格切分；spans 摘要最多 500 字，完整原文独立保存。XLSM、VBA/宏类型、公式、外部链接和 XML 实体被拒绝；XLSX 有压缩包大小/压缩比及非空单元格上限。上传不会触发调度、批准或外传。
 - R14 已接入 worker 的 `source_ids`：只读取当前任务关联的静态 spans，精确 fixture 聊天与匹配表格行数量不同时，保存 conflicts、questions 和聊天/单元格双来源，返回 NEEDS_CLARIFICATION，不创建计划、批准或提交。JSON 和 HTML 可展开来源并显示问题；抽取结果保存在当前事件的 InputPayload 中，原 text/source_ids 保留。
@@ -41,3 +41,9 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 - 并发测试沿用生产连接的 WAL、foreign_keys=ON、busy_timeout=5000ms 和写事务 BEGIN IMMEDIATE；未观察到 database is locked，不新增自动重试，也不放宽版本/库存/批准/fence 检查。SQLite 仍只有一个写者，锁持有超过 busy timeout 会报错；短事务是当前运行约束。这些测试不模拟杀死处于提交系统调用中的进程或任意长时间写锁。
 
 - 模型传输层抽成 provider 接口：`openai`（Responses API，行为不变）和 `openai_compatible`（Chat Completions，面向 DeepSeek / vLLM / Ollama）。兼容 provider **只用 mock 测试，未做任何真实联调**。未实测：各家 json_object/json_schema 支持、usage 与错误体格式。远端必须 HTTPS 且需要运行时密钥；仅 localhost/127.0.0.1/::1 允许 HTTP 和免密钥。没有按提供方设置 base URL 白名单：操作者配置的任何 HTTPS 地址都会收到 key。localhost 例外按主机名字符串判定、不做 DNS 解析（例如 hosts 文件把别的名字指向 127.0.0.1 不享受例外，localhost 被改指向远端也不会被发现）。缺单价时拒绝启用 live（保持 FIXTURE），本地模型须显式填 0。默认 `json_object` 加本地 schema 校验；本地 schema 校验器只支持 parser 用到的子集，遇到不认识的关键字在调用前 fail-closed，返回 SCHEMA_INVALID，不预留或计费。兼容 provider 不发送 store，是否留存数据取决于提供方政策；也不发送 `reasoning` 字段。
+
+## 后续计划
+
+- 拆分 app/services/kernel.py（约 1500+ 行）：按计划/预检、审批、提交、下游重链、校验拆成子模块，行为不变。
+- 解开 `app/orchestration/inbox.py` 与 `app/services/kernel.py` 之间仍存在的包间互相依赖（inbox 导入 `invalidate_order`，kernel 导入 orchestration.state）。
+

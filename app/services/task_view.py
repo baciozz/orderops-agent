@@ -15,7 +15,6 @@ from schemas.task_view import (
 )
 from sqlalchemy import select
 
-from app.api.sources import task_spans
 from app.db.models import (
     Approval,
     DispatchStep,
@@ -45,6 +44,7 @@ from app.services.kernel import (
     _mentioned,
     _stable,
 )
+from app.services.source_spans import task_spans
 
 
 def _revision_lines(session, order_id, revision_no):

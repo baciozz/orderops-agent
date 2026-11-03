@@ -48,9 +48,8 @@ README 和部分模块注释也保留了早期阶段文字，判断已实现能�
 
 现状例外：这不是严格的单向分层。
 `app/services/kernel.py` 导入 orchestration.state 的 `enforce`、`transition`。
-`app/services/task_view.py` 导入 orchestration.inbox/state，还从 API 层导入 `task_spans`。
-`app/orchestration/agents.py` 也从 `app/api/sources.py` 导入 `task_spans`。
-inbox 在接收订单输入时延迟导入 kernel 的 `_invalidate_order`，形成包层双向依赖。
+`app/services/task_view.py` 导入 orchestration.inbox/state；`task_spans` 位于 `app/services/source_spans.py`。
+inbox 导入 kernel 的公开函数 `invalidate_order`，形成包层双向依赖。
 
 下图箭头表示 import 方向，虚线强调现状例外，不表示网络调用：
 
@@ -82,9 +81,7 @@ flowchart TD
     Mig["alembic"] --> DB
 ```
 
-`app/services/precheck.py`、`app/services/approval.py`、`app/services/commit.py`、
-`app/services/verification.py`、`app/services/inspection.py` 仍是抛出 NotImplementedError 的占位文件。
-当前实际业务实现集中在 kernel，不能按这些占位文件判断功能未实现。
+业务实现集中在 `app/services/kernel.py`。
 
 ## 3. 从输入到提交的数据流
 

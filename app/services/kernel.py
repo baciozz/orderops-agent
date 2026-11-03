@@ -178,7 +178,7 @@ def note_ambiguous(
                 assert outcome is not None
                 return outcome
             order = _require_order(session, order_id)
-            _invalidate_order(session, order_id)
+            invalidate_order(session, order_id)
             order.intent_revision += 1
             return _store_non_validated(
                 session,
@@ -522,7 +522,7 @@ def _plan_change_locked(
         assert rejected is not None
         return None, rejected
     if bump_intent:
-        _invalidate_order(session, order_id)
+        invalidate_order(session, order_id)
         order.intent_revision += 1
     intent = order.intent_revision
     documents = _load_documents(session, order_id)
@@ -1596,7 +1596,7 @@ def _existing_outcome(
     )
 
 
-def _invalidate_order(
+def invalidate_order(
     session: Session, order_id: str, *, exclude_task_id: str | None = None
 ) -> None:
     tasks = list(session.scalars(select(Task).where(Task.order_id == order_id)).all())
