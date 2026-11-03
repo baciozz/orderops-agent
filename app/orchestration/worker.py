@@ -112,6 +112,7 @@ def run_once(
         outcome = dispatch_text(
             factory,
             text=payload["text"] or "",
+            source_ids=payload.get("source_ids", []),
             client_event_key=event_id,
             before_step=before_step,
             durable_task_id=task_id,

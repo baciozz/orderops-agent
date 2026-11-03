@@ -5,7 +5,10 @@
   <title>任务 {{ view.card.task_id }}</title>
 </head>
 <body>
-  <p>Stage 0 桩页面，没有视觉设计。这不是「订单已修改」。运行模式：{{ view.card.mode }}。</p>
+  <p class="mode-badge" aria-label="运行模式">运行模式：<strong>{{ view.card.mode }}</strong></p>
+  {% if view.card.task_id == "T-STUB" %}
+  <p>Stage 0 桩页面。这不是「订单已修改」。</p>
+  {% endif %}
   <h1>任务卡</h1>
   <dl>
     <dt>task_id</dt><dd>{{ view.card.task_id }}</dd>
@@ -15,6 +18,13 @@
     <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>
     <dt>模式</dt><dd>{{ view.card.mode }}</dd>
   </dl>
+  {% if view.conflicts or view.questions %}
+  <h1>待确认</h1>
+  <ul>
+    {% for conflict in view.conflicts %}<li>{{ conflict }}</li>{% endfor %}
+    {% for question in view.questions %}<li>{{ question }}</li>{% endfor %}
+  </ul>
+  {% endif %}
   <h1>调度轨迹</h1>
   {% if view.dispatch %}
   <ol>
@@ -47,6 +57,12 @@
   {% endif %}
   <h1>来源定位</h1>
   <p>{{ view.sources | length }} 条</p>
+  {% for source in view.sources %}
+  <details><summary>{{ source.source_id }} {{ source.sheet or "" }} {{ source.cell_range or "" }}
+    {% if source.line_start %}行 {{ source.line_start }}–{{ source.line_end }}{% endif %}</summary>
+    <pre>{{ source.text_excerpt or "" }}</pre>
+  </details>
+  {% endfor %}
   <h1>批准区</h1>
   <dl>
     <dt>plan_hash</dt><dd>{{ view.approval.plan_hash }}</dd>
@@ -55,12 +71,17 @@
     <dt>approvable</dt><dd>{{ view.approval.approvable }}</dd>
     <dt>disabled_reason</dt><dd>{{ view.approval.disabled_reason }}</dd>
   </dl>
+  <button type="button" id="approve" {% if not view.approval.approvable %}disabled{% endif %}
+    aria-describedby="approval-reason">批准当前计划</button>
+  <p id="approval-reason">{{ view.approval.disabled_reason or "" }}</p>
   <h1>结果</h1>
   <dl>
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
     <dt>revision</dt><dd>{{ view.result.revision }}</dd>
     <dt>核验</dt><dd>{{ view.result.verification }}</dd>
-    <dt>下载</dt><dd>{{ view.result.download_url }}</dd>
+    <dt>下载</dt><dd>{% if view.result.download_url %}
+      <a href="{{ view.result.download_url }}">下载变更清单（{{ view.card.mode }}）</a>
+      {% else %}无{% endif %}</dd>
   </dl>
 </body>
 </html>

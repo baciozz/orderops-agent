@@ -1,7 +1,7 @@
 """Checklist of B01–B32 and R01–R24.
 
-A skipped case is not a pass. R17–R21 have real tests. R22 and R23 were
-implemented with the budget guard. The rest stay skipped until their stage.
+All 56 cases have real tests. A fixture pass does not imply live understanding
+or a complete browser UI.
 """
 
 from dataclasses import dataclass
@@ -57,12 +57,12 @@ CASES: tuple[Case, ...] = (
     Case("R07", "2", "通知前崩溃，outbox 补投且业务只写一次", True),
     Case("R08", "2", "等待澄清时重启，问题和来源仍在", True),
     Case("R09", "2", "模型持续报错到步骤上限后失败", True),
-    Case("R10", "3", "文件中的越权指令只当数据"),
-    Case("R11", "3", "XLSX 超限、宏或危险公式被拒绝"),
-    Case("R12", "3", "下载文本的公式前缀按安全文本导出"),
-    Case("R13", "3", "跨任务 source 或路径遍历被拒绝"),
-    Case("R14", "3", "聊天与表格数量冲突时等待确认"),
-    Case("R15", "3", "界面和报告区分 FIXTURE 与 LIVE"),
+    Case("R10", "3", "文件中的越权指令只当数据", True),
+    Case("R11", "3", "XLSX 超限、宏或危险公式被拒绝", True),
+    Case("R12", "3", "下载文本的公式前缀按安全文本导出", True),
+    Case("R13", "3", "跨任务 source 或路径遍历被拒绝", True),
+    Case("R14", "3", "聊天与表格数量冲突时等待确认", True),
+    Case("R15", "3", "界面和报告区分 FIXTURE 与 LIVE", True),
     Case("R16", "2", "重启后预占总和与余额一致，流水可解释", True),
     Case("R17", "0", "注册表重复或 schema 缺失则启动失败；缺能力则 CAPABILITY_MISSING", True),
     Case("R18", "1C", "子 Agent 调用白名单外工具被拒绝并审计", True),
@@ -71,7 +71,7 @@ CASES: tuple[Case, ...] = (
     Case("R21", "1C", "改单轨迹含三个子 Agent，新建单跳过 doc-check", True),
     Case("R22", "0", "预算熔断在调用前拒绝，重启后账本仍在", True),
     Case("R23", "0", "单价或密钥缺失时 live 拒绝启动并保持 FIXTURE", True),
-    Case("R24", "3", "任务视图过期时 approvable 为 false 且 disabled_reason 为 EXPIRED"),
+    Case("R24", "3", "任务视图过期时 approvable 为 false 且 disabled_reason 为 EXPIRED", True),
 )
 
 PENDING: tuple[Case, ...] = tuple(case for case in CASES if not case.implemented)

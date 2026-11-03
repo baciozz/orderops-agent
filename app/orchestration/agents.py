@@ -1,6 +1,6 @@
 """The three P0 sub-agents. They propose. They do not approve or commit."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 from schemas.business import ExtractionResult
@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.llm import StructuredCallRequest
+from app.api.sources import task_spans
 from app.db.models import SalesOrder, Task
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, CallLimitExceeded, SchemaInvalid
+from app.orchestration.fixtures import compare_sheet_quantities
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import invoke_tool
 
@@ -32,6 +34,7 @@ class StepContext:
     intent: int
     fence: int
     model_calls: int = 0
+    source_ids: list[str] = field(default_factory=list)
 
     def call_tool(self, name: str, **kwargs: object) -> dict[str, object]:
         return invoke_tool(self.spec, name, **kwargs)
@@ -85,6 +88,13 @@ def run_parser(ctx: StepContext) -> AgentRun:
             intent=ctx.intent,
             mode=ctx.input_mode,
         )
+    if ctx.source_ids:
+        spans = [
+            span
+            for source_id in dict.fromkeys(ctx.source_ids)
+            for span in task_spans(ctx.session, ctx.task.id, source_id)
+        ]
+        extracted = compare_sheet_quantities(extracted, spans)
     _accept(ctx, extracted.model_dump(mode="json"), result.usage)
     tokens = result.usage.input_tokens + result.usage.output_tokens
     return AgentRun(payload=extracted.model_dump(mode="json"), extraction=extracted, tokens=tokens)

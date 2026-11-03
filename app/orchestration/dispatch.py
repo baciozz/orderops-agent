@@ -73,6 +73,7 @@ class _Work:
     changes: list[dict[str, object]] = field(default_factory=list)
     new_lines: list[dict[str, object]] = field(default_factory=list)
     model_calls: int = 0
+    source_ids: list[str] = field(default_factory=list)
 
 
 def dispatch_text(
@@ -87,6 +88,7 @@ def dispatch_text(
     before_step: Callable[[StepContext], None] | None = None,
     timeout_agent: str | None = None,
     durable_task_id: str | None = None,
+    source_ids: list[str] | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
     moment = _moment(now)
@@ -100,7 +102,7 @@ def dispatch_text(
     routed = router.plan("unstructured", input_mode=input_mode)
     if not routed.ok:
         return _fail(session_factory, task_id, routed.code, routed.message)
-    work = _Work()
+    work = _Work(source_ids=source_ids or [])
     extraction: ExtractionResult | None = None
     for planned in routed.steps:
         outcome = _run_planned(
@@ -120,11 +122,17 @@ def dispatch_text(
             return outcome
         if outcome.extraction is not None:
             extraction = outcome.extraction
-    if extraction is None or extraction.business_event is None:
+    if (
+        extraction is None
+        or extraction.business_event is None
+        or extraction.conflicts
+        or extraction.questions
+    ):
         questions = extraction.questions if extraction else []
         message = questions[0] if questions else "解析结果没有业务事件"
-        code = "NEEDS_CLARIFICATION" if questions else "SCHEMA_INVALID"
-        status = TaskStatus.NEEDS_CLARIFICATION if questions else TaskStatus.FAILED
+        needs_answer = bool(questions or (extraction and extraction.conflicts))
+        code = "NEEDS_CLARIFICATION" if needs_answer else "SCHEMA_INVALID"
+        status = TaskStatus.NEEDS_CLARIFICATION if needs_answer else TaskStatus.FAILED
         return _fail(session_factory, task_id, code, message, status=status)
     event = extraction.business_event
     work.changes = _change_rows(event)
@@ -347,6 +355,7 @@ def _one_attempt(
                 intent=task.intent_revision,
                 fence=attempt.fencing_token,
                 model_calls=work.model_calls,
+                source_ids=work.source_ids,
             )
             token = tool_executor.set(gateway.execute)
             run: AgentRun | None = None
@@ -383,6 +392,13 @@ def _one_attempt(
                 if code == "TIMEOUT":
                     attempt.fencing_token += 1
                 if code is None and run is not None:
+                    if run.extraction is not None and task.last_event_id:
+                        receipt = writer.get(InputPayload, task.last_event_id)
+                        receipt.body = {
+                            **receipt.body,
+                            "extraction": run.extraction.model_dump(mode="json"),
+                            "questions": run.extraction.questions,
+                        }
                     _add_step(
                         writer,
                         task=task,
@@ -680,7 +696,10 @@ def _fail(
                     session.get(InputPayload, task.last_event_id) if task.last_event_id else None
                 )
                 if payload:
-                    payload.body = {**payload.body, "questions": [message]}
+                    payload.body = {
+                        **payload.body,
+                        "questions": payload.body.get("questions") or [message],
+                    }
                 attempt = session.scalar(
                     select(JobAttempt)
                     .where(JobAttempt.task_id == task.id)

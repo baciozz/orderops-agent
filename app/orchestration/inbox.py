@@ -2,12 +2,30 @@
 
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
 from app.orchestration.state import transition, utcnow
+
+
+def latest_input(session, task):
+    """Plan/commit events may replace last_event_id without carrying input text."""
+    current = session.get(InputPayload, task.last_event_id) if task.last_event_id else None
+    if current is not None:
+        return current
+    return session.scalar(
+        select(InputPayload)
+        .join(Event, Event.id == InputPayload.event_id)
+        .where(InputPayload.task_id == task.id)
+        .order_by(
+            InputPayload.body["input_sequence"].as_integer().desc(),
+            Event.received_at.desc(),
+            Event.id.desc(),
+        )
+        .limit(1)
+    )
 
 
 def accept_input(
@@ -71,11 +89,19 @@ def accept_input(
         task.last_event_id = event.id
         transition(task, "QUEUED")
         task.error_code = None
+        sequence = (
+            session.scalar(
+                select(func.count())
+                .select_from(InputPayload)
+                .where(InputPayload.task_id == task.id)
+            )
+            + 1
+        )
         session.add(
             InputPayload(
                 event_id=event.id,
                 task_id=task.id,
-                body={"text": text, "source_ids": source_ids or []},
+                body={"text": text, "source_ids": source_ids or [], "input_sequence": sequence},
             )
         )
         session.add(

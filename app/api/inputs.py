@@ -4,10 +4,10 @@ from fastapi import APIRouter, Request
 from schemas.api import InputSubmitRequest, InputSubmitResponse, TaskCancelRequest
 from sqlalchemy import select
 
-from app.db.models import InputPayload, JobAttempt, Plan, Task
+from app.db.models import JobAttempt, Plan, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
-from app.orchestration.inbox import accept_input
+from app.orchestration.inbox import accept_input, latest_input
 from app.orchestration.state import transition
 
 router = APIRouter()
@@ -48,12 +48,13 @@ def get_task(task_id: str, request: Request):
         if task is None:
             raise AppError("任务不存在", code="NOT_FOUND", http_status=404)
         plans = list(session.scalars(select(Plan).where(Plan.task_id == task_id)))
-        payload = session.get(InputPayload, task.last_event_id) if task.last_event_id else None
-        questions = payload.body.get("questions", []) if payload else []
+        payload = latest_input(session, task)
+        questions = list(payload.body.get("questions", [])) if payload else []
         for plan in plans:
             questions += plan.normalized_changes.get("outcome", {}).get("questions", [])
         return {
             "questions": questions,
+            "extraction": payload.body.get("extraction") if payload else None,
             "task_id": task.id,
             "status": task.status,
             "intent_revision": task.intent_revision,
