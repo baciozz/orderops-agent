@@ -1,10 +1,11 @@
 """Qi confirmed that zero quantities must direct users to explicit cancellation."""
 
+import re
 from copy import deepcopy
 
 import pytest
 from app.db.models import OrderLine
-from app.domain.changes import SnapLine, business_error, evaluate_changes
+from app.domain.changes import ZERO_QUANTITY_MESSAGE, SnapLine, business_error, evaluate_changes
 from app.errors import AppError
 from app.services.kernel import plan_new_order
 from app.services.seed import load_seed
@@ -46,8 +47,11 @@ def test_zero_quantity_rejection_explains_explicit_cancel_flow(mode, lines):
     assert error.message == result.message
     assert error.details == {"issues": [result.message]}
     assert result.message is not None
-    assert "不表示取消" in result.message
-    assert "cancel_remaining" in result.message
+    assert result.message == ZERO_QUANTITY_MESSAGE
+    assert "不能把数量改成 0" in result.message
+    assert "不会取消这一行" in result.message
+    assert "取消这一行剩余未执行的部分" in result.message
+    assert re.search(r"[A-Za-z]", result.message) is None
 
 
 def test_new_order_zero_quantity_explains_explicit_cancel_flow(session_factory, database_url):
@@ -74,8 +78,11 @@ def test_new_order_zero_quantity_explains_explicit_cancel_flow(session_factory, 
     assert lines == input_before
     assert caught.value.code == "BUSINESS_CONFLICT"
     assert caught.value.http_status == 422
-    assert "不表示取消" in caught.value.message
-    assert "cancel_remaining" in caught.value.message
+    assert caught.value.message == ZERO_QUANTITY_MESSAGE
+    assert "不能把数量改成 0" in caught.value.message
+    assert "不会取消这一行" in caught.value.message
+    assert "取消这一行剩余未执行的部分" in caught.value.message
+    assert re.search(r"[A-Za-z]", caught.value.message) is None
 
 
 def test_negative_increment_keeps_existing_message_without_cancel_hint():

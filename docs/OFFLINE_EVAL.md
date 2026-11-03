@@ -106,7 +106,10 @@ payload，写明 `known_issue`，让报告保持失败；不要为通过评测�
 管道回归（pipeline regression）覆盖显式结构化答案下的别名、含糊措辞、多行变更和黄金链。
 管道回归不代表模型理解准确率，不得表述为模型 100% 准确率（如简历）。
 
-Qi 已确认：`set_total`、`replace_remaining`、`increment` 和新建订单行的数量 0 不表示取消该行，
-仍以 HTTP 422 / BUSINESS_CONFLICT 拒绝，并提示取消请走显式 `cancel_remaining`，仅取消未执行部分。
+Qi 已确认：设置总数量、替换剩余数量、增加数量和新建订单行时，数量为 0 均拒绝处理，
+以免误删已安排的生产或发货。用户提示为：「不能把数量改成 0：改成 0 不会取消这一行，
+为了避免误删已安排的生产或发货。如果要取消，请直接说明“取消这一行剩余未执行的部分”，
+系统会按取消流程处理；已发货或已开裁的部分不会被取消。」
+错误状态仍为 HTTP 422，错误码仍为 BUSINESS_CONFLICT；用户提示不含英文接口或模式名称。
 负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。三个零数量样本均带有
 `product_question` 确认注释。

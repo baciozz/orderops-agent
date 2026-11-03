@@ -10,7 +10,9 @@ from schemas.enums import FulfillmentMode, LineMode
 from app.errors import AppError
 
 ZERO_QUANTITY_MESSAGE = (
-    "数量 0 不表示取消该行；取消请走显式 cancel_remaining 流程，仅取消未执行部分"
+    "不能把数量改成 0：改成 0 不会取消这一行，为了避免误删已安排的生产或发货。"
+    "如果要取消，请直接说明“取消这一行剩余未执行的部分”，系统会按取消流程处理；"
+    "已发货或已开裁的部分不会被取消。"
 )
 
 

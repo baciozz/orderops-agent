@@ -1,10 +1,11 @@
 """Behavior at quantity, execution and downstream document boundaries."""
 
+import re
 from copy import deepcopy
 from typing import Any
 
 import pytest
-from app.domain.changes import SnapLine, business_error, evaluate_changes
+from app.domain.changes import ZERO_QUANTITY_MESSAGE, SnapLine, business_error, evaluate_changes
 from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.orders import derive_order_status, unexecuted_qty
 from app.errors import AppError
@@ -109,8 +110,11 @@ def test_zero_total_does_not_remove_an_unexecuted_line_or_release_its_reservatio
     assert lines == before
     assert (result.kind, result.code) == ("reject", "BUSINESS_CONFLICT")
     assert result.message is not None
-    assert "不表示取消" in result.message
-    assert "cancel_remaining" in result.message
+    assert result.message == ZERO_QUANTITY_MESSAGE
+    assert "不能把数量改成 0" in result.message
+    assert "不会取消这一行" in result.message
+    assert "取消这一行剩余未执行的部分" in result.message
+    assert re.search(r"[A-Za-z]", result.message) is None
     assert result.reservation_delta == {}
 
 
