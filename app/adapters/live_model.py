@@ -12,6 +12,9 @@ from app.adapters.budget import BudgetLedger
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult, resolve_mode
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
+from app.observability import enrich, get_logger, observe
+
+logger = get_logger(__name__)
 
 
 class LiveLLMClient:
@@ -41,105 +44,116 @@ class LiveLLMClient:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def structured_call(self, request: StructuredCallRequest) -> StructuredCallResult:
-        if request.max_output_tokens > self._settings.model_max_tokens:
-            raise AppError("单次输出 token 超过配置上限", code="TOKEN_LIMIT", http_status=422)
-        if request.max_output_tokens < 0 or request.input_tokens < 0:
-            raise AppError("token 数不能为负", code="TOKEN_LIMIT", http_status=422)
-        schema = request.response_schema or {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        }
-        # One token per UTF-8 byte is a conservative byte-token upper bound,
-        # including CJK (unlike characters/4 or bytes/2). Add 256 for framing.
-        prompt_bytes = len(
-            (request.system_prompt + request.user_prompt + json.dumps(schema)).encode("utf-8")
-        )
-        estimate = max(request.input_tokens, prompt_bytes + 256)
-        key = self._settings.llm_api_key_value()
-        body = {
-            "model": self._settings.llm_model,
-            "input": [
-                {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": request.user_prompt},
-            ],
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": re.sub(r"[^a-zA-Z0-9_-]", "_", request.response_schema_id)[:64],
-                    "schema": schema,
-                    "strict": True,
-                }
-            },
-            "max_output_tokens": request.max_output_tokens,
-            "reasoning": {"effort": self._settings.model_reasoning_effort},
-            "store": False,
-        }
-        reservation_id = self._ledger.reserve(
-            provider="openai",
+        with observe(
+            logger,
+            "model.call",
+            mode="LIVE",
             model=self._settings.llm_model,
-            input_tokens=estimate,
-            max_output_tokens=request.max_output_tokens,
             task_id=request.task_id,
-            agent_id=request.agent_id,
-            max_calls_per_task=self._settings.model_max_calls_per_task,
-            at=self._clock(),
-        )
-        # Unknown billing (including transport failures) keeps the pessimistic estimate.
-        input_tokens, output_tokens = estimate, request.max_output_tokens
-        try:
-            response = self._send(body, key)
-            try:
-                data = response.json()
-                usage = data["usage"]
-                reported_in, reported_out = usage["input_tokens"], usage["output_tokens"]
-                if any(type(n) is not int or n < 0 for n in (reported_in, reported_out)):
-                    raise ValueError
-            except (ValueError, KeyError, TypeError):
-                if response.is_success:
-                    raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账") from None
-                # HTTP rejection without billed usage still consumes a call slot.
-                input_tokens, output_tokens = 0, 0
-            else:
-                input_tokens, output_tokens = reported_in, reported_out
-            if not response.is_success:
-                self._raise_http_error(response, key)
-            if data.get("status") != "completed":
-                raise AppError("模型输出未完成", code="MODEL_INCOMPLETE", http_status=422)
-            try:
-                output_text = "".join(
-                    part["text"]
-                    for output in data["output"]
-                    if output.get("type") == "message"
-                    for part in output["content"]
-                    if part.get("type") == "output_text"
-                )
-                payload = json.loads(output_text)
-                if not isinstance(payload, dict):
-                    raise ValueError
-                # Upstream text is untrusted, even if it somehow echoes a credential.
-                if key and key in json.dumps(payload, ensure_ascii=False):
-                    raise ValueError
-            except (ValueError, KeyError, TypeError, AttributeError):
-                raise SchemaInvalid("模型输出不是有效的结构化对象") from None
-        finally:
-            # Exactly one settlement on every path; crashes leave the reservation intact.
-            row = self._ledger.settle(
-                reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
+            prompt_kind=request.response_schema_id,
+            input_tokens=0,
+            output_tokens=0,
+        ):
+            if request.max_output_tokens > self._settings.model_max_tokens:
+                raise AppError("单次输出 token 超过配置上限", code="TOKEN_LIMIT", http_status=422)
+            if request.max_output_tokens < 0 or request.input_tokens < 0:
+                raise AppError("token 数不能为负", code="TOKEN_LIMIT", http_status=422)
+            schema = request.response_schema or {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            }
+            # One token per UTF-8 byte is a conservative byte-token upper bound,
+            # including CJK (unlike characters/4 or bytes/2). Add 256 for framing.
+            prompt_bytes = len(
+                (request.system_prompt + request.user_prompt + json.dumps(schema)).encode("utf-8")
             )
-        return StructuredCallResult(
-            payload=payload,
-            usage=UsageReport(
-                mode="LIVE",
+            estimate = max(request.input_tokens, prompt_bytes + 256)
+            key = self._settings.llm_api_key_value()
+            body = {
+                "model": self._settings.llm_model,
+                "input": [
+                    {"role": "system", "content": request.system_prompt},
+                    {"role": "user", "content": request.user_prompt},
+                ],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": re.sub(r"[^a-zA-Z0-9_-]", "_", request.response_schema_id)[:64],
+                        "schema": schema,
+                        "strict": True,
+                    }
+                },
+                "max_output_tokens": request.max_output_tokens,
+                "reasoning": {"effort": self._settings.model_reasoning_effort},
+                "store": False,
+            }
+            reservation_id = self._ledger.reserve(
                 provider="openai",
                 model=self._settings.llm_model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=format(row.cost_usd, "f"),
-                price_version=row.price_version,
-            ),
-        )
+                input_tokens=estimate,
+                max_output_tokens=request.max_output_tokens,
+                task_id=request.task_id,
+                agent_id=request.agent_id,
+                max_calls_per_task=self._settings.model_max_calls_per_task,
+                at=self._clock(),
+            )
+            # Unknown billing (including transport failures) keeps the pessimistic estimate.
+            input_tokens, output_tokens = estimate, request.max_output_tokens
+            try:
+                response = self._send(body, key)
+                try:
+                    data = response.json()
+                    usage = data["usage"]
+                    reported_in, reported_out = usage["input_tokens"], usage["output_tokens"]
+                    if any(type(n) is not int or n < 0 for n in (reported_in, reported_out)):
+                        raise ValueError
+                except (ValueError, KeyError, TypeError):
+                    if response.is_success:
+                        raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账") from None
+                    # HTTP rejection without billed usage still consumes a call slot.
+                    input_tokens, output_tokens = 0, 0
+                else:
+                    input_tokens, output_tokens = reported_in, reported_out
+                if not response.is_success:
+                    self._raise_http_error(response, key)
+                if data.get("status") != "completed":
+                    raise AppError("模型输出未完成", code="MODEL_INCOMPLETE", http_status=422)
+                try:
+                    output_text = "".join(
+                        part["text"]
+                        for output in data["output"]
+                        if output.get("type") == "message"
+                        for part in output["content"]
+                        if part.get("type") == "output_text"
+                    )
+                    payload = json.loads(output_text)
+                    if not isinstance(payload, dict):
+                        raise ValueError
+                    # Upstream text is untrusted, even if it somehow echoes a credential.
+                    if key and key in json.dumps(payload, ensure_ascii=False):
+                        raise ValueError
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    raise SchemaInvalid("模型输出不是有效的结构化对象") from None
+            finally:
+                # Exactly one settlement on every path; crashes leave the reservation intact.
+                enrich(input_tokens=input_tokens, output_tokens=output_tokens)
+                row = self._ledger.settle(
+                    reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
+                )
+            return StructuredCallResult(
+                payload=payload,
+                usage=UsageReport(
+                    mode="LIVE",
+                    provider="openai",
+                    model=self._settings.llm_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=format(row.cost_usd, "f"),
+                    price_version=row.price_version,
+                ),
+            )
 
     def _send(self, body: dict[str, object], key: str | None) -> httpx.Response:
         # No automatic retry; caller must re-submit a new task.

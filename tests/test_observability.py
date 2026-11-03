@@ -1,0 +1,451 @@
+"""Offline observability contracts, including the real fixture HTTP golden chain."""
+
+import json
+import logging
+import socket
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from io import StringIO
+from uuid import uuid4
+
+import httpx
+import pytest
+from app.adapters.fixture_model import FixtureLLMClient
+from app.adapters.live_model import LiveLLMClient
+from app.config import Settings
+from app.db.models import OutboxDelivery
+from app.errors import AppError, BudgetExceeded, FixtureNotFound
+from app.main import create_app
+from app.observability import (
+    JSONFormatter,
+    RedactionFilter,
+    configure_logging,
+    get_logger,
+    log_event,
+    text_digest,
+)
+from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE, golden_fixtures
+from app.orchestration.inbox import accept_input
+from app.orchestration.outbox import consume, publish_pending
+from app.orchestration.worker import run_once
+from app.services.kernel import approve_plan, commit_plan
+from app.services.seed import load_seed
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from sqlalchemy import select
+from tests.test_stage4_live import ledger, request, response, settings
+
+NOW = datetime(2026, 11, 3, tzinfo=UTC)
+logger = get_logger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def offline_logging(monkeypatch):
+    def blocked(*args, **kwargs):
+        pytest.fail("Observability tests must not access the network")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+    configure_logging(Settings(_env_file=None))
+    yield
+    configure_logging(Settings(_env_file=None))
+
+
+@pytest.fixture()
+def web(session_factory, database_url, tmp_path):
+    load_seed(session_factory, database_url=database_url)
+    configured = Settings(
+        _env_file=None, database_url=database_url, llm_api_key="sk-fake-observability-app-key"
+    )
+    app = create_app(configured)
+    app.state.source_storage_dir = tmp_path
+    try:
+        with TestClient(app) as client:
+            yield client, session_factory, configured, app
+    finally:
+        app.state.engine.dispose()
+
+
+def events(caplog, name):
+    return [record for record in caplog.records if getattr(record, "event", None) == name]
+
+
+def captured(caplog):
+    return caplog.text + "\n".join(
+        JSONFormatter().format(record) for record in caplog.records if record.name.startswith("oos")
+    )
+
+
+def fixture_plan(web, text=TEXT_BLACK_TO_WHITE):
+    client, factory, configured, _ = web
+    receipt = client.post(
+        "/inputs", json={"thread_id": "test-thread", "client_event_key": "one", "text": text}
+    )
+    assert receipt.status_code == 202
+    outcome = run_once(
+        factory,
+        settings=configured,
+        clock=lambda: NOW,
+        fixtures={text: golden_fixtures()[TEXT_BLACK_TO_WHITE]},
+    )
+    assert outcome.status == "AWAITING_APPROVAL"
+    return receipt, outcome
+
+
+def committed(web):
+    client, _, _, _ = web
+    receipt, plan = fixture_plan(web)
+    approval = client.post(
+        f"/plans/{plan.plan_id}/approve",
+        json={"plan_hash": plan.plan_hash, "expected_intent_revision": plan.intent_revision},
+    )
+    assert approval.status_code == 200
+    result = client.post(
+        f"/plans/{plan.plan_id}/commit",
+        json={
+            "approval_id": approval.json()["approval_id"],
+            "plan_hash": plan.plan_hash,
+            "idempotency_key": "observability-commit",
+        },
+    )
+    assert result.status_code == 200
+    return receipt, plan, result
+
+
+def test_json_formatter_serializes_types(caplog):
+    identity = uuid4()
+    log_event(logger, "test.formatted", amount=Decimal("1.25"), at=NOW, identity=identity)
+    body = json.loads(JSONFormatter().format(events(caplog, "test.formatted")[0]))
+    assert body["level"] == "INFO" and body["event"] == "test.formatted"
+    assert body["message"] == "test.formatted" and body["logger"].startswith("oos.")
+    assert datetime.fromisoformat(body["ts"]).utcoffset() == timedelta(0)
+    assert body["amount"] == "1.25" and body["identity"] == str(identity)
+    assert body["at"] == str(NOW)
+
+
+def test_redacts_messages_nested_extras_and_secretstr(caplog):
+    key = "sk-test-FAKE1234567890abcdef"
+    configured_secret = "opaque-configured-credential"
+    configure_logging(Settings(_env_file=None, llm_api_key=configured_secret))
+    log_event(
+        logger,
+        "test.redacted",
+        api_key=key,
+        note=f"Authorization: Bearer xyz; key={key}; configured={configured_secret}",
+        nested={
+            "PASSWORD": "nested-password",
+            "items": [{"Cookie": "session-cookie"}],
+            "safe": SecretStr("never-expand-this"),
+        },
+    )
+    logger.info({"token": "message-token", "other": "Bearer message-bearer"})
+    logger.info("authorization %s", {"secret": "argument-secret"})
+    output = captured(caplog)
+    for secret in (
+        key,
+        "Bearer xyz",
+        "nested-password",
+        "session-cookie",
+        configured_secret,
+        "never-expand-this",
+        "message-token",
+        "message-bearer",
+        "argument-secret",
+    ):
+        assert secret not in output
+    assert "[REDACTED]" in output
+    assert isinstance(logging.getLogger("oos").filters[0], RedactionFilter)
+
+
+def test_fixture_golden_events_and_configured_key(web, caplog):
+    _, plan, result = committed(web)
+    assert publish_pending(web[1]) == 1
+    for event in (
+        "inbox.received",
+        "dispatch.start",
+        "dispatch.finish",
+        "model.call",
+        "approval.granted",
+        "commit.applied",
+        "outbox.delivered",
+    ):
+        records = events(caplog, event)
+        assert records, event
+        for record in records:
+            assert record.task_id == plan.task_id
+            assert record.mode == "FIXTURE"
+            assert record.duration_ms >= 0
+            assert record.outcome in {"started", "success"}
+    assert events(caplog, "dispatch.start")[0].attempt_id
+    call = events(caplog, "model.call")[0]
+    assert call.model == "fixture" and call.prompt_kind
+    assert call.input_tokens == call.output_tokens == 0
+    assert events(caplog, "approval.granted")[0].approval_id
+    commit = events(caplog, "commit.applied")[0]
+    assert commit.order_id == result.json()["order_id"] and commit.revision == 2
+    assert "sk-fake-observability-app-key" not in captured(caplog)
+    assert TEXT_BLACK_TO_WHITE not in captured(caplog)
+
+
+def test_customer_text_and_upload_content_stay_out_of_logs(web, caplog):
+    marker = "UNIQUE_CUSTOMER_MESSAGE_4d13c9"
+    _, plan = fixture_plan(web, text=marker)
+    upload = web[0].post(
+        "/sources", data={"task_id": plan.task_id}, files={"file": ("notes.txt", marker.encode())}
+    )
+    assert upload.status_code == 200
+    output = captured(caplog)
+    assert marker not in output
+    receipt = events(caplog, "inbox.received")[0]
+    assert receipt.text_len == len(marker)
+    assert receipt.text_sha256 == text_digest(marker)["text_sha256"]
+    assert len(receipt.text_sha256) == 12
+    assert events(caplog, "source.parsed")[0].text_sha256 == receipt.text_sha256
+    assert events(caplog, "upload.received")[0].file_size == len(marker.encode())
+
+
+def test_inbox_duplicate_logged(web, caplog):
+    receipt, _ = fixture_plan(web)
+    duplicate = web[0].post(
+        "/inputs",
+        json={"thread_id": "test-thread", "client_event_key": "one", "text": TEXT_BLACK_TO_WHITE},
+    )
+    assert duplicate.json()["event_id"] == receipt.json()["event_id"]
+    assert [record.duplicate for record in events(caplog, "inbox.received")] == [False, True]
+
+
+@pytest.mark.parametrize(
+    "path,status,code",
+    [
+        ("/health?hidden=do-not-log", 200, None),
+        ("/tasks/not-present/view", 404, "TASK_NOT_FOUND"),
+    ],
+)
+def test_http_ids_path_duration_and_handled_errors(web, caplog, path, status, code):
+    result = web[0].get(path, headers={"x-correlation-id": "corr-test"})
+    assert result.status_code == status
+    record = events(caplog, "http.request")[-1]
+    assert record.request_id == result.headers["x-request-id"]
+    assert record.correlation_id == result.headers["x-correlation-id"] == "corr-test"
+    assert record.path == path.split("?")[0] and record.method == "GET"
+    assert record.status_code == status and record.duration_ms >= 0
+    assert record.error_code == code
+    assert "do-not-log" not in captured(caplog)
+
+
+def test_http_unhandled_exception_logs_500(web, caplog):
+    @web[3].get("/test-unhandled")
+    def fail():
+        raise RuntimeError("PRIVATE_EXCEPTION_BODY")
+
+    with TestClient(web[3], raise_server_exceptions=False) as client:
+        assert client.get("/test-unhandled").status_code == 500
+    record = events(caplog, "http.request")[-1]
+    assert record.status_code == 500 and record.duration_ms >= 0 and record.request_id
+    assert record.error_code == "INTERNAL_ERROR"
+    assert "PRIVATE_EXCEPTION_BODY" not in captured(caplog)
+
+
+def test_approval_rejection_and_expired_commit(web, caplog):
+    _, plan = fixture_plan(web)
+    with pytest.raises(AppError, match="意图版本已变化"):
+        approve_plan(
+            web[1],
+            plan_id=plan.plan_id,
+            plan_hash=plan.plan_hash,
+            expected_intent_revision=plan.intent_revision + 1,
+            now=NOW,
+        )
+    rejected = events(caplog, "approval.rejected")[-1]
+    assert rejected.task_id == plan.task_id and rejected.error_code == "STALE_INTENT"
+    assert rejected.actor == "demo-user" and rejected.duration_ms >= 0
+    approval = approve_plan(
+        web[1],
+        plan_id=plan.plan_id,
+        plan_hash=plan.plan_hash,
+        expected_intent_revision=plan.intent_revision,
+        now=NOW,
+        ttl_seconds=1,
+    )
+    with pytest.raises(AppError) as error:
+        commit_plan(
+            web[1],
+            plan_id=plan.plan_id,
+            approval_id=approval.approval_id,
+            plan_hash=plan.plan_hash,
+            idempotency_key="expired",
+            now=NOW + timedelta(seconds=2),
+        )
+    assert error.value.code == "EXPIRED"
+    failure = events(caplog, "commit.failed")[-1]
+    assert failure.task_id == plan.task_id and failure.error_code == "EXPIRED"
+    assert failure.approval_id == approval.approval_id and failure.duration_ms >= 0
+
+
+def test_dispatch_and_fixture_model_failure(web, caplog):
+    accept_input(web[1], thread_id="bad", client_event_key="bad", text="PRIVATE_UNKNOWN_TEXT")
+    result = run_once(web[1], settings=web[2], clock=lambda: NOW)
+    assert result.error_code == "FIXTURE_NOT_FOUND"
+    for event in ("model.call", "dispatch.finish"):
+        record = events(caplog, event)[-1]
+        assert record.error_code == "FIXTURE_NOT_FOUND" and record.outcome == "failed"
+        assert record.task_id == result.task_id and record.duration_ms >= 0
+    assert "PRIVATE_UNKNOWN_TEXT" not in captured(caplog)
+
+
+def test_outbox_failure_and_duplicate(web, caplog):
+    _, plan, _ = committed(web)
+
+    def fail(*args):
+        raise AppError("PRIVATE_DELIVERY_BODY", code="DELIVERY_TEST")
+
+    assert publish_pending(web[1], send=fail) == 0
+    record = events(caplog, "outbox.failed")[-1]
+    assert record.task_id == plan.task_id and record.error_code == "DELIVERY_TEST"
+    assert "PRIVATE_DELIVERY_BODY" not in captured(caplog)
+    with web[1]() as session:
+        delivery = session.scalar(select(OutboxDelivery))
+        event_id, consumer = delivery.event_id, delivery.consumer
+    assert consume(web[1], event_id, consumer)
+    assert not consume(web[1], event_id, consumer)
+    duplicate = events(caplog, "outbox.duplicate_skipped")[-1]
+    assert duplicate.task_id == plan.task_id and duplicate.outcome == "duplicate"
+    assert publish_pending(web[1], clock=lambda: datetime.now(UTC) + timedelta(minutes=2)) == 1
+
+
+def test_outbox_post_send_failure_preserves_exception(web, caplog):
+    committed(web)
+
+    def crash(point):
+        raise RuntimeError("PRIVATE_FAULT")
+
+    with pytest.raises(RuntimeError, match="PRIVATE_FAULT"):
+        publish_pending(web[1], fault=crash)
+    assert events(caplog, "outbox.failed")[-1].error_code == "INTERNAL_ERROR"
+    with web[1]() as session:
+        assert session.scalar(select(OutboxDelivery)).delivery_state == "PENDING"
+    assert "PRIVATE_FAULT" not in captured(caplog)
+
+
+def test_budget_live_mock_transport_events(session_factory, caplog):
+    configured = settings()
+    book = ledger(session_factory, configured)
+    client = LiveLLMClient(
+        configured,
+        book,
+        transport=httpx.MockTransport(
+            lambda _: response(payload={"private": "PRIVATE_MODEL_OUTPUT"})
+        ),
+    )
+    task_id = accept_input(
+        session_factory, thread_id="budget", client_event_key="budget", text="budget-input"
+    )[1]
+    result = client.structured_call(request(task_id=task_id, user_prompt="PRIVATE_MODEL_PROMPT"))
+    reserve = events(caplog, "budget.reserve")[-1]
+    settle = events(caplog, "budget.settle")[-1]
+    for record in (reserve, settle):
+        assert record.task_id == task_id and record.mode == "LIVE"
+        assert record.cap_usd == "5.00" and Decimal(record.reserved_usd) > 0
+        assert record.input_tokens > 0 and record.output_tokens > 0
+        assert record.duration_ms >= 0 and record.outcome == "success"
+    assert settle.actual_usd == result.usage.cost_usd
+    assert (settle.input_tokens, settle.output_tokens) == (1000, 200)
+    assert events(caplog, "model.call")[-1].input_tokens == 1000
+    assert "PRIVATE_MODEL_PROMPT" not in captured(caplog)
+    assert "PRIVATE_MODEL_OUTPUT" not in captured(caplog)
+
+
+def test_budget_refused_before_transport(session_factory, caplog):
+    configured = settings(live_budget_usd=Decimal("0"))
+    client = LiveLLMClient(
+        configured,
+        ledger(session_factory, configured),
+        transport=httpx.MockTransport(lambda _: pytest.fail("must refuse before transport")),
+    )
+    with pytest.raises(BudgetExceeded):
+        client.structured_call(request(task_id="task-refused"))
+    refusal = events(caplog, "budget.refused")[-1]
+    assert refusal.error_code == "BUDGET_EXCEEDED" and refusal.cap_usd == "0"
+    assert Decimal(refusal.reserved_usd) > 0 and refusal.task_id == "task-refused"
+    assert events(caplog, "model.call")[-1].error_code == "BUDGET_EXCEEDED"
+
+
+def test_configure_idempotent_and_leaves_root_untouched():
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    namespace = logging.getLogger("oos")
+    before = list(namespace.handlers)
+    configured = Settings(_env_file=None)
+    configure_logging(configured)
+    configure_logging(configured)
+    assert namespace.handlers == before and namespace.propagate is True
+    assert root.handlers == handlers and root.level == level
+
+
+def test_env_warning_level_suppresses_info(monkeypatch, caplog):
+    monkeypatch.setenv("OOS_LOG_LEVEL", "WARNING")
+    configured = Settings(_env_file=None)
+    assert configured.log_level == "WARNING"
+    configure_logging(configured)
+    log_event(logger, "test.suppressed")
+    assert not events(caplog, "test.suppressed")
+
+
+def test_env_plaintext_format_is_redacted(monkeypatch):
+    monkeypatch.setenv("OOS_LOG_JSON", "false")
+    configure_logging(Settings(_env_file=None))
+    namespace = logging.getLogger("oos")
+    handler = namespace.handlers[0]
+    record = logging.makeLogRecord(
+        {
+            "name": "oos.test",
+            "levelname": "INFO",
+            "msg": "Bearer do-not-print",
+            "event": "test.text",
+        }
+    )
+    assert "do-not-print" not in handler.format(record)
+    assert handler.format(record).startswith("INFO oos.test")
+
+
+def test_broken_logging_handler_does_not_change_business(caplog):
+    class BrokenHandler(logging.Handler):
+        def emit(self, record):
+            raise RuntimeError("broken log sink")
+
+    broken = BrokenHandler()
+    namespace = logging.getLogger("oos")
+    namespace.addHandler(broken)
+    try:
+        log_event(logger, "test.sink_failed")
+        result = FixtureLLMClient({"test": {}}).structured_call(request(fixture_key="test"))
+        assert result.payload == {}
+        # Same exception and message from the business call despite the broken sink.
+        with pytest.raises(FixtureNotFound):
+            FixtureLLMClient().structured_call(request())
+    finally:
+        namespace.removeHandler(broken)
+
+
+def test_circular_and_unprintable_values_are_safe(caplog):
+    class Unprintable:
+        def __str__(self):
+            raise ValueError("bad str")
+
+    cycle = []
+    cycle.append(cycle)
+    log_event(logger, "test.safe_values", cycle=cycle, value=Unprintable())
+    result = json.loads(JSONFormatter().format(events(caplog, "test.safe_values")[-1]))
+    assert result["cycle"] == ["[CIRCULAR]"] and result["value"] == "[UNPRINTABLE]"
+
+
+def test_standard_message_formatting_still_works(caplog):
+    logger.info("count=%d note=%s", 3, "safe")
+    assert caplog.records[-1].getMessage() == "count=3 note=safe"
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(RedactionFilter())
+    handler.handle(logging.makeLogRecord({"msg": {"Password": "never-print"}}))
+    assert "never-print" not in stream.getvalue()

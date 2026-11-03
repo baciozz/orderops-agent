@@ -33,6 +33,7 @@ from app.db.models import (
 from app.db.session import begin_immediate
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, ProposalRejected, SchemaInvalid, ToolNotAllowed
+from app.observability import enrich, get_logger, log_event, observe, task_fields_from_factory
 from app.orchestration.agents import RUNNERS, AgentRun, StepContext
 from app.orchestration.defaults import build_default_registry
 from app.orchestration.fixtures import golden_fixtures
@@ -48,6 +49,8 @@ from app.services.kernel import (
     plan_change,
     plan_new_order,
 )
+
+logger = get_logger(__name__)
 
 
 class AgentTimeout(Exception):
@@ -112,104 +115,111 @@ def dispatch_text(
     if fixtures:
         library.update(fixtures)
     configured = settings or get_settings()
-    client: LLMClient = FixtureLLMClient(library)
-    if resolve_mode(configured).mode == "LIVE":
-        ledger = BudgetLedger(
-            session_factory,
-            cap_usd=configured.effective_live_budget_usd,
-            price_in_per_mtok=configured.price_in_per_mtok,
-            price_out_per_mtok=configured.price_out_per_mtok,
-        )
-        client = (client_factory or LiveLLMClient)(configured, ledger)
-    task_id = durable_task_id or _open_task(session_factory, moment)
-    routed = router.plan("unstructured", input_mode=input_mode)
-    if not routed.ok:
-        return _fail(session_factory, task_id, routed.code, routed.message)
-    work = _Work(source_ids=source_ids or [])
-    extraction: ExtractionResult | None = None
-    for planned in routed.steps:
-        outcome = _run_planned(
-            session_factory,
-            task_id=task_id,
-            planned=planned,
-            registry=registered,
-            text=text,
-            input_mode=input_mode,
-            client=client,
-            work=work,
-            moment=moment,
-            before_step=before_step,
-            timeout_agent=timeout_agent,
-        )
-        if isinstance(outcome, DispatchOutcome):
-            return outcome
-        if outcome.extraction is not None:
-            extraction = outcome.extraction
-    if (
-        extraction is None
-        or extraction.business_event is None
-        or extraction.conflicts
-        or extraction.questions
+    with observe(
+        logger, "dispatch.finish", mode=resolve_mode(configured).mode.value, task_id=durable_task_id
     ):
-        questions = extraction.questions if extraction else []
-        message = questions[0] if questions else "解析结果没有业务事件"
-        needs_answer = bool(questions or (extraction and extraction.conflicts))
-        code = "NEEDS_CLARIFICATION" if needs_answer else "SCHEMA_INVALID"
-        status = TaskStatus.NEEDS_CLARIFICATION if needs_answer else TaskStatus.FAILED
-        return _fail(session_factory, task_id, code, message, status=status)
-    event = extraction.business_event
-    work.changes = _change_rows(event)
-    work.new_lines = [
-        {
-            "sku_id": line.sku_id,
-            "qty": line.qty,
-            "style": line.style,
-            "color": line.color,
-            "size": line.size,
-        }
-        for line in event.new_lines
-    ]
-    follow = _route_event(router, session_factory, event)
-    if not follow.ok:
-        return _fail(session_factory, task_id, follow.code, follow.message)
-    saw_downstream = False
-    for planned in follow.steps:
-        if planned.capability == "check.downstream":
-            saw_downstream = True
-        outcome = _run_planned(
+        client: LLMClient = FixtureLLMClient(library)
+        if resolve_mode(configured).mode == "LIVE":
+            ledger = BudgetLedger(
+                session_factory,
+                cap_usd=configured.effective_live_budget_usd,
+                price_in_per_mtok=configured.price_in_per_mtok,
+                price_out_per_mtok=configured.price_out_per_mtok,
+            )
+            client = (client_factory or LiveLLMClient)(configured, ledger)
+        task_id = durable_task_id or _open_task(session_factory, moment)
+        metadata = task_fields_from_factory(session_factory, task_id)
+        metadata.pop("mode", None)
+        enrich(**metadata)
+        log_event(logger, "dispatch.start", outcome="started", duration_ms=0.0)
+        routed = router.plan("unstructured", input_mode=input_mode)
+        if not routed.ok:
+            return _fail(session_factory, task_id, routed.code, routed.message)
+        work = _Work(source_ids=source_ids or [])
+        extraction: ExtractionResult | None = None
+        for planned in routed.steps:
+            outcome = _run_planned(
+                session_factory,
+                task_id=task_id,
+                planned=planned,
+                registry=registered,
+                text=text,
+                input_mode=input_mode,
+                client=client,
+                work=work,
+                moment=moment,
+                before_step=before_step,
+                timeout_agent=timeout_agent,
+            )
+            if isinstance(outcome, DispatchOutcome):
+                return outcome
+            if outcome.extraction is not None:
+                extraction = outcome.extraction
+        if (
+            extraction is None
+            or extraction.business_event is None
+            or extraction.conflicts
+            or extraction.questions
+        ):
+            questions = extraction.questions if extraction else []
+            message = questions[0] if questions else "解析结果没有业务事件"
+            needs_answer = bool(questions or (extraction and extraction.conflicts))
+            code = "NEEDS_CLARIFICATION" if needs_answer else "SCHEMA_INVALID"
+            status = TaskStatus.NEEDS_CLARIFICATION if needs_answer else TaskStatus.FAILED
+            return _fail(session_factory, task_id, code, message, status=status)
+        event = extraction.business_event
+        work.changes = _change_rows(event)
+        work.new_lines = [
+            {
+                "sku_id": line.sku_id,
+                "qty": line.qty,
+                "style": line.style,
+                "color": line.color,
+                "size": line.size,
+            }
+            for line in event.new_lines
+        ]
+        follow = _route_event(router, session_factory, event)
+        if not follow.ok:
+            return _fail(session_factory, task_id, follow.code, follow.message)
+        saw_downstream = False
+        for planned in follow.steps:
+            if planned.capability == "check.downstream":
+                saw_downstream = True
+            outcome = _run_planned(
+                session_factory,
+                task_id=task_id,
+                planned=planned,
+                registry=registered,
+                text=text,
+                input_mode=input_mode,
+                client=client,
+                work=work,
+                moment=moment,
+                before_step=before_step,
+                timeout_agent=timeout_agent,
+            )
+            if isinstance(outcome, DispatchOutcome):
+                return outcome
+        if event.event_type == BusinessEventType.NEW_ORDER and not saw_downstream:
+            spec = registered.find_by_capability("check.downstream")
+            _record_skip(
+                session_factory,
+                task_id,
+                spec=spec,
+                capability="check.downstream",
+                reason="无下游单据",
+                now=moment,
+            )
+        return _precheck(
             session_factory,
             task_id=task_id,
-            planned=planned,
-            registry=registered,
-            text=text,
-            input_mode=input_mode,
-            client=client,
-            work=work,
-            moment=moment,
-            before_step=before_step,
-            timeout_agent=timeout_agent,
-        )
-        if isinstance(outcome, DispatchOutcome):
-            return outcome
-    if event.event_type == BusinessEventType.NEW_ORDER and not saw_downstream:
-        spec = registered.find_by_capability("check.downstream")
-        _record_skip(
-            session_factory,
-            task_id,
-            spec=spec,
-            capability="check.downstream",
-            reason="无下游单据",
+            event=event,
+            extraction=extraction,
+            client_event_key=client_event_key,
+            customer_name=extraction.customer_candidate,
             now=moment,
         )
-    return _precheck(
-        session_factory,
-        task_id=task_id,
-        event=event,
-        extraction=extraction,
-        client_event_key=client_event_key,
-        customer_name=extraction.customer_candidate,
-        now=moment,
-    )
 
 
 def receive_late_proposal(
@@ -569,6 +579,7 @@ def _precheck(
     issues = list(outcome.issues)
     if outcome.questions:
         issues.extend(question for question in outcome.questions if question not in issues)
+    enrich(status=outcome.status, outcome="success")
     return _snapshot(
         session_factory,
         task_id,
@@ -718,6 +729,7 @@ def _fail(
     *,
     status: str = TaskStatus.FAILED,
 ) -> DispatchOutcome:
+    enrich(outcome="failed", status=status, error_code=code)
     session = session_factory()
     try:
         with begin_immediate(session):
@@ -794,6 +806,7 @@ def _snapshot(
         task = session.get(Task, task_id)
         if task is None:
             raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
+        enrich(status=status, outcome="failed" if error_code else "success", error_code=error_code)
         return DispatchOutcome(
             task_id=task.id,
             chain_id=task.chain_id,
@@ -819,6 +832,7 @@ def _view(
     error_code: str | None,
     issues: list[str],
 ) -> DispatchOutcome:
+    enrich(status=status, outcome="failed" if error_code else "success", error_code=error_code)
     return DispatchOutcome(
         task_id=task.id,
         chain_id=task.chain_id,
@@ -862,6 +876,7 @@ def _lock(session: Session, task_id: str) -> tuple[Task, JobAttempt]:
     )
     if task is None or attempt is None:
         raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
+    enrich(attempt_id=attempt.id)
     return task, attempt
 
 

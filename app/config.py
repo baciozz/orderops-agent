@@ -17,6 +17,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    log_json: bool = True
+    log_level: str = "INFO"
+
     live_enabled: bool = False
     live_budget_usd: Decimal = Decimal("5.00")
     price_in_per_mtok: Decimal | None = None

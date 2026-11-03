@@ -4,6 +4,7 @@ The process binds to loopback when started via Make. Stage 0 does not open a
 database connection and does not call a model during import or health checks.
 """
 
+from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -24,11 +25,15 @@ from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_session_factory
 from app.errors import AppError
+from app.observability import configure_logging, exception_code, get_logger, log_context, log_event
 from app.orchestration.defaults import build_default_registry
+
+logger = get_logger(__name__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings)
     registry = build_default_registry()
     resolution = resolve_mode(settings)
     application = FastAPI(
@@ -50,17 +55,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         correlation_id = request.headers.get("x-correlation-id") or request_id
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
-        response = await call_next(request)
-        response.headers["x-request-id"] = request_id
-        response.headers["x-correlation-id"] = correlation_id
-        return response
+        started = perf_counter()
+        status_code = 500
+        with log_context(
+            request_id=request_id, correlation_id=correlation_id, mode=resolution.mode.value
+        ):
+            try:
+                response = await call_next(request)
+                status_code = response.status_code
+                response.headers["x-request-id"] = request_id
+                response.headers["x-correlation-id"] = correlation_id
+                return response
+            except Exception as exc:
+                request.state.error_code = exception_code(exc)
+                raise
+            finally:
+                log_event(
+                    logger,
+                    "http.request",
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=status_code,
+                    outcome="success" if status_code < 400 else "failed",
+                    error_code=getattr(request.state, "error_code", None),
+                    duration_ms=round((perf_counter() - started) * 1000, 3),
+                )
 
     @application.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
+        request.state.error_code = exc.code
         return json_error(exc, request)
 
     @application.exception_handler(RequestValidationError)
     async def handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        request.state.error_code = "VALIDATION_ERROR"
         request_id = getattr(request.state, "request_id", "unknown")
         correlation_id = getattr(request.state, "correlation_id", request_id)
         return JSONResponse(
