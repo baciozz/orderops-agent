@@ -4,12 +4,14 @@ import hashlib
 import json
 import logging
 import re
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from functools import wraps
+from inspect import iscoroutinefunction, signature
 from time import perf_counter
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from pydantic import SecretStr
 
@@ -20,9 +22,10 @@ _REDACTED = "[REDACTED]"
 _SENSITIVE = re.compile(
     r"(?:^|[_-])(api_key|apikey|authorization|token|secret|password|cookie)$", re.I
 )
-_CREDENTIAL = re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]+|Bearer\s+[^\s,;\"'<>]+", re.I)
+_CREDENTIAL = re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}|(?i:Bearer)\s+[^\s,;\"'<>]+")
 _STANDARD = frozenset(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 _context: ContextVar[dict[str, Any] | None] = ContextVar("log_context", default=None)
+_F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _string(value: object) -> str:
@@ -172,8 +175,10 @@ def enrich(**fields: Any) -> None:
 
 
 @contextmanager
-def log_context(**fields: Any) -> Iterator[dict[str, Any]]:
+def log_context(*, exclude: tuple[str, ...] = (), **fields: Any) -> Iterator[dict[str, Any]]:
     context = {**(_context.get() or {}), **fields}
+    for key in exclude:
+        context.pop(key, None)
     token = _context.set(context)
     try:
         yield context
@@ -188,10 +193,11 @@ def observe(
     *,
     failed_event: str | None = None,
     start_event: str | None = None,
+    exclude: tuple[str, ...] = (),
     **fields: Any,
 ) -> Iterator[dict[str, Any]]:
     started = perf_counter()
-    with log_context(**fields) as context:
+    with log_context(exclude=exclude, **fields) as context:
         if start_event:
             log_event(logger, start_event, outcome="started", duration_ms=0.0)
         try:
@@ -214,12 +220,66 @@ def observe(
             )
 
 
+def observed(
+    logger: logging.Logger,
+    event: str,
+    *,
+    fields: Callable[..., Mapping[str, Any]] | None = None,
+    failed_event: str | None = None,
+    start_event: str | None = None,
+    exclude: tuple[str, ...] = (),
+) -> Callable[[_F], _F]:
+    """Observe sync/async calls; field callbacks receive bound arguments with defaults."""
+
+    def decorate(function: _F) -> _F:
+        call_signature = signature(function)
+
+        def scope(
+            args: tuple[Any, ...], kwargs: dict[str, Any]
+        ) -> AbstractContextManager[dict[str, Any]]:
+            metadata: Mapping[str, Any] = {}
+            if fields is not None:
+                try:
+                    bound = call_signature.bind(*args, **kwargs)
+                    bound.apply_defaults()
+                    metadata = fields(**bound.arguments)
+                except Exception:
+                    # Metadata collection must not prevent the business call.
+                    pass
+            return observe(
+                logger,
+                event,
+                failed_event=failed_event,
+                start_event=start_event,
+                exclude=exclude,
+                **metadata,
+            )
+
+        if iscoroutinefunction(function):
+
+            @wraps(function)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                with scope(args, kwargs):
+                    return await function(*args, **kwargs)
+
+            return cast(_F, async_wrapper)
+
+        @wraps(function)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with scope(args, kwargs):
+                return function(*args, **kwargs)
+
+        return cast(_F, wrapper)
+
+    return decorate
+
+
 def task_log_fields(session: Any, task_id: str) -> dict[str, Any]:
     """Best-effort metadata reads in the caller's existing session, without autoflush."""
     try:
         from sqlalchemy import select
 
-        from app.db.models import JobAttempt, ModelUsage, Task
+        from app.db.models import JobAttempt, Task
 
         with session.no_autoflush:
             attempt_id = session.scalar(
@@ -228,14 +288,10 @@ def task_log_fields(session: Any, task_id: str) -> dict[str, Any]:
                 .order_by(JobAttempt.attempt_no.desc())
                 .limit(1)
             )
-            live_usage = session.scalar(
-                select(ModelUsage.id).where(ModelUsage.task_id == task_id).limit(1)
-            )
             task = session.get(Task, task_id)
             return {
                 "task_id": task_id,
                 "attempt_id": attempt_id,
-                "mode": "LIVE" if live_usage else "FIXTURE",
                 "order_id": task.order_id if task else None,
             }
     except Exception:

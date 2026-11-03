@@ -33,7 +33,7 @@ from app.db.models import (
 from app.db.session import begin_immediate
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, ProposalRejected, SchemaInvalid, ToolNotAllowed
-from app.observability import enrich, get_logger, log_event, observe, task_fields_from_factory
+from app.observability import enrich, get_logger, log_event, observed, task_fields_from_factory
 from app.orchestration.agents import RUNNERS, AgentRun, StepContext
 from app.orchestration.defaults import build_default_registry
 from app.orchestration.fixtures import golden_fixtures
@@ -91,6 +91,11 @@ class _Work:
     source_ids: list[str] = field(default_factory=list)
 
 
+@observed(
+    logger,
+    "dispatch.finish",
+    fields=lambda durable_task_id, **_: {"task_id": durable_task_id},
+)
 def dispatch_text(
     session_factory: sessionmaker[Session],
     *,
@@ -115,111 +120,107 @@ def dispatch_text(
     if fixtures:
         library.update(fixtures)
     configured = settings or get_settings()
-    with observe(
-        logger, "dispatch.finish", mode=resolve_mode(configured).mode.value, task_id=durable_task_id
-    ):
-        client: LLMClient = FixtureLLMClient(library)
-        if resolve_mode(configured).mode == "LIVE":
-            ledger = BudgetLedger(
-                session_factory,
-                cap_usd=configured.effective_live_budget_usd,
-                price_in_per_mtok=configured.price_in_per_mtok,
-                price_out_per_mtok=configured.price_out_per_mtok,
-            )
-            client = (client_factory or LiveLLMClient)(configured, ledger)
-        task_id = durable_task_id or _open_task(session_factory, moment)
-        metadata = task_fields_from_factory(session_factory, task_id)
-        metadata.pop("mode", None)
-        enrich(**metadata)
-        log_event(logger, "dispatch.start", outcome="started", duration_ms=0.0)
-        routed = router.plan("unstructured", input_mode=input_mode)
-        if not routed.ok:
-            return _fail(session_factory, task_id, routed.code, routed.message)
-        work = _Work(source_ids=source_ids or [])
-        extraction: ExtractionResult | None = None
-        for planned in routed.steps:
-            outcome = _run_planned(
-                session_factory,
-                task_id=task_id,
-                planned=planned,
-                registry=registered,
-                text=text,
-                input_mode=input_mode,
-                client=client,
-                work=work,
-                moment=moment,
-                before_step=before_step,
-                timeout_agent=timeout_agent,
-            )
-            if isinstance(outcome, DispatchOutcome):
-                return outcome
-            if outcome.extraction is not None:
-                extraction = outcome.extraction
-        if (
-            extraction is None
-            or extraction.business_event is None
-            or extraction.conflicts
-            or extraction.questions
-        ):
-            questions = extraction.questions if extraction else []
-            message = questions[0] if questions else "解析结果没有业务事件"
-            needs_answer = bool(questions or (extraction and extraction.conflicts))
-            code = "NEEDS_CLARIFICATION" if needs_answer else "SCHEMA_INVALID"
-            status = TaskStatus.NEEDS_CLARIFICATION if needs_answer else TaskStatus.FAILED
-            return _fail(session_factory, task_id, code, message, status=status)
-        event = extraction.business_event
-        work.changes = _change_rows(event)
-        work.new_lines = [
-            {
-                "sku_id": line.sku_id,
-                "qty": line.qty,
-                "style": line.style,
-                "color": line.color,
-                "size": line.size,
-            }
-            for line in event.new_lines
-        ]
-        follow = _route_event(router, session_factory, event)
-        if not follow.ok:
-            return _fail(session_factory, task_id, follow.code, follow.message)
-        saw_downstream = False
-        for planned in follow.steps:
-            if planned.capability == "check.downstream":
-                saw_downstream = True
-            outcome = _run_planned(
-                session_factory,
-                task_id=task_id,
-                planned=planned,
-                registry=registered,
-                text=text,
-                input_mode=input_mode,
-                client=client,
-                work=work,
-                moment=moment,
-                before_step=before_step,
-                timeout_agent=timeout_agent,
-            )
-            if isinstance(outcome, DispatchOutcome):
-                return outcome
-        if event.event_type == BusinessEventType.NEW_ORDER and not saw_downstream:
-            spec = registered.find_by_capability("check.downstream")
-            _record_skip(
-                session_factory,
-                task_id,
-                spec=spec,
-                capability="check.downstream",
-                reason="无下游单据",
-                now=moment,
-            )
-        return _precheck(
+    enrich(mode=resolve_mode(configured).mode.value)
+    client: LLMClient = FixtureLLMClient(library)
+    if resolve_mode(configured).mode == "LIVE":
+        ledger = BudgetLedger(
+            session_factory,
+            cap_usd=configured.effective_live_budget_usd,
+            price_in_per_mtok=configured.price_in_per_mtok,
+            price_out_per_mtok=configured.price_out_per_mtok,
+        )
+        client = (client_factory or LiveLLMClient)(configured, ledger)
+    task_id = durable_task_id or _open_task(session_factory, moment)
+    enrich(**task_fields_from_factory(session_factory, task_id))
+    log_event(logger, "dispatch.start", outcome="started", duration_ms=0.0)
+    routed = router.plan("unstructured", input_mode=input_mode)
+    if not routed.ok:
+        return _fail(session_factory, task_id, routed.code, routed.message)
+    work = _Work(source_ids=source_ids or [])
+    extraction: ExtractionResult | None = None
+    for planned in routed.steps:
+        outcome = _run_planned(
             session_factory,
             task_id=task_id,
-            event=event,
-            extraction=extraction,
-            client_event_key=client_event_key,
-            customer_name=extraction.customer_candidate,
+            planned=planned,
+            registry=registered,
+            text=text,
+            input_mode=input_mode,
+            client=client,
+            work=work,
+            moment=moment,
+            before_step=before_step,
+            timeout_agent=timeout_agent,
+        )
+        if isinstance(outcome, DispatchOutcome):
+            return outcome
+        if outcome.extraction is not None:
+            extraction = outcome.extraction
+    if (
+        extraction is None
+        or extraction.business_event is None
+        or extraction.conflicts
+        or extraction.questions
+    ):
+        questions = extraction.questions if extraction else []
+        message = questions[0] if questions else "解析结果没有业务事件"
+        needs_answer = bool(questions or (extraction and extraction.conflicts))
+        code = "NEEDS_CLARIFICATION" if needs_answer else "SCHEMA_INVALID"
+        status = TaskStatus.NEEDS_CLARIFICATION if needs_answer else TaskStatus.FAILED
+        return _fail(session_factory, task_id, code, message, status=status)
+    event = extraction.business_event
+    work.changes = _change_rows(event)
+    work.new_lines = [
+        {
+            "sku_id": line.sku_id,
+            "qty": line.qty,
+            "style": line.style,
+            "color": line.color,
+            "size": line.size,
+        }
+        for line in event.new_lines
+    ]
+    follow = _route_event(router, session_factory, event)
+    if not follow.ok:
+        return _fail(session_factory, task_id, follow.code, follow.message)
+    saw_downstream = False
+    for planned in follow.steps:
+        if planned.capability == "check.downstream":
+            saw_downstream = True
+        outcome = _run_planned(
+            session_factory,
+            task_id=task_id,
+            planned=planned,
+            registry=registered,
+            text=text,
+            input_mode=input_mode,
+            client=client,
+            work=work,
+            moment=moment,
+            before_step=before_step,
+            timeout_agent=timeout_agent,
+        )
+        if isinstance(outcome, DispatchOutcome):
+            return outcome
+    if event.event_type == BusinessEventType.NEW_ORDER and not saw_downstream:
+        spec = registered.find_by_capability("check.downstream")
+        _record_skip(
+            session_factory,
+            task_id,
+            spec=spec,
+            capability="check.downstream",
+            reason="无下游单据",
             now=moment,
         )
+    return _precheck(
+        session_factory,
+        task_id=task_id,
+        event=event,
+        extraction=extraction,
+        client_event_key=client_event_key,
+        customer_name=extraction.customer_candidate,
+        now=moment,
+    )
 
 
 def receive_late_proposal(

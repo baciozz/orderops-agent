@@ -53,7 +53,13 @@ from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
 from app.domain.orders import derive_order_status
 from app.errors import AppError
-from app.observability import enrich, get_logger, observe, task_fields_from_factory, task_log_fields
+from app.observability import (
+    enrich,
+    get_logger,
+    observed,
+    task_fields_from_factory,
+    task_log_fields,
+)
 from app.orchestration.state import enforce, transition
 
 logger = get_logger(__name__)
@@ -232,6 +238,13 @@ def plan_new_order(
     return outcome
 
 
+@observed(
+    logger,
+    "approval.granted",
+    failed_event="approval.rejected",
+    exclude=("mode",),
+    fields=lambda plan_id, actor_id, **_: {"plan_id": plan_id, "actor": actor_id},
+)
 def approve_plan(
     session_factory: sessionmaker[Session],
     *,
@@ -243,71 +256,75 @@ def approve_plan(
     now: datetime | None = None,
     ttl_seconds: int = 600,
 ) -> ApprovalOutcome:
-    with observe(
-        logger,
-        "approval.granted",
-        failed_event="approval.rejected",
-        plan_id=plan_id,
-        actor=actor_id,
-    ):
-        moment = _now(now)
-        session = session_factory()
-        try:
-            with begin_immediate(session):
-                plan = session.get(Plan, plan_id)
-                if plan is not None:
-                    enrich(**task_log_fields(session, plan.task_id))
-                    enrich(
-                        task_id=plan.task_id,
-                        base_revision=plan.base_order_revision,
-                        intent_revision=plan.intent_revision,
-                    )
-                if plan is None or plan.status not in {PlanStatus.VALIDATED, PlanStatus.APPROVED}:
-                    raise AppError("计划不可批准", code="NOT_APPROVED", http_status=409)
-                if plan.plan_hash != plan_hash:
-                    raise AppError(
-                        "plan_hash 与服务器计划不一致",
-                        code="HASH_MISMATCH",
-                        http_status=409,
-                    )
-                if plan.intent_revision != expected_intent_revision:
-                    raise AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
-                duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
-                if duplicate_of and not acknowledge_duplicate:
-                    raise AppError(
-                        f"疑似重复订单 {duplicate_of}，需要批准人逐项确认",
-                        code="DUPLICATE_UNCONFIRMED",
-                        http_status=409,
-                        details={"order_id": duplicate_of},
-                    )
-                active = session.scalars(
-                    select(Approval).where(
-                        Approval.plan_id == plan.id,
-                        Approval.status == ApprovalStatus.ACTIVE,
-                    )
-                ).first()
-                if active is not None and active.plan_hash == plan_hash:
-                    enrich(approval_id=active.id)
-                    return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
-                approval = Approval(
-                    id=_id("AP"),
-                    plan_id=plan.id,
-                    plan_hash=plan.plan_hash,
-                    actor_id=actor_id,
+    moment = _now(now)
+    session = session_factory()
+    try:
+        with begin_immediate(session):
+            plan = session.get(Plan, plan_id)
+            if plan is not None:
+                enrich(**task_log_fields(session, plan.task_id))
+                enrich(
+                    task_id=plan.task_id,
+                    base_revision=plan.base_order_revision,
                     intent_revision=plan.intent_revision,
-                    dependencies_hash=str((plan.normalized_changes or {}).get("dependencies_hash")),
-                    expires_at=moment + timedelta(seconds=ttl_seconds),
-                    status=ApprovalStatus.ACTIVE,
-                    consumed_operation_id=None,
                 )
-                plan.status = PlanStatus.APPROVED
-                session.add(approval)
-                enrich(approval_id=approval.id)
-                return ApprovalOutcome(approval.id, plan.id, approval.expires_at)
-        finally:
-            session.close()
+            if plan is None or plan.status not in {PlanStatus.VALIDATED, PlanStatus.APPROVED}:
+                raise AppError("计划不可批准", code="NOT_APPROVED", http_status=409)
+            if plan.plan_hash != plan_hash:
+                raise AppError(
+                    "plan_hash 与服务器计划不一致",
+                    code="HASH_MISMATCH",
+                    http_status=409,
+                )
+            if plan.intent_revision != expected_intent_revision:
+                raise AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
+            duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
+            if duplicate_of and not acknowledge_duplicate:
+                raise AppError(
+                    f"疑似重复订单 {duplicate_of}，需要批准人逐项确认",
+                    code="DUPLICATE_UNCONFIRMED",
+                    http_status=409,
+                    details={"order_id": duplicate_of},
+                )
+            active = session.scalars(
+                select(Approval).where(
+                    Approval.plan_id == plan.id,
+                    Approval.status == ApprovalStatus.ACTIVE,
+                )
+            ).first()
+            if active is not None and active.plan_hash == plan_hash:
+                enrich(approval_id=active.id)
+                return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
+            approval = Approval(
+                id=_id("AP"),
+                plan_id=plan.id,
+                plan_hash=plan.plan_hash,
+                actor_id=actor_id,
+                intent_revision=plan.intent_revision,
+                dependencies_hash=str((plan.normalized_changes or {}).get("dependencies_hash")),
+                expires_at=moment + timedelta(seconds=ttl_seconds),
+                status=ApprovalStatus.ACTIVE,
+                consumed_operation_id=None,
+            )
+            plan.status = PlanStatus.APPROVED
+            session.add(approval)
+            enrich(approval_id=approval.id)
+            return ApprovalOutcome(approval.id, plan.id, approval.expires_at)
+    finally:
+        session.close()
 
 
+@observed(
+    logger,
+    "commit.applied",
+    failed_event="commit.failed",
+    exclude=("mode",),
+    fields=lambda plan_id, approval_id, actor_id, **_: {
+        "plan_id": plan_id,
+        "approval_id": approval_id,
+        "actor": actor_id,
+    },
+)
 def commit_plan(
     session_factory: sessionmaker[Session],
     *,
@@ -319,50 +336,42 @@ def commit_plan(
     now: datetime | None = None,
     acknowledge: bool = True,
 ) -> CommitOutcome:
-    with observe(
-        logger,
-        "commit.applied",
-        failed_event="commit.failed",
-        plan_id=plan_id,
-        approval_id=approval_id,
-        actor=actor_id,
-    ):
-        moment = _now(now)
-        request_hash = canonical_hash(
-            {"plan_id": plan_id, "approval_id": approval_id, "plan_hash": plan_hash}
-        )
-        session = session_factory()
-        outcome: CommitOutcome | None = None
-        error: AppError | None = None
-        try:
-            with begin_immediate(session):
-                outcome, error = _commit_locked(
-                    session,
-                    plan_id=plan_id,
-                    approval_id=approval_id,
-                    plan_hash=plan_hash,
-                    idempotency_key=idempotency_key,
-                    request_hash=request_hash,
-                    actor_id=actor_id,
-                    now=moment,
-                )
-        finally:
-            session.close()
-        if error is not None:
-            raise error
-        assert outcome is not None
-        enrich(**task_fields_from_factory(session_factory, outcome.task_id))
-        enrich(
-            task_id=outcome.task_id,
-            order_id=outcome.order_id,
-            revision=outcome.revision,
-            replayed=outcome.replayed,
-        )
-        if not outcome.replayed:
-            _post_verify(session_factory, outcome.operation_id)
-        if acknowledge:
-            acknowledge_commit(session_factory, outcome.task_id)
-        return outcome
+    moment = _now(now)
+    request_hash = canonical_hash(
+        {"plan_id": plan_id, "approval_id": approval_id, "plan_hash": plan_hash}
+    )
+    session = session_factory()
+    outcome: CommitOutcome | None = None
+    error: AppError | None = None
+    try:
+        with begin_immediate(session):
+            outcome, error = _commit_locked(
+                session,
+                plan_id=plan_id,
+                approval_id=approval_id,
+                plan_hash=plan_hash,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                actor_id=actor_id,
+                now=moment,
+            )
+    finally:
+        session.close()
+    if error is not None:
+        raise error
+    assert outcome is not None
+    enrich(**task_fields_from_factory(session_factory, outcome.task_id))
+    enrich(
+        task_id=outcome.task_id,
+        order_id=outcome.order_id,
+        revision=outcome.revision,
+        replayed=outcome.replayed,
+    )
+    if not outcome.replayed:
+        _post_verify(session_factory, outcome.operation_id)
+    if acknowledge:
+        acknowledge_commit(session_factory, outcome.task_id)
+    return outcome
 
 
 def acknowledge_commit(session_factory: sessionmaker[Session], task_id: str) -> None:

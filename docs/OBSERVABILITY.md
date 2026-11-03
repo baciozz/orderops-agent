@@ -5,6 +5,8 @@
 日志写到 stderr；保留 `propagate=True`，pytest 的 caplog 和宿主 root handler 可继续接收。
 模块通过 `get_logger(__name__)` 获取 `oos.<module>` logger，通过 `log_event()` 打点。
 导入日志模块不会配置 root logger。
+`observed()` 使用 `functools.wraps` 包装同步或异步函数，保持业务函数原有缩进；
+`fields` 回调接收绑定参数（含默认值），函数内部通过 `enrich()` 补充安全字段。
 
 ## 开关
 
@@ -33,7 +35,8 @@ Decimal、datetime、UUID 等值安全转换为字符串，金额使用美元十
 | `correlation_id` | string | 链路标识，与响应头 `x-correlation-id` 相同 | HTTP 及请求内事件 |
 | `task_id` | string/null | 任务标识 | 收件、dispatch、模型、预算、批准、提交、outbox |
 | `attempt_id` | string/null | 当前或最近一次执行尝试 | dispatch 及其子调用、批准、提交、outbox |
-| `mode` | string | `FIXTURE` / `LIVE` | HTTP、dispatch、模型、预算及可关联任务的事件 |
+| `mode` | string | `FIXTURE` / `LIVE`，来自执行配置或客户端类型 | dispatch、模型；预算仅在上下文已有 mode 时输出 |
+| `app_mode` | string | 应用启动时 resolve_mode 的配置结果 | 仅 http.request |
 | `outcome` | string | started / success / failed / duplicate | 业务事件 |
 | `status` | string | 任务状态 | 收件、dispatch.finish |
 | `error_code` | string/null | 现有 AppError.code；意外错误使用 INTERNAL_ERROR | 失败事件、HTTP |
@@ -68,8 +71,18 @@ Decimal、datetime、UUID 等值安全转换为字符串，金额使用美元十
 
 ContextVar 将请求字段传给请求内同步服务，将任务字段传给 dispatch 的模型和预算调用。
 服务和 outbox 在已有会话内以 no_autoflush 做尽力而为的元数据读取；dispatch 和提交重放也会
-使用独立只读会话补齐字段。批准、提交和 outbox 的 mode 根据任务是否有 ModelUsage 行推断；
-不额外调用模型，不创建或修改用量记录。
+使用独立只读会话补齐字段，不额外调用模型，不创建或修改用量记录。
+
+mode 只记录可靠事实，不从 ModelUsage 是否存在推断：
+
+- dispatch 在调用模型前将 `resolve_mode(configured).mode.value` 写入自身 ContextVar，
+  所以路由提前失败、无需模型或预算拒绝时，start/finish 也带实际配置的 mode。
+- model.call 的 mode 来自 FixtureLLMClient / LiveLLMClient 自身类型；其子调用继承该上下文。
+- BudgetLedger 不写死 LIVE。预算事件继承当前上下文的 mode；直接调用 ledger 且没有
+  mode 上下文时省略该字段。
+- Task 未持久化 mode，`task_log_fields()` 不返回 mode。批准、提交、outbox 事件省略 mode，
+  并隔离调用方可能传入的 mode 上下文。
+- HTTP 只在 http.request 上记录进程启动配置 `app_mode`，不将该配置作为 mode 传播给内层事件。
 
 ## 事件清单与位置
 
@@ -94,7 +107,7 @@ ContextVar 将请求字段传给请求内同步服务，将任务字段传给 di
 以下为合成数据、假 ID；金额与 token 仅用于示意。
 
 ```jsonl
-{"ts":"2026-11-03T01:00:00+00:00","level":"INFO","logger":"oos.orchestration.inbox","event":"inbox.received","message":"inbox.received","task_id":"T-example","input_id":"EV-example","mode":"FIXTURE","duplicate":false,"text_len":8,"text_sha256":"012345abcdef","outcome":"success","duration_ms":2.3}
+{"ts":"2026-11-03T01:00:00+00:00","level":"INFO","logger":"oos.orchestration.inbox","event":"inbox.received","message":"inbox.received","task_id":"T-example","input_id":"EV-example","duplicate":false,"text_len":8,"text_sha256":"012345abcdef","outcome":"success","duration_ms":2.3}
 {"ts":"2026-11-03T01:00:01+00:00","level":"INFO","logger":"oos.adapters.live_model","event":"model.call","message":"model.call","task_id":"T-example","attempt_id":"JA-example","mode":"LIVE","model":"example-model","prompt_kind":"parser.output","input_tokens":1000,"output_tokens":200,"outcome":"success","duration_ms":12.4}
 {"ts":"2026-11-03T01:00:02+00:00","level":"INFO","logger":"oos.adapters.budget","event":"budget.settle","message":"budget.settle","task_id":"T-example","mode":"LIVE","reserved_usd":"0.001000","actual_usd":"0.000200","cap_usd":"5.00","input_tokens":1000,"output_tokens":200,"outcome":"success","duration_ms":1.5}
 ```
@@ -107,8 +120,10 @@ ContextVar 将请求字段传给请求内同步服务，将任务字段传给 di
   api_key、apikey、authorization、token、secret、password、cookie，也匹配 `_` / `-`
   分隔的后缀（如 access_token、llm_api_key）；值改为 `[REDACTED]`。
   `input_tokens`、`output_tokens` 是计数，保留数值。
-- 字符串中的独立 `sk-...` 密钥、`Bearer ...` 及曾经配置的 llm_api_key 明文都会替换。
-  `task-example` 中位于普通标识内部的 `sk-` 不被当成密钥。
+- 字符串中的密钥匹配 `(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}`，区分大小写，
+  `sk-` 后至少 16 个合法字符；`sk-test-FAKE1234567890abcdef`、`sk-proj-` 开头的长密钥
+  都会替换。款号 `SK-2025`、短串 `sk-abc` 和普通标识内部的 `sk-` 原样保留。
+  `Bearer ...` 中 Bearer 忽略大小写；曾经配置的 llm_api_key 明文始终替换，不受模式长度限制。
 - SecretStr 一律替换，不通过日志展开。循环引用输出 `[CIRCULAR]`，无法字符串化的对象
   输出 `[UNPRINTABLE]`。异常正文、traceback、stack_info 不输出，避免带出原文或凭据。
 - 收件只使用 `text_digest()`，不记录客户原始消息、source_refs、文件名、文件内容、prompt

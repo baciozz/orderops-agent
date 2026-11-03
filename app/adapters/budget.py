@@ -17,7 +17,7 @@ from app.config import HARD_BUDGET_CEILING_USD
 from app.db.models import ModelUsage
 from app.db.session import begin_immediate
 from app.errors import BudgetExceeded, CallLimitExceeded, PricesNotConfigured
-from app.observability import get_logger, observe
+from app.observability import enrich, get_logger, observed
 
 logger = get_logger(__name__)
 
@@ -82,6 +82,17 @@ class BudgetLedger:
             session.close()
         return len(rows)
 
+    @observed(
+        logger,
+        "budget.reserve",
+        failed_event="budget.refused",
+        fields=lambda self, task_id, input_tokens, max_output_tokens, **_: {
+            "task_id": task_id,
+            "cap_usd": self.cap_usd,
+            "input_tokens": input_tokens,
+            "output_tokens": max_output_tokens,
+        },
+    )
     def reserve(
         self,
         *,
@@ -95,97 +106,88 @@ class BudgetLedger:
         at: datetime | None = None,
     ) -> str:
         """Check both limits and persist the reservation under one writer lock."""
-        with observe(
-            logger,
-            "budget.reserve",
-            failed_event="budget.refused",
-            mode="LIVE",
-            task_id=task_id,
-            cap_usd=self.cap_usd,
+        estimate = quote_cost(
             input_tokens=input_tokens,
             output_tokens=max_output_tokens,
-        ) as fields:
-            estimate = quote_cost(
-                input_tokens=input_tokens,
-                output_tokens=max_output_tokens,
-                price_in_per_mtok=self.price_in_per_mtok,
-                price_out_per_mtok=self.price_out_per_mtok,
-            )
-            fields.update(reserved_usd=estimate, actual_usd=None)
-            price_version = f"in={self.price_in_per_mtok};out={self.price_out_per_mtok}"
-            row = ModelUsage(
-                id=f"MU-{uuid4().hex[:16]}",
-                task_id=task_id,
-                agent_id=agent_id,
-                provider=provider,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=max_output_tokens,
-                cost_usd=estimate,
-                price_version=price_version,
-                at=at or datetime.now(UTC),
-            )
-            session = self._sessions()
-            try:
-                with begin_immediate(session):
-                    if task_id is not None and max_calls_per_task is not None:
-                        used = session.scalar(
-                            select(func.count())
-                            .select_from(ModelUsage)
-                            .where(ModelUsage.task_id == task_id)
+            price_in_per_mtok=self.price_in_per_mtok,
+            price_out_per_mtok=self.price_out_per_mtok,
+        )
+        enrich(reserved_usd=estimate, actual_usd=None)
+        price_version = f"in={self.price_in_per_mtok};out={self.price_out_per_mtok}"
+        row = ModelUsage(
+            id=f"MU-{uuid4().hex[:16]}",
+            task_id=task_id,
+            agent_id=agent_id,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=max_output_tokens,
+            cost_usd=estimate,
+            price_version=price_version,
+            at=at or datetime.now(UTC),
+        )
+        session = self._sessions()
+        try:
+            with begin_immediate(session):
+                if task_id is not None and max_calls_per_task is not None:
+                    used = session.scalar(
+                        select(func.count())
+                        .select_from(ModelUsage)
+                        .where(ModelUsage.task_id == task_id)
+                    )
+                    if used >= max_calls_per_task:
+                        raise CallLimitExceeded(
+                            f"任务 {task_id} 已达到模型调用次数上限 {max_calls_per_task}",
+                            details={"task_id": task_id, "calls": used},
                         )
-                        if used >= max_calls_per_task:
-                            raise CallLimitExceeded(
-                                f"任务 {task_id} 已达到模型调用次数上限 {max_calls_per_task}",
-                                details={"task_id": task_id, "calls": used},
-                            )
-                    # Sum Decimals in Python: SQLite's SUM would use floating point.
-                    spent = sum(session.scalars(select(ModelUsage.cost_usd)), Decimal("0"))
-                    if spent + estimate > self.cap_usd:
-                        raise BudgetExceeded(
-                            details={
-                                "spent_usd": format(spent, "f"),
-                                "estimate_usd": format(estimate, "f"),
-                                "cap_usd": format(self.cap_usd, "f"),
-                            }
-                        )
-                    session.add(row)
-            finally:
-                session.close()
-            fields.update(reservation_id=row.id)
-            return row.id
+                # Sum Decimals in Python: SQLite's SUM would use floating point.
+                spent = sum(session.scalars(select(ModelUsage.cost_usd)), Decimal("0"))
+                if spent + estimate > self.cap_usd:
+                    raise BudgetExceeded(
+                        details={
+                            "spent_usd": format(spent, "f"),
+                            "estimate_usd": format(estimate, "f"),
+                            "cap_usd": format(self.cap_usd, "f"),
+                        }
+                    )
+                session.add(row)
+        finally:
+            session.close()
+        enrich(reservation_id=row.id)
+        return row.id
 
+    @observed(
+        logger,
+        "budget.settle",
+        fields=lambda self, reservation_id, input_tokens, output_tokens, **_: {
+            "cap_usd": self.cap_usd,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "reservation_id": reservation_id,
+        },
+    )
     def settle(self, reservation_id: str, *, input_tokens: int, output_tokens: int) -> ModelUsage:
         """Replace the estimate with actual usage; retain the row as a call.
 
         Provider-reported usage is recorded even if it exceeds the reservation.
         Unknown usage should be settled at the reserved token estimates.
         """
-        with observe(
-            logger,
-            "budget.settle",
-            mode="LIVE",
-            cap_usd=self.cap_usd,
+        cost = quote_cost(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            reservation_id=reservation_id,
-        ) as fields:
-            cost = quote_cost(
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                price_in_per_mtok=self.price_in_per_mtok,
-                price_out_per_mtok=self.price_out_per_mtok,
-            )
-            session = self._sessions()
-            try:
-                with begin_immediate(session):
-                    row = session.get(ModelUsage, reservation_id)
-                    if row is None:
-                        raise ValueError("模型用量预留不存在")
-                    fields.update(task_id=row.task_id, reserved_usd=row.cost_usd, actual_usd=cost)
-                    row.input_tokens = input_tokens
-                    row.output_tokens = output_tokens
-                    row.cost_usd = cost
-            finally:
-                session.close()
-            return row
+            price_in_per_mtok=self.price_in_per_mtok,
+            price_out_per_mtok=self.price_out_per_mtok,
+        )
+        session = self._sessions()
+        try:
+            with begin_immediate(session):
+                row = session.get(ModelUsage, reservation_id)
+                if row is None:
+                    raise ValueError("模型用量预留不存在")
+                enrich(task_id=row.task_id, reserved_usd=row.cost_usd, actual_usd=cost)
+                row.input_tokens = input_tokens
+                row.output_tokens = output_tokens
+                row.cost_usd = cost
+        finally:
+            session.close()
+        return row

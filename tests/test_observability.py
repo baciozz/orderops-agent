@@ -1,38 +1,48 @@
 """Offline observability contracts, including the real fixture HTTP golden chain."""
 
+import asyncio
 import json
 import logging
 import socket
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from inspect import signature
 from io import StringIO
 from uuid import uuid4
 
 import httpx
 import pytest
+from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
 from app.config import Settings
-from app.db.models import OutboxDelivery
+from app.db.models import ModelUsage, OutboxDelivery
 from app.errors import AppError, BudgetExceeded, FixtureNotFound
 from app.main import create_app
 from app.observability import (
     JSONFormatter,
     RedactionFilter,
     configure_logging,
+    enrich,
     get_logger,
+    log_context,
     log_event,
+    observed,
+    task_log_fields,
     text_digest,
 )
+from app.orchestration.dispatch import dispatch_text
 from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE, golden_fixtures
 from app.orchestration.inbox import accept_input
 from app.orchestration.outbox import consume, publish_pending
+from app.orchestration.registry import Registry
 from app.orchestration.worker import run_once
 from app.services.kernel import approve_plan, commit_plan
 from app.services.seed import load_seed
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 from tests.test_stage4_live import ledger, request, response, settings
 
 NOW = datetime(2026, 11, 3, tzinfo=UTC)
@@ -175,7 +185,10 @@ def test_fixture_golden_events_and_configured_key(web, caplog):
         assert records, event
         for record in records:
             assert record.task_id == plan.task_id
-            assert record.mode == "FIXTURE"
+            if event in {"dispatch.start", "dispatch.finish", "model.call"}:
+                assert record.mode == "FIXTURE"
+            else:
+                assert "mode" not in vars(record)
             assert record.duration_ms >= 0
             assert record.outcome in {"started", "success"}
     assert events(caplog, "dispatch.start")[0].attempt_id
@@ -232,6 +245,7 @@ def test_http_ids_path_duration_and_handled_errors(web, caplog, path, status, co
     assert record.path == path.split("?")[0] and record.method == "GET"
     assert record.status_code == status and record.duration_ms >= 0
     assert record.error_code == code
+    assert record.app_mode == "FIXTURE" and "mode" not in vars(record)
     assert "do-not-log" not in captured(caplog)
 
 
@@ -449,3 +463,195 @@ def test_standard_message_formatting_still_works(caplog):
     handler.addFilter(RedactionFilter())
     handler.handle(logging.makeLogRecord({"msg": {"Password": "never-print"}}))
     assert "never-print" not in stream.getvalue()
+
+
+@pytest.mark.parametrize("value", ["SK-2025", "sk-abc", "task-sk-1234567890abcdef"])
+def test_redaction_preserves_noncredentials(value: str, caplog: pytest.LogCaptureFixture) -> None:
+    log_event(logger, "test.noncredential", value=value)
+    assert events(caplog, "test.noncredential")[-1].value == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "sk-test-FAKE1234567890abcdef",
+        "sk-proj-1234567890abcdefghijklmnopqrstuvwxyz",
+        "Bearer example-credential",
+        "bEaReR example-credential",
+    ],
+)
+def test_redaction_matches_credentials(value: str, caplog: pytest.LogCaptureFixture) -> None:
+    log_event(logger, "test.credential", value=value)
+    assert events(caplog, "test.credential")[-1].value == "[REDACTED]"
+
+
+def test_observed_sync_preserves_signature_defaults_and_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @observed(logger, "test.sync", fields=lambda task_id: {"task_id": task_id})
+    def business(task_id: str = "default-task") -> str:
+        enrich(order_id="order-sync")
+        return task_id
+
+    assert str(signature(business)) == "(task_id: str = 'default-task') -> str"
+    assert business.__name__ == "business" and business.__wrapped__.__name__ == "business"
+    with log_context(correlation_id="parent"):
+        assert business() == "default-task"
+        assert business(task_id="keyword-task") == "keyword-task"
+        log_event(logger, "test.after_sync")
+    records = events(caplog, "test.sync")
+    assert [record.task_id for record in records] == ["default-task", "keyword-task"]
+    assert all(
+        record.order_id == "order-sync" and record.correlation_id == "parent" for record in records
+    )
+    assert "task_id" not in vars(events(caplog, "test.after_sync")[-1])
+
+
+def test_observed_async_preserves_return_exception_and_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    failure = AppError("original message", code="TEST_ASYNC")
+
+    @observed(
+        logger,
+        "test.async",
+        failed_event="test.async_failed",
+        fields=lambda task_id, **_: {"task_id": task_id},
+    )
+    async def business(task_id: str, *, fail: bool = False) -> str:
+        await asyncio.sleep(0)
+        enrich(order_id="order-async")
+        if fail:
+            raise failure
+        return task_id
+
+    async def exercise() -> None:
+        assert await business("async-task") == "async-task"
+        with pytest.raises(AppError) as error:
+            await business(task_id="failed-task", fail=True)
+        assert error.value is failure and str(error.value) == "original message"
+        log_event(logger, "test.after_async")
+
+    asyncio.run(exercise())
+    assert events(caplog, "test.async")[-1].task_id == "async-task"
+    failed = events(caplog, "test.async_failed")[-1]
+    assert failed.task_id == "failed-task" and failed.error_code == "TEST_ASYNC"
+    assert failed.order_id == "order-async"
+    assert "task_id" not in vars(events(caplog, "test.after_async")[-1])
+
+
+def test_dispatch_live_mode_before_model_call(
+    session_factory: sessionmaker[Session], caplog: pytest.LogCaptureFixture
+) -> None:
+    sent: list[httpx.Request] = []
+    transport = httpx.MockTransport(lambda req: sent.append(req) or response(payload={}))
+    outcome = dispatch_text(
+        session_factory,
+        text="unused",
+        client_event_key="live-route-failure",
+        registry=Registry(),
+        settings=settings(),
+        client_factory=lambda configured, book: LiveLLMClient(
+            configured, book, transport=transport
+        ),
+    )
+    assert outcome.error_code == "CAPABILITY_MISSING"
+    for name in ("dispatch.start", "dispatch.finish"):
+        assert events(caplog, name)[-1].mode == "LIVE"
+    assert events(caplog, "dispatch.finish")[-1].outcome == "failed"
+    assert not events(caplog, "model.call") and not sent
+    with session_factory() as session:
+        assert session.scalar(select(ModelUsage)) is None
+
+
+def test_dispatch_live_budget_refused_before_transport(
+    session_factory: sessionmaker[Session], caplog: pytest.LogCaptureFixture
+) -> None:
+    sent: list[httpx.Request] = []
+    transport = httpx.MockTransport(lambda req: sent.append(req) or response(payload={}))
+    outcome = dispatch_text(
+        session_factory,
+        text=TEXT_BLACK_TO_WHITE,
+        client_event_key="live-budget-refusal",
+        settings=settings(live_budget_usd=Decimal("0")),
+        client_factory=lambda configured, book: LiveLLMClient(
+            configured, book, transport=transport
+        ),
+    )
+    assert outcome.error_code == "BUDGET_EXCEEDED" and not sent
+    for name in ("dispatch.start", "budget.refused", "dispatch.finish"):
+        record = events(caplog, name)[-1]
+        assert record.mode == "LIVE" and record.task_id == outcome.task_id
+    assert events(caplog, "dispatch.finish")[-1].outcome == "failed"
+    with session_factory() as session:
+        assert session.scalar(select(ModelUsage)) is None
+
+
+def test_direct_budget_events_omit_mode(
+    session_factory: sessionmaker[Session], caplog: pytest.LogCaptureFixture
+) -> None:
+    book: BudgetLedger = ledger(session_factory)
+    reservation = book.reserve(
+        provider="openai", model="offline", input_tokens=100, max_output_tokens=10
+    )
+    book.settle(reservation, input_tokens=80, output_tokens=5)
+    with pytest.raises(BudgetExceeded):
+        ledger(session_factory, settings(live_budget_usd=Decimal("0"))).reserve(
+            provider="openai", model="offline", input_tokens=100, max_output_tokens=10
+        )
+    for name in ("budget.reserve", "budget.settle", "budget.refused"):
+        assert "mode" not in vars(events(caplog, name)[-1])
+
+
+def test_task_lifecycle_events_omit_inherited_mode(
+    session_factory: sessionmaker[Session], database_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    load_seed(session_factory, database_url=database_url)
+    plan = dispatch_text(
+        session_factory,
+        text=TEXT_BLACK_TO_WHITE,
+        client_event_key="lifecycle",
+        settings=Settings(_env_file=None),
+        now=NOW,
+    )
+    assert plan.status == "VALIDATED"
+    # A persisted usage row is not a reliable source for the task's execution mode.
+    ledger(session_factory).reserve(
+        provider="openai",
+        model="offline",
+        task_id=plan.task_id,
+        input_tokens=100,
+        max_output_tokens=10,
+    )
+    with session_factory() as session:
+        assert "mode" not in task_log_fields(session, plan.task_id)
+    with log_context(mode="LIVE"):
+        approval = approve_plan(
+            session_factory,
+            plan_id=plan.plan_id,
+            plan_hash=plan.plan_hash,
+            expected_intent_revision=plan.intent_revision,
+            now=NOW,
+        )
+        commit_plan(
+            session_factory,
+            plan_id=plan.plan_id,
+            approval_id=approval.approval_id,
+            plan_hash=plan.plan_hash,
+            idempotency_key="lifecycle",
+            now=NOW,
+        )
+        assert publish_pending(session_factory) == 1
+        with session_factory() as session:
+            delivery = session.scalar(select(OutboxDelivery))
+            assert not consume(session_factory, delivery.event_id, delivery.consumer)
+        log_event(logger, "test.after_lifecycle")
+    for name in (
+        "approval.granted",
+        "commit.applied",
+        "outbox.delivered",
+        "outbox.duplicate_skipped",
+    ):
+        record = events(caplog, name)[-1]
+        assert record.task_id == plan.task_id and "mode" not in vars(record)
+    assert events(caplog, "test.after_lifecycle")[-1].mode == "LIVE"

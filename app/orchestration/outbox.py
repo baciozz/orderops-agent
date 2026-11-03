@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db.models import ConsumerReceipt, Event, Operation, OutboxDelivery
 from app.db.session import begin_immediate
-from app.observability import exception_code, get_logger, log_event, task_log_fields
+from app.observability import exception_code, get_logger, log_context, log_event, task_log_fields
 from app.orchestration.state import aware, utcnow
 
 logger = get_logger(__name__)
@@ -27,6 +27,7 @@ def _event_fields(session: Any, event_id: str) -> dict[str, Any]:
     return {}
 
 
+@log_context(exclude=("mode",))
 def consume(factory, event_id, consumer, effect=lambda session, event_id: None, *, clock=utcnow):
     started = perf_counter()
     with factory() as session, begin_immediate(session):
@@ -46,6 +47,7 @@ def consume(factory, event_id, consumer, effect=lambda session, event_id: None, 
         return True
 
 
+@log_context(exclude=("mode",))
 def publish_pending(factory, send=None, *, clock=utcnow, fault=lambda _: None):
     with factory() as session:
         ids = list(

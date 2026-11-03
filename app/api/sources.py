@@ -18,7 +18,7 @@ from app.adapters.uploads import MAX_FILE_BYTES, MAX_FILES, MAX_NONEMPTY_ROWS, M
 from app.db.models import InputSource, SourceSpan, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
-from app.observability import get_logger, observe
+from app.observability import enrich, get_logger, observed
 
 logger = get_logger(__name__)
 
@@ -103,80 +103,78 @@ def task_spans(session, task_id: str, source_id: str | None = None) -> list[Sour
 
 
 @router.post("/sources", response_model=SourceUploadResponse)
+@observed(logger, "upload.received")
 async def upload_source(request: Request):
-    with observe(logger, "upload.received") as fields:
-        source_id = f"SRC-{uuid4().hex}"
-        response = SourceUploadResponse(
-            request_id=request.state.request_id,
-            correlation_id=request.state.correlation_id,
+    source_id = f"SRC-{uuid4().hex}"
+    response = SourceUploadResponse(
+        request_id=request.state.request_id,
+        correlation_id=request.state.correlation_id,
+        source_id=source_id,
+        parser_status="ok",
+        limits=LIMITS,
+    )
+    try:
+        task_id, filename, content = await _upload_form(request)
+        enrich(
+            task_id=task_id,
             source_id=source_id,
-            parser_status="ok",
-            limits=LIMITS,
+            file_size=len(content),
+            file_sha256=sha256(content).hexdigest()[:12],
         )
-        try:
-            task_id, filename, content = await _upload_form(request)
-            fields.update(
-                task_id=task_id,
-                source_id=source_id,
-                file_size=len(content),
-                file_sha256=sha256(content).hexdigest()[:12],
+        spans = split_source(source_id, filename, content)
+    except ValueError as exc:
+        enrich(outcome="failed", error_code="UPLOAD_REJECTED")
+        request.state.error_code = "UPLOAD_REJECTED"
+        response.parser_status = "rejected"
+        return JSONResponse(
+            status_code=400,
+            content={
+                **response.model_dump(),
+                "error": {"code": "UPLOAD_REJECTED", "message": str(exc)},
+            },
+        )
+    storage_path = None
+    try:
+        with request.app.state.session_factory() as session, begin_immediate(session):
+            if session.get(Task, task_id) is None:
+                raise AppError("任务不存在", code="TASK_NOT_FOUND", http_status=404)
+            count = session.scalar(
+                select(func.count()).select_from(TaskSource).where(TaskSource.task_id == task_id)
             )
-            spans = split_source(source_id, filename, content)
-        except ValueError as exc:
-            fields.update(outcome="failed", error_code="UPLOAD_REJECTED")
-            request.state.error_code = "UPLOAD_REJECTED"
-            response.parser_status = "rejected"
-            return JSONResponse(
-                status_code=400,
-                content={
-                    **response.model_dump(),
-                    "error": {"code": "UPLOAD_REJECTED", "message": str(exc)},
-                },
+            if count >= MAX_FILES:
+                raise AppError("每任务最多 3 个文件", code="UPLOAD_LIMIT", http_status=400)
+            # The form task_id is bound at upload time; reads use this explicit
+            # join rather than trusting later event payloads or client paths.
+            root = request.app.state.source_storage_dir
+            if root is None:
+                root = Path(mkdtemp(prefix="oos-sources-"))
+                request.app.state.source_storage_dir = root
+            storage_path = root / source_id
+            with storage_path.open("xb") as target:
+                target.write(content)
+            session.add(
+                InputSource(
+                    id=source_id,
+                    sha256=sha256(content).hexdigest(),
+                    media_type={
+                        ".xlsx": "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet",
+                        ".md": "text/markdown",
+                    }.get(Path(filename).suffix.lower(), "text/plain"),
+                    original_name=PureWindowsPath(filename).name[:255],
+                    storage_ref=str(storage_path),
+                    size=len(content),
+                    parser_version="static-v1",
+                )
             )
-        storage_path = None
-        try:
-            with request.app.state.session_factory() as session, begin_immediate(session):
-                if session.get(Task, task_id) is None:
-                    raise AppError("任务不存在", code="TASK_NOT_FOUND", http_status=404)
-                count = session.scalar(
-                    select(func.count())
-                    .select_from(TaskSource)
-                    .where(TaskSource.task_id == task_id)
-                )
-                if count >= MAX_FILES:
-                    raise AppError("每任务最多 3 个文件", code="UPLOAD_LIMIT", http_status=400)
-                # The form task_id is bound at upload time; reads use this explicit
-                # join rather than trusting later event payloads or client paths.
-                root = request.app.state.source_storage_dir
-                if root is None:
-                    root = Path(mkdtemp(prefix="oos-sources-"))
-                    request.app.state.source_storage_dir = root
-                storage_path = root / source_id
-                with storage_path.open("xb") as target:
-                    target.write(content)
-                session.add(
-                    InputSource(
-                        id=source_id,
-                        sha256=sha256(content).hexdigest(),
-                        media_type={
-                            ".xlsx": "application/vnd.openxmlformats-officedocument."
-                            "spreadsheetml.sheet",
-                            ".md": "text/markdown",
-                        }.get(Path(filename).suffix.lower(), "text/plain"),
-                        original_name=PureWindowsPath(filename).name[:255],
-                        storage_ref=str(storage_path),
-                        size=len(content),
-                        parser_version="static-v1",
-                    )
-                )
-                session.flush()
-                session.add(TaskSource(task_id=task_id, source_id=source_id))
-                session.add_all(SourceSpan(id=f"SPAN-{uuid4().hex}", **span) for span in spans)
-        except Exception:
-            if storage_path is not None:
-                storage_path.unlink(missing_ok=True)
-            raise
-        return response
+            session.flush()
+            session.add(TaskSource(task_id=task_id, source_id=source_id))
+            session.add_all(SourceSpan(id=f"SPAN-{uuid4().hex}", **span) for span in spans)
+    except Exception:
+        if storage_path is not None:
+            storage_path.unlink(missing_ok=True)
+        raise
+    return response
 
 
 @router.get("/sources/{source_id}/spans", response_model=list[SourceRef])

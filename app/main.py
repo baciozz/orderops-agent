@@ -57,9 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.state.correlation_id = correlation_id
         started = perf_counter()
         status_code = 500
-        with log_context(
-            request_id=request_id, correlation_id=correlation_id, mode=resolution.mode.value
-        ):
+        with log_context(request_id=request_id, correlation_id=correlation_id):
             try:
                 response = await call_next(request)
                 status_code = response.status_code
@@ -73,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 log_event(
                     logger,
                     "http.request",
+                    app_mode=resolution.mode.value,
                     method=request.method,
                     path=request.url.path,
                     status_code=status_code,
