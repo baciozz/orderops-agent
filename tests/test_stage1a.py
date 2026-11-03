@@ -187,7 +187,13 @@ def test_B01_replace_remaining_black_to_white(tmp_path) -> None:
         operation = session.scalars(select(Operation)).one()
         assert operation.committed_verification_pending is False
         links = list(session.scalars(select(DownstreamLink)).all())
-        assert links and all(link.order_revision == 1 for link in links)
+        current: dict[tuple[str, str], DownstreamLink] = {}
+        for link in links:
+            key = (link.doc_type, link.doc_id)
+            if key not in current or link.link_seq > current[key].link_seq:
+                current[key] = link
+        assert len(current) == 4
+        assert all(link.order_revision == 2 for link in current.values())
     finally:
         session.close()
         app.state.engine.dispose()

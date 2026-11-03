@@ -1,7 +1,7 @@
-"""Post-commit stock check lives in app.services.kernel.
+"""Post-commit checks live in app.services.kernel.
 
-TODO(stage-1B): also verify downstream links, MTO coverage, and fabric coverage.
-On failure set committed_verification_pending and do not write again (B21).
+They cover stock balances and downstream link, production, and fabric coverage.
+On failure the operation is marked pending and is not rewritten.
 """
 
 
