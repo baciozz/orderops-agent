@@ -13,12 +13,27 @@ from app.adapters import uploads
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.parser import split_source
 from app.config import Settings
-from app.db.models import Approval, InputSource, Operation, SalesOrder, SourceSpan, Task
+from app.db.models import (
+    Approval,
+    InputPayload,
+    InputSource,
+    Operation,
+    OrderRevision,
+    Plan,
+    SalesOrder,
+    SourceSpan,
+    Task,
+)
 from app.db.session import begin_immediate
 from app.errors import ToolNotAllowed
 from app.main import create_app
 from app.orchestration.defaults import parser_spec
-from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE
+from app.orchestration.fixtures import (
+    TEXT_ATTACH_SHEET,
+    TEXT_BLACK_TO_WHITE,
+    TEXT_NEW_ORDER,
+    golden_fixtures,
+)
 from app.orchestration.inbox import accept_input
 from app.orchestration.tools import ToolGateway
 from app.orchestration.worker import run_once
@@ -109,6 +124,260 @@ def planned(stage3):
     assert outcome.status == "AWAITING_APPROVAL"
     assert outcome.task_id == task_id
     return outcome
+
+
+def sheet_input(stage3, rows, *, text=TEXT_BLACK_TO_WHITE, extra_sheets=()):
+    """Use immutable inbox events to open a task, upload, then submit chat + sources."""
+    client, factory, _, _ = stage3
+    receipt = client.post(
+        "/inputs",
+        json={"thread_id": "sheet-demo", "client_event_key": "attach", "text": TEXT_ATTACH_SHEET},
+    )
+    assert receipt.status_code == 202
+    task_id = receipt.json()["task_id"]
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    source_ids = []
+    for index, sheet_rows in enumerate([rows, *extra_sheets]):
+        response = upload(client, task_id, f"orders-{index}.xlsx", workbook_bytes(sheet_rows))
+        assert response.status_code == 200
+        source_ids.append(response.json()["source_id"])
+    response = client.post(
+        f"/tasks/{task_id}/answers",
+        json={
+            "thread_id": "sheet-demo",
+            "client_event_key": "chat-and-sheet",
+            "text": text,
+            "source_ids": source_ids,
+        },
+    )
+    assert response.status_code == 202
+    return task_id, source_ids, response.json()["event_id"]
+
+
+def change_sheet(qty):
+    return [
+        ["订单号", "原SKU", "目标SKU", "数量"],
+        ["SO-1001", "A-BLACK-M", "A-WHITE-M", qty],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "rows", "chat_qty", "sheet_qty", "qty_cell"),
+    [
+        (TEXT_BLACK_TO_WHITE, change_sheet(30), 40, 30, "D2"),
+        (TEXT_BLACK_TO_WHITE, change_sheet(50), 40, 50, "D2"),
+        (TEXT_BLACK_TO_WHITE, change_sheet(0), 40, 0, "D2"),
+        (
+            TEXT_NEW_ORDER,
+            [["客户", "SKU", "数量"], ["华东服饰", "A-WHITE-M", 25]],
+            30,
+            25,
+            "C2",
+        ),
+    ],
+)
+def test_R14_chat_sheet_quantity_conflict_requires_confirmation(
+    stage3, text, rows, chat_qty, sheet_qty, qty_cell
+):
+    client, factory, _, _ = stage3
+    with factory() as session:
+        revisions = session.scalar(select(func.count()).select_from(OrderRevision))
+    task_id, source_ids, event_id = sheet_input(stage3, rows, text=text)
+    outcome = run_once(factory, clock=lambda: NOW)
+    assert outcome.task_id == task_id and outcome.status == "NEEDS_CLARIFICATION"
+    assert outcome.plan_id is None and outcome.requires_human_approval is False
+    assert [step.agent_id for step in outcome.steps] == ["parser", "parser"]
+    payload = client.get(f"/tasks/{task_id}").json()
+    extraction = payload["extraction"]
+    assert extraction["conflicts"] and extraction["questions"] == payload["questions"]
+    assert str(chat_qty) in extraction["conflicts"][0]
+    assert str(sheet_qty) in extraction["conflicts"][0]
+    assert "请确认" in extraction["questions"][0]
+    assert extraction["business_event"] is None
+    assert extraction["line_changes"] == extraction["new_lines"] == []
+    refs = extraction["source_refs"]
+    assert any(ref["text_excerpt"] == text and ref["line_start"] == 1 for ref in refs)
+    assert any(
+        ref["source_id"] == source_ids[0]
+        and ref["sheet"] == "订单"
+        and ref["cell_range"] == qty_cell
+        and ref["text_excerpt"] == str(sheet_qty)
+        for ref in refs
+    )
+    view = client.get(f"/tasks/{task_id}/view").json()
+    assert view["card"]["waiting_on"] == "human"
+    assert view["conflicts"] == extraction["conflicts"]
+    assert all(ref in view["sources"] for ref in refs)
+    assert view["approval"]["approvable"] is False
+    assert view["result"]["operation_id"] is view["result"]["download_url"] is None
+    page = client.get(f"/ui/tasks/{task_id}").text
+    assert "请确认" in page and text in page and qty_cell in page
+    assert "disabled" in Buttons(page).approve
+    # Fresh session proves the result and evidence survive worker completion.
+    with factory() as session:
+        body = session.get(InputPayload, event_id).body
+        assert body["text"] == text and body["source_ids"] == source_ids
+        assert body["extraction"] == extraction
+        assert session.scalar(select(func.count()).select_from(Plan)) == 0
+        assert session.scalar(select(func.count()).select_from(Approval)) == 0
+        assert session.scalar(select(func.count()).select_from(Operation)) == 0
+        assert session.scalar(select(func.count()).select_from(OrderRevision)) == revisions
+        assert session.get(SalesOrder, "SO-1001").current_revision == 1
+
+
+def test_fixture_golden_chain_upload_chat_precheck_approve_commit_export(stage3):
+    client, factory, _, _ = stage3
+    # An unrelated row's quantity cannot conflict with the exact target intent.
+    rows = change_sheet(40) + [["SO-OTHER", "A-BLACK-M", "A-WHITE-M", 999]]
+    task_id, source_ids, _ = sheet_input(stage3, rows)
+    outcome = run_once(factory, clock=lambda: NOW)
+    assert outcome.status == "AWAITING_APPROVAL"
+    view = client.get(f"/tasks/{task_id}/view").json()
+    assert view["questions"] == view["conflicts"] == []
+    assert any(ref["text_excerpt"] == TEXT_BLACK_TO_WHITE for ref in view["sources"])
+    assert any(
+        ref["source_id"] == source_ids[0] and ref["cell_range"] == "D2" for ref in view["sources"]
+    )
+    assert client.get(f"/tasks/{task_id}").json()["extraction"]["business_event"]
+    with factory() as session:
+        plan = session.get(Plan, outcome.plan_id)
+        assert any(ref["source_id"] == source_ids[0] for ref in plan.source_refs)
+        assert session.scalar(select(func.count()).select_from(Operation)) == 0
+    approval = approve_plan(
+        factory,
+        plan_id=outcome.plan_id,
+        plan_hash=outcome.plan_hash,
+        expected_intent_revision=outcome.intent_revision,
+        now=NOW,
+    )
+    committed = commit_plan(
+        factory,
+        plan_id=outcome.plan_id,
+        approval_id=approval.approval_id,
+        plan_hash=outcome.plan_hash,
+        idempotency_key="sheet-golden-commit",
+        now=NOW,
+    )
+    result = client.get(f"/tasks/{task_id}/view").json()
+    assert result["card"]["status"] == "SUCCEEDED"
+    assert result["result"]["operation_id"] == committed.operation_id
+    assert result["result"]["revision"] == 2
+    assert result["result"]["verification"] == "passed"
+    assert result["sources"] == view["sources"]
+    assert result["result"]["download_url"]
+    download = client.get(result["result"]["download_url"])
+    assert download.status_code == 200
+    exported = list(csv.DictReader(StringIO(download.content.decode("utf-8-sig"))))
+    assert all(row["mode"] == "FIXTURE" for row in exported)
+    assert {row["sku_id"]: int(row["new_qty"]) for row in exported}["A-WHITE-M"] == 40
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Operation)) == 1
+
+
+def test_sheet_multiple_sources_do_not_hide_a_conflicting_quantity(stage3):
+    client, factory, _, _ = stage3
+    task_id, source_ids, _ = sheet_input(stage3, change_sheet(40), extra_sheets=[change_sheet(30)])
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    extracted = client.get(f"/tasks/{task_id}").json()["extraction"]
+    assert extracted["conflicts"]
+    assert set(source_ids).issubset({ref["source_id"] for ref in extracted["source_refs"]})
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["wrong_order", "wrong_sku", "unsupported", "invalid_qty", "duplicate_qty", "missing_qty"],
+)
+def test_sheet_unmatched_or_invalid_rows_require_clarification(stage3, kind):
+    client, factory, _, _ = stage3
+    rows = change_sheet(40)
+    if kind == "wrong_order":
+        rows[1][0] = "SO-OTHER"
+    elif kind == "wrong_sku":
+        rows[1][2] = "A-BLUE-L"
+    elif kind == "unsupported":
+        rows[0][3] = "未知列名"
+    elif kind == "duplicate_qty":
+        rows[0].append("数量")
+        rows[1].append(30)
+    elif kind == "missing_qty":
+        rows[1][3] = None
+    else:
+        rows[1][3] = "四十"
+    task_id, _, _ = sheet_input(stage3, rows)
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    assert client.get(f"/tasks/{task_id}").json()["extraction"]["questions"]
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Plan)) == 0
+
+
+def test_sheet_unsupported_second_source_cannot_be_silently_ignored(stage3):
+    _, factory, _, _ = stage3
+    sheet_input(stage3, change_sheet(40), extra_sheets=[[["SKU", "备注"], ["A-WHITE-M", 30]]])
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Plan)) == 0
+
+
+def test_sheet_cross_task_source_ids_cannot_reach_extraction(stage3):
+    client, factory, _, _ = stage3
+    task_id, source_ids, _ = sheet_input(stage3, change_sheet(30))
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    receipt = client.post(
+        "/inputs",
+        json={
+            "thread_id": "intruder",
+            "client_event_key": "foreign-source",
+            "text": TEXT_BLACK_TO_WHITE,
+            "source_ids": source_ids,
+        },
+    )
+    assert receipt.status_code == 202
+    outcome = run_once(factory, clock=lambda: NOW)
+    assert outcome.task_id != task_id and outcome.status == "FAILED"
+    assert outcome.error_code == "SOURCE_NOT_FOUND"
+    view = client.get(f"/tasks/{outcome.task_id}/view").json()
+    assert view["sources"] == []
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Plan)) == 0
+
+
+def test_parser_conflicts_stop_even_when_fixture_contains_business_event(stage3):
+    client, factory, _, _ = stage3
+    task_id = new_task(factory, text=TEXT_BLACK_TO_WHITE)
+    payload = {
+        **golden_fixtures()[TEXT_BLACK_TO_WHITE],
+        "conflicts": ["聊天 40 件与表格 30 件冲突"],
+        "questions": ["请确认数量。"],
+    }
+    outcome = run_once(factory, clock=lambda: NOW, fixtures={TEXT_BLACK_TO_WHITE: payload})
+    assert outcome.status == "NEEDS_CLARIFICATION"
+    assert client.get(f"/tasks/{task_id}").json()["extraction"]["business_event"]
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Plan)) == 0
+        assert session.scalar(select(func.count()).select_from(Approval)) == 0
+        assert session.scalar(select(func.count()).select_from(Operation)) == 0
+
+
+def test_latest_extraction_survives_plan_event_with_equal_input_timestamps(stage3, monkeypatch):
+    client, factory, _, _ = stage3
+    # UUID lexical order must not choose the older input when the clock is fixed.
+    ids = iter(["task-sequence", "z-first-input", "delivery-first", "a-answer", "delivery-answer"])
+    monkeypatch.setattr("app.orchestration.inbox.uuid4", lambda: next(ids))
+    task_id = new_task(factory, text=TEXT_ATTACH_SHEET)
+    assert run_once(factory, clock=lambda: NOW).status == "NEEDS_CLARIFICATION"
+    source = upload(client, task_id, "orders.xlsx", workbook_bytes(change_sheet(40))).json()
+    accept_input(
+        factory,
+        thread_id="one",
+        client_event_key="same-clock-answer",
+        task_id=task_id,
+        text=TEXT_BLACK_TO_WHITE,
+        source_ids=[source["source_id"]],
+        clock=lambda: NOW,
+    )
+    assert run_once(factory, clock=lambda: NOW).status == "AWAITING_APPROVAL"
+    assert client.get(f"/tasks/{task_id}").json()["extraction"]["business_event"]
+    assert client.get(f"/tasks/{task_id}/view").json()["questions"] == []
 
 
 def test_parser_text_md_and_static_xlsx_preserve_locations():

@@ -18,6 +18,13 @@
     <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>
     <dt>模式</dt><dd>{{ view.card.mode }}</dd>
   </dl>
+  {% if view.conflicts or view.questions %}
+  <h1>待确认</h1>
+  <ul>
+    {% for conflict in view.conflicts %}<li>{{ conflict }}</li>{% endfor %}
+    {% for question in view.questions %}<li>{{ question }}</li>{% endfor %}
+  </ul>
+  {% endif %}
   <h1>调度轨迹</h1>
   {% if view.dispatch %}
   <ol>

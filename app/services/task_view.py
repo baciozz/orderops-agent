@@ -29,6 +29,7 @@ from app.db.models import (
 )
 from app.domain.changes import SnapLine, evaluate_changes
 from app.errors import AppError
+from app.orchestration.inbox import latest_input
 from app.orchestration.state import aware
 from app.services.kernel import (
     _available_map,
@@ -198,6 +199,9 @@ def build_task_view(session, task_id, *, request_id, correlation_id, mode, now):
     if operation and operation.status != "COMMITTED":
         operation = None
     sources = task_spans(session, task.id)
+    receipt = latest_input(session, task)
+    extraction = receipt.body.get("extraction", {}) if receipt else {}
+    sources.extend(SourceRef.model_validate(ref) for ref in extraction.get("source_refs", []))
     approval = ApprovalBlock(
         plan_hash=None,
         generated_at=None,
@@ -259,7 +263,9 @@ def build_task_view(session, task_id, *, request_id, correlation_id, mode, now):
         dispatch=dispatch,
         line_diffs=diffs,
         downstream=downstream,
-        sources=sources,
+        sources=list({ref.model_dump_json(): ref for ref in sources}.values()),
+        conflicts=extraction.get("conflicts", []),
+        questions=receipt.body.get("questions", []) if receipt else [],
         approval=approval,
         result=TaskResultBlock(
             operation_id=operation.id if operation else None,

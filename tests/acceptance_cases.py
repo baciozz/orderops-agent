@@ -1,7 +1,7 @@
 """Checklist of B01–B32 and R01–R24.
 
-A skipped case is not a pass. R17–R21 have real tests. R22 and R23 were
-implemented with the budget guard. The rest stay skipped until their stage.
+All 56 cases have real tests. A fixture pass does not imply live understanding
+or a complete browser UI.
 """
 
 from dataclasses import dataclass
@@ -61,7 +61,7 @@ CASES: tuple[Case, ...] = (
     Case("R11", "3", "XLSX 超限、宏或危险公式被拒绝", True),
     Case("R12", "3", "下载文本的公式前缀按安全文本导出", True),
     Case("R13", "3", "跨任务 source 或路径遍历被拒绝", True),
-    Case("R14", "3", "聊天与表格数量冲突时等待确认"),
+    Case("R14", "3", "聊天与表格数量冲突时等待确认", True),
     Case("R15", "3", "界面和报告区分 FIXTURE 与 LIVE", True),
     Case("R16", "2", "重启后预占总和与余额一致，流水可解释", True),
     Case("R17", "0", "注册表重复或 schema 缺失则启动失败；缺能力则 CAPABILITY_MISSING", True),

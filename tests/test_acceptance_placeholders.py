@@ -1,7 +1,6 @@
-"""Pending B/R cases stay skipped until their stage. Skipped is not passed."""
+"""Every implemented B/R case maps to real tests; no pending cases remain."""
 
-import pytest
-from tests.acceptance_cases import CASES, IMPLEMENTED, PENDING, Case
+from tests.acceptance_cases import CASES, IMPLEMENTED, PENDING
 
 
 def test_acceptance_checklist_covers_every_case() -> None:
@@ -14,6 +13,7 @@ def test_acceptance_checklist_covers_every_case() -> None:
         "R11",
         "R12",
         "R13",
+        "R14",
         "R15",
         "R24",
         "R16",
@@ -26,16 +26,10 @@ def test_acceptance_checklist_covers_every_case() -> None:
         "R23",
         *[f"B{index:02d}" for index in range(1, 33)],
     }
-    assert len(PENDING) == 1
-    assert {case.case_id for case in PENDING} == {"R14"}
+    assert len(PENDING) == 0
     assert "R18" not in {case.case_id for case in PENDING}
     assert "R01" not in {case.case_id for case in PENDING}
     assert "B19" not in {case.case_id for case in PENDING}
-
-
-@pytest.mark.parametrize("case", PENDING, ids=[case.case_id for case in PENDING])
-def test_pending_acceptance_case(case: Case) -> None:
-    pytest.skip(f"{case.case_id} 未实现，计划阶段 {case.stage}：{case.title}")
 
 
 def test_stage2_cases_map_to_real_tests():

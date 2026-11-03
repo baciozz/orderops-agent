@@ -89,5 +89,7 @@ class TaskView(ApiModel):
     line_diffs: list[LineDiff] = Field(default_factory=list)
     downstream: list[DownstreamImpact] = Field(default_factory=list)
     sources: list[SourceRef] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
     approval: ApprovalBlock
     result: TaskResultBlock
