@@ -1,4 +1,4 @@
-"""Guarded synchronous OpenAI Responses transport. No calls occur at construction."""
+"""Guarded synchronous model transport. Providers never send or manage billing."""
 
 import json
 import re
@@ -10,6 +10,8 @@ from schemas.common import UsageReport
 
 from app.adapters.budget import BudgetLedger
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult, resolve_mode
+from app.adapters.providers import provider_for_settings
+from app.adapters.providers.schema import validate_payload
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
 
@@ -28,13 +30,8 @@ class LiveLLMClient:
         resolution = resolve_mode(settings)
         if resolution.mode != "LIVE":
             raise LiveStartRefused(resolution.live_block_reason or "LIVE_DISABLED")
-        if settings.llm_provider != "openai":
-            raise LiveStartRefused("PROVIDER_UNSUPPORTED")
-        if not settings.llm_model:
-            raise LiveStartRefused("MODEL_NOT_CONFIGURED")
-        # Keep the credential on the official origin, including when configured.
-        if settings.llm_base_url.rstrip("/") != "https://api.openai.com/v1":
-            raise LiveStartRefused("BASE_URL_UNSUPPORTED")
+        self._provider = provider_for_settings(settings)
+        self._provider.validate(settings)
         self._settings = settings
         self._ledger = ledger
         self._transport = transport
@@ -51,33 +48,14 @@ class LiveLLMClient:
             "required": [],
             "additionalProperties": False,
         }
+        wire = self._provider.build_request(request, schema)
         # One token per UTF-8 byte is a conservative byte-token upper bound,
         # including CJK (unlike characters/4 or bytes/2). Add 256 for framing.
-        prompt_bytes = len(
-            (request.system_prompt + request.user_prompt + json.dumps(schema)).encode("utf-8")
-        )
+        prompt_bytes = len((wire.prompt_text + json.dumps(schema)).encode("utf-8"))
         estimate = max(request.input_tokens, prompt_bytes + 256)
         key = self._settings.llm_api_key_value()
-        body = {
-            "model": self._settings.llm_model,
-            "input": [
-                {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": request.user_prompt},
-            ],
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": re.sub(r"[^a-zA-Z0-9_-]", "_", request.response_schema_id)[:64],
-                    "schema": schema,
-                    "strict": True,
-                }
-            },
-            "max_output_tokens": request.max_output_tokens,
-            "reasoning": {"effort": self._settings.model_reasoning_effort},
-            "store": False,
-        }
         reservation_id = self._ledger.reserve(
-            provider="openai",
+            provider=self._provider.name,
             model=self._settings.llm_model,
             input_tokens=estimate,
             max_output_tokens=request.max_output_tokens,
@@ -89,40 +67,25 @@ class LiveLLMClient:
         # Unknown billing (including transport failures) keeps the pessimistic estimate.
         input_tokens, output_tokens = estimate, request.max_output_tokens
         try:
-            response = self._send(body, key)
-            try:
-                data = response.json()
-                usage = data["usage"]
-                reported_in, reported_out = usage["input_tokens"], usage["output_tokens"]
-                if any(type(n) is not int or n < 0 for n in (reported_in, reported_out)):
-                    raise ValueError
-            except (ValueError, KeyError, TypeError):
+            response = self._send(wire.url, wire.body, key)
+            parsed = self._provider.parse_response(response)
+            if parsed.usage is None:
                 if response.is_success:
-                    raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账") from None
+                    raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账")
                 # HTTP rejection without billed usage still consumes a call slot.
                 input_tokens, output_tokens = 0, 0
             else:
-                input_tokens, output_tokens = reported_in, reported_out
+                input_tokens, output_tokens = parsed.usage
             if not response.is_success:
                 self._raise_http_error(response, key)
-            if data.get("status") != "completed":
+            if not parsed.complete:
                 raise AppError("模型输出未完成", code="MODEL_INCOMPLETE", http_status=422)
-            try:
-                output_text = "".join(
-                    part["text"]
-                    for output in data["output"]
-                    if output.get("type") == "message"
-                    for part in output["content"]
-                    if part.get("type") == "output_text"
-                )
-                payload = json.loads(output_text)
-                if not isinstance(payload, dict):
-                    raise ValueError
-                # Upstream text is untrusted, even if it somehow echoes a credential.
-                if key and key in json.dumps(payload, ensure_ascii=False):
-                    raise ValueError
-            except (ValueError, KeyError, TypeError, AttributeError):
-                raise SchemaInvalid("模型输出不是有效的结构化对象") from None
+            payload = parsed.payload
+            # Upstream text is untrusted, even if it somehow echoes a credential.
+            if payload is None or (key and key in json.dumps(payload, ensure_ascii=False)):
+                raise SchemaInvalid("模型输出不是有效的结构化对象")
+            if self._provider.validate_payload:
+                validate_payload(payload, schema)
         finally:
             # Exactly one settlement on every path; crashes leave the reservation intact.
             row = self._ledger.settle(
@@ -132,7 +95,7 @@ class LiveLLMClient:
             payload=payload,
             usage=UsageReport(
                 mode="LIVE",
-                provider="openai",
+                provider=self._provider.name,
                 model=self._settings.llm_model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -141,7 +104,7 @@ class LiveLLMClient:
             ),
         )
 
-    def _send(self, body: dict[str, object], key: str | None) -> httpx.Response:
+    def _send(self, url: str, body: dict[str, object], key: str | None) -> httpx.Response:
         # No automatic retry; caller must re-submit a new task.
         try:
             with httpx.Client(
@@ -151,8 +114,8 @@ class LiveLLMClient:
                 follow_redirects=False,
             ) as client:
                 return client.post(
-                    self._settings.llm_base_url.rstrip("/") + "/responses",
-                    headers={"Authorization": f"Bearer {key}"},
+                    url,
+                    headers={"Authorization": f"Bearer {key}"} if key else {},
                     json=body,
                 )
         except httpx.TimeoutException:

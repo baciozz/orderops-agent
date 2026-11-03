@@ -120,6 +120,7 @@ def dispatch_text(
             price_in_per_mtok=configured.price_in_per_mtok,
             price_out_per_mtok=configured.price_out_per_mtok,
         )
+        # LiveLLMClient selects/validates llm_provider; all providers share this ledger.
         client = (client_factory or LiveLLMClient)(configured, ledger)
     task_id = durable_task_id or _open_task(session_factory, moment)
     routed = router.plan("unstructured", input_mode=input_mode)

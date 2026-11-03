@@ -19,3 +19,4 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 禁止用途：连接真实客户、ERP、支付、采购或发货；把 fixture 成功说成模型理解；在单价未知时打开 live；把 `T-STUB` 当成业务结果。
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过；这不代表完整 UI 或已验证真实 live 理解质量。
+- 模型传输层抽成 provider 接口：`openai`（Responses API，行为不变）和 `openai_compatible`（Chat Completions，面向 DeepSeek / vLLM / Ollama）。兼容 provider **只用 mock 测试，未做任何真实联调**。远端必须 HTTPS 且需要运行时密钥；仅 localhost/127.0.0.1/::1 允许 HTTP 和免密钥。没有按提供方设置 base URL 白名单：操作者配置的任何 HTTPS 地址都会收到密钥。缺单价时拒绝启用 live（保持 FIXTURE），本地模型须显式填 0。默认 `json_object` 加本地 schema 校验（只覆盖 parser schema 用到的子集），失败为 SCHEMA_INVALID。兼容请求不发送 `store`、`reasoning` 字段，提供方是否保留数据取决于其自身政策。
