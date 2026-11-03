@@ -33,8 +33,14 @@ class OpenAIResponsesProvider:
     def build_request(
         self, request: StructuredCallRequest, schema: dict[str, object]
     ) -> ProviderRequest:
-        body = {
-            "model": self._settings.llm_model,
+        base_url = self._settings.llm_base_url
+        model = self._settings.llm_model
+        if base_url is None:
+            raise LiveStartRefused("BASE_URL_UNSUPPORTED")
+        if not model:
+            raise LiveStartRefused("MODEL_NOT_CONFIGURED")
+        body: dict[str, object] = {
+            "model": model,
             "input": [
                 {"role": "system", "content": request.system_prompt},
                 {"role": "user", "content": request.user_prompt},
@@ -53,7 +59,7 @@ class OpenAIResponsesProvider:
         }
 
         return ProviderRequest(
-            url=self._settings.llm_base_url.rstrip("/") + "/responses",
+            url=base_url.rstrip("/") + "/responses",
             body=body,
             prompt_text=request.system_prompt + request.user_prompt,
         )

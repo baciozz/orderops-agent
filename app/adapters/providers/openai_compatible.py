@@ -34,6 +34,12 @@ class OpenAICompatibleChatProvider:
     def build_request(
         self, request: StructuredCallRequest, schema: dict[str, object]
     ) -> ProviderRequest:
+        base_url = self._settings.llm_base_url
+        model = self._settings.llm_model
+        if not base_url:
+            raise LiveStartRefused("BASE_URL_NOT_CONFIGURED")
+        if not model:
+            raise LiveStartRefused("MODEL_NOT_CONFIGURED")
         system = request.system_prompt
         response_format: dict[str, object] = {"type": "json_object"}
         if self._settings.llm_json_schema_supported:
@@ -50,8 +56,8 @@ class OpenAICompatibleChatProvider:
                 "\nReturn only a JSON object that strictly follows this JSON Schema. "
                 "Do not add fields or Markdown fences. Schema: " + json.dumps(schema)
             )
-        body = {
-            "model": self._settings.llm_model,
+        body: dict[str, object] = {
+            "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": request.user_prompt},
@@ -63,7 +69,7 @@ class OpenAICompatibleChatProvider:
         }
 
         return ProviderRequest(
-            url=self._settings.llm_base_url.rstrip("/") + "/chat/completions",
+            url=base_url.rstrip("/") + "/chat/completions",
             body=body,
             prompt_text=system + request.user_prompt,
         )

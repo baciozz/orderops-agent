@@ -36,7 +36,10 @@ def ensure_supported_schema(schema: dict[str, object]) -> None:
                 raise ValueError
             target = schema
             for part in ref[2:].split("/"):
-                target = target[part.replace("~1", "/").replace("~0", "~")]
+                resolved = target[part.replace("~1", "/").replace("~0", "~")]
+                if not isinstance(resolved, dict):
+                    raise ValueError
+                target = resolved
             check(target, depth + 1)
         for keyword in ("$defs", "properties"):
             if keyword in node:
@@ -89,7 +92,10 @@ def validate_payload(payload: dict[str, object], schema: dict[str, object]) -> N
                 raise ValueError
             target = schema
             for part in ref[2:].split("/"):
-                target = target[part.replace("~1", "/").replace("~0", "~")]
+                resolved = target[part.replace("~1", "/").replace("~0", "~")]
+                if not isinstance(resolved, dict):
+                    raise ValueError
+                target = resolved
             check(value, target, depth + 1)
         if "anyOf" in node:
             for choice in node["anyOf"]:
