@@ -5,6 +5,8 @@ unreceived fabric can take a change draft. Stage 1B does not open a new
 production order to cover leftover quantity.
 """
 
+from typing import Any
+
 from schemas.enums import FulfillmentMode
 
 from app.domain.changes import SnapLine
@@ -17,10 +19,10 @@ CANCEL = "CANCEL_DRAFT"
 def assess_downstream(
     *,
     new_lines: dict[str, SnapLine],
-    production: list[dict[str, object]],
-    purchase: list[dict[str, object]],
+    production: list[dict[str, Any]],
+    purchase: list[dict[str, Any]],
     usage: dict[str, tuple[str, int]],
-) -> tuple[list[dict[str, object]], str | None]:
+) -> tuple[list[dict[str, Any]], str | None]:
     """Return verdicts, or an error message when the change cannot be covered."""
     demand = {
         sku: line.ordered_qty
@@ -35,7 +37,7 @@ def assess_downstream(
     ]
     partial = [row for row in active if 0 < int(row["cut_qty"]) < int(row["planned_qty"])]
     zero = [row for row in active if int(row["cut_qty"]) == 0]
-    verdicts: list[dict[str, object]] = []
+    verdicts: list[dict[str, Any]] = []
     assigned: dict[str, str] = {}
 
     def take(sku: str, qty: int) -> bool:
@@ -112,7 +114,7 @@ def assess_downstream(
         if material is None:
             return [], f"{new_sku} 没有面料单耗"
         material_id, per_piece = material
-        new_qty = int(mo["after"]["planned_qty"]) * per_piece  # type: ignore[index]
+        new_qty = int(mo["after"]["planned_qty"]) * per_piece
         if mo["verdict"] == CANCEL:
             if int(row["received_qty"]) > 0:
                 return [], f"{row['doc_id']} 已到料，不能取消"
@@ -135,16 +137,16 @@ def assess_downstream(
 
 
 def locked_preview(
-    production: list[dict[str, object]],
-    purchase: list[dict[str, object]],
-) -> list[dict[str, str]]:
+    production: list[dict[str, Any]],
+    purchase: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Classify documents when a color change overlaps the cut or received part."""
     changeable_mos = {
         str(row["doc_id"])
         for row in production
         if row["status"] != "CANCELLED" and int(row["cut_qty"]) == 0
     }
-    preview: list[dict[str, str]] = []
+    preview: list[dict[str, Any]] = []
     for row in sorted(production, key=lambda item: str(item["doc_id"])):
         if row["status"] == "CANCELLED":
             continue
@@ -173,7 +175,7 @@ def locked_preview(
     return preview
 
 
-def _before_mo(row: dict[str, object]) -> dict[str, object]:
+def _before_mo(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "sku_id": row["sku_id"],
         "planned_qty": int(row["planned_qty"]),
@@ -182,7 +184,7 @@ def _before_mo(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _unchanged_mo(row: dict[str, object]) -> dict[str, object]:
+def _unchanged_mo(row: dict[str, Any]) -> dict[str, Any]:
     body = _before_mo(row)
     return {
         "doc_type": "production_order",
@@ -195,7 +197,7 @@ def _unchanged_mo(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _change_mo(row: dict[str, object], sku: str, planned: int, status: str) -> dict[str, object]:
+def _change_mo(row: dict[str, Any], sku: str, planned: int, status: str) -> dict[str, Any]:
     return {
         "doc_type": "production_order",
         "doc_id": row["doc_id"],
@@ -212,7 +214,7 @@ def _change_mo(row: dict[str, object], sku: str, planned: int, status: str) -> d
     }
 
 
-def _cancel_mo(row: dict[str, object]) -> dict[str, object]:
+def _cancel_mo(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "doc_type": "production_order",
         "doc_id": row["doc_id"],
@@ -224,7 +226,7 @@ def _cancel_mo(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _before_po(row: dict[str, object]) -> dict[str, object]:
+def _before_po(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "material_id": row["material_id"],
         "ordered_qty": int(row["ordered_qty"]),
@@ -234,7 +236,7 @@ def _before_po(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _unchanged_po(row: dict[str, object]) -> dict[str, object]:
+def _unchanged_po(row: dict[str, Any]) -> dict[str, Any]:
     body = _before_po(row)
     return {
         "doc_type": "purchase_order",
@@ -248,11 +250,11 @@ def _unchanged_po(row: dict[str, object]) -> dict[str, object]:
 
 
 def _change_po(
-    row: dict[str, object],
+    row: dict[str, Any],
     garment_sku: str,
     material_id: str,
     ordered_qty: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "doc_type": "purchase_order",
         "doc_id": row["doc_id"],
@@ -270,7 +272,7 @@ def _change_po(
     }
 
 
-def _cancel_po(row: dict[str, object], garment_sku: str) -> dict[str, object]:
+def _cancel_po(row: dict[str, Any], garment_sku: str) -> dict[str, Any]:
     return {
         "doc_type": "purchase_order",
         "doc_id": row["doc_id"],
