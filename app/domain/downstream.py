@@ -255,6 +255,9 @@ def _change_po(
     material_id: str,
     ordered_qty: int,
 ) -> dict[str, Any]:
+    received_qty = int(row["received_qty"])
+    # Receipt status follows quantities; the reduction still awaits supplier confirmation.
+    status = "RECEIVED" if ordered_qty == received_qty > 0 else row["status"]
     return {
         "doc_type": "purchase_order",
         "doc_id": row["doc_id"],
@@ -263,8 +266,8 @@ def _change_po(
         "after": {
             "material_id": material_id,
             "ordered_qty": ordered_qty,
-            "received_qty": int(row["received_qty"]),
-            "status": row["status"],
+            "received_qty": received_qty,
+            "status": status,
             "change_state": "PENDING_SUPPLIER",
         },
         "order_line_sku": garment_sku,
