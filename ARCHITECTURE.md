@@ -284,6 +284,25 @@ HTTP 拒绝无有效用量时计零 token/费用，但保留调用次数；实�
 详见[预算故障限制](docs/KNOWN_LIMITATIONS.md)。
 fixture 只返回零费用 UsageReport，不写 model_usage，不消耗 live 预算。
 
+### 预留状态与 ORPHANED
+
+`model_usage.status` 取值 RESERVED / SETTLED / ORPHANED，并记录 `reserved_at` / `settled_at`；
+迁移 `alembic/versions/budget_reservations.py` 把历史行标为 SETTLED。
+`reconcile_reservations` 只把 `reserved_at` 早于 now − TTL 的 RESERVED 行改为 ORPHANED，
+不释放费用、token 估算或调用次数，重复扫描无副作用。
+TTL 取 `OOS_BUDGET_RESERVATION_TTL_S` 与 `2 * model_timeout_s + 60` 秒的较大者；
+FastAPI lifespan 在 schema 就绪时扫描一次，`python -m app.cli reconcile-budget` 可手工再扫。
+ORPHANED 行允许迟到的 `settle()`：在原行写入实际用量并改为 SETTLED，不新增调用、不重复计费；
+相同 token 的重复结算保持首次结果，不同 token 抛出 ValueError。
+
+### 单价快照
+
+迁移 `alembic/versions/budget_price_snapshot.py`（前序 budget_reservations）给 model_usage 增加
+可空 Money 列 `price_in_per_mtok` / `price_out_per_mtok`。`reserve()` 把当时的账本单价写入行，
+普通结算和 ORPHANED 迟到结算都按行内快照计价，跨重启改价不影响原调用。
+迁移只在历史 `price_version` 为 `in=X;out=Y` 且两值都是有限非负 Decimal 时回填，否则两列保持 NULL；
+仅当行内某项单价为 NULL 时，该项才回落到当前账本单价，零单价不触发回落。
+
 ## 6. 安全边界
 
 ### 不可信数据与权限
@@ -339,10 +358,19 @@ live 客户端不回显上游原始正文/请求头，过滤可能回显密钥�
 HTTP 客户端 trust_env=False、follow_redirects=False，避免环境代理和重定向转送凭据。
 `OOS_LIVE_ENABLED` 默认 false；`resolve_mode` 要求开启开关、
 `OOS_PRICE_IN_PER_MTOK`、`OOS_PRICE_OUT_PER_MTOK` 和密钥，否则保持 FIXTURE。
-`OOS_LLM_PROVIDER` 必须是 openai，`OOS_LLM_MODEL` 必须配置，否则 live 客户端拒绝启动。
+`OOS_LLM_PROVIDER` 必须是 openai 或 openai_compatible，`OOS_LLM_MODEL` 必须配置，否则 live 客户端拒绝启动（见第 10 节）。
 其他主要键为 `OOS_LIVE_BUDGET_USD`、`OOS_MODEL_REASONING_EFFORT`、
 `OOS_MODEL_TIMEOUT_S`、`OOS_MODEL_MAX_TOKENS`、`OOS_MODEL_MAX_CALLS_PER_TASK`、`OOS_DATABASE_URL`。
 健康检查报告模式解析结果；真实任务卡依据 model_usage，而非仅凭配置显示 LIVE。
+
+### 启动时 schema 检查
+
+迁移仍由操作者显式执行 `python -m app.cli init-db`，启动不会建库或迁移。
+`app/main.py` 的 lifespan 先判断数据库文件是否存在（内存库视为存在），文件不存在时不建立连接。
+存在时调用 `app/db/schema.py` 的 `schema_ready`：用 Alembic ScriptDirectory 读取 head、
+MigrationContext 读取当前版本。完全无表返回 False，允许 health 服务启动但不扫描账本；
+有表但版本不等于 head 或缺少业务表时抛出 RuntimeError（提示先运行 init-db，并列出缺表），拒绝启动；
+就绪时执行一次 `reconcile_reservations`。
 
 ## 7. 主要错误码与 HTTP 状态
 
@@ -364,7 +392,7 @@ HTTP 客户端 trust_env=False、follow_redirects=False，避免环境代理和�
 | 批准 | HASH_MISMATCH、STALE_INTENT、STALE_DEPENDENCY、DUPLICATE_UNCONFIRMED、EXPIRED、APPROVAL_INVALID、CANCELLED | 409，哈希、版本、重复确认、有效期或取消冲突 |
 | 批准 | APPROVAL_ACTOR_MISMATCH | 403，审批身份不同 |
 | 预算 | BUDGET_EXCEEDED、CALL_LIMIT | 429，预算或调用次数耗尽 |
-| live 配置 | PRICES_NOT_CONFIGURED、KEY_NOT_CONFIGURED、LIVE_DISABLED、LIVE_START_REFUSED | 503，拒绝 live 启动 |
+| live 配置 | PRICES_NOT_CONFIGURED、KEY_NOT_CONFIGURED、LIVE_DISABLED、BASE_URL_NOT_CONFIGURED、LIVE_START_REFUSED | 503，拒绝 live 启动 |
 | live 输出 | TOKEN_LIMIT、MODEL_INCOMPLETE | 422，输出上限或未完成输出 |
 | live 传输 | MODEL_TIMEOUT | 504，超时且不自动重试 |
 | live 传输 | MODEL_TRANSPORT、MODEL_AUTH、MODEL_RATE_LIMIT、MODEL_UPSTREAM、MODEL_HTTP | 502，连接或提供方错误，原状态在安全 details 中 |
@@ -372,8 +400,8 @@ HTTP 客户端 trust_env=False、follow_redirects=False，避免环境代理和�
 
 TIMEOUT、CAPABILITY_MISSING、UNSUPPORTED_EVENT、DEADLINE、ATTEMPT_LIMIT 等也会写入任务或步骤，
 它们不是统一具有固定 HTTP 状态的异常类；ALREADY_COMMITTED 是取消响应的状态值。
-PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED 是 LiveStartRefused 的 reason，
-外部错误码使用 LIVE_START_REFUSED，不应把 reason 误列成独立 HTTP 错误码。
+PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED、BASE_URL_INSECURE 是 LiveStartRefused 的 reason，
+外部错误码使用 LIVE_START_REFUSED，不应把 reason 误列成独立 HTTP 错误码。code 与 details.reason 的完整对照见[模型提供方](docs/MODEL_PROVIDERS.md)。
 
 ## 8. 已知限制
 
@@ -387,3 +415,29 @@ PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED 是 LiveStart
 - 存在跨层 import 和旧占位入口，生产扩展前需明确拆分和复核事务边界。
 
 完整范围与故障行为见[已知限制](docs/KNOWN_LIMITATIONS.md)，验收范围见[测试清单](docs/TEST_CHECKLIST.md)。
+
+## 9. 可观测性
+
+`app/observability.py` 提供结构化日志，字段与事件清单见[可观测性说明](docs/OBSERVABILITY.md)。
+`get_logger(__name__)` 返回 `oos.` 前缀的 logger（去掉 `app.`，如 `oos.adapters.live_model`）并挂上脱敏过滤器；
+`configure_logging` 只配置 `oos` logger（JSON 或文本格式、级别、把当前密钥加入脱敏集合），不改 root handler。
+`@observed(logger, event, fields=..., failed_event=...)` 装饰同步/异步函数，记录 outcome、耗时、
+错误 code 与回调给出的标识字段；函数内可用 `enrich` 补充字段，`log_context` 传递 request_id / correlation_id。
+输入文本只记录长度和 SHA-256 前缀（`text_digest`），不记录原文。
+脱敏按字段名（api_key、authorization、token、secret、password、cookie 等）替换值，
+并在消息与字段里替换 `sk-[A-Za-z0-9_-]{16,}` 形式的密钥、Bearer 凭据和已配置密钥，统一写成 `[REDACTED]`。
+live 客户端启动 INFO 日志同样经 `get_logger`，只记录 provider 和 hostname。
+
+## 10. 模型提供方
+
+传输协议抽象为 `app/adapters/providers/base.py` 的 `ModelProvider` Protocol：
+`validate(settings)`、`build_request(request, schema)`、`parse_response(response)`，
+另有 `name` 与 `validate_payload` 属性；provider 不发请求、不碰预算。
+`app/adapters/providers/__init__.py` 的 `provider_for_settings` 按 `OOS_LLM_PROVIDER` 选择：
+openai → `app/adapters/providers/openai_responses.py`（Responses API，只接受官方 URL，`store=false`）；
+openai_compatible → `app/adapters/providers/openai_compatible.py`（Chat Completions，面向 DeepSeek / vLLM / Ollama，只做 mock 测试）；
+其他值为 LiveStartRefused(PROVIDER_UNSUPPORTED)。兼容 URL 规则在 `app/adapters/providers/urls.py`。
+`app/adapters/live_model.py` 的 LiveLLMClient 负责预算预留/结算、HTTP 发送（超时、不跟随跳转、不重试）和错误映射。
+兼容 provider 需要本地校验，调用前用 `app/adapters/providers/schema.py` 的 `ensure_supported_schema` 检查 schema
+（不支持的关键字直接 SCHEMA_INVALID，不预留不计费），响应后用 `validate_payload` 校验。
+配置、错误码与 reason 对照见[模型提供方](docs/MODEL_PROVIDERS.md)。
