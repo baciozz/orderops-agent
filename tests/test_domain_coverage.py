@@ -1,5 +1,6 @@
 """Behavior at quantity, execution and downstream document boundaries."""
 
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -97,11 +98,26 @@ def test_multiple_changes_merge_target_and_release_only_unshipped_reservations(c
     assert lines["A-BLACK-M"].ordered_qty == 10
 
 
-@pytest.mark.parametrize("mode", ["set_total", "cancel_remaining"])
-def test_removing_an_unexecuted_line_releases_its_reservation(catalog, mode):
+def test_zero_total_does_not_remove_an_unexecuted_line_or_release_its_reservation(catalog):
+    lines = {"A-BLACK-L": SnapLine("A-BLACK-L", 5, "STOCK")}
+    before = deepcopy(lines)
     result = evaluate(
         catalog,
-        [{"mode": mode, "sku_id": "A-BLACK-L", "qty": 0}],
+        [{"mode": "set_total", "sku_id": "A-BLACK-L", "qty": 0}],
+        lines,
+    )
+    assert lines == before
+    assert (result.kind, result.code) == ("reject", "BUSINESS_CONFLICT")
+    assert result.message is not None
+    assert "不表示取消" in result.message
+    assert "cancel_remaining" in result.message
+    assert result.reservation_delta == {}
+
+
+def test_removing_an_unexecuted_line_releases_its_reservation(catalog):
+    result = evaluate(
+        catalog,
+        [{"mode": "cancel_remaining", "sku_id": "A-BLACK-L", "qty": 0}],
         {"A-BLACK-L": SnapLine("A-BLACK-L", 5, "STOCK")},
     )
     assert result.kind == "validated"

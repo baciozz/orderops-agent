@@ -11,9 +11,16 @@ from app.services.seed import load_seed
 from sqlalchemy import select
 
 
-@pytest.mark.parametrize("mode", ["replace_remaining", "increment"])
-def test_zero_quantity_rejection_explains_explicit_cancel_flow(mode):
-    lines = {"A-BLACK-M": SnapLine("A-BLACK-M", 10, "STOCK", 3)}
+@pytest.mark.parametrize(
+    "mode,lines",
+    [
+        ("replace_remaining", {"A-BLACK-M": SnapLine("A-BLACK-M", 10, "STOCK", 3)}),
+        ("increment", {"A-BLACK-M": SnapLine("A-BLACK-M", 10, "STOCK", 3)}),
+        # set_total=0 must hit the zero-quantity path, not the below-shipped path
+        ("set_total", {"A-BLACK-M": SnapLine("A-BLACK-M", 10, "STOCK", 0)}),
+    ],
+)
+def test_zero_quantity_rejection_explains_explicit_cancel_flow(mode, lines):
     before = deepcopy(lines)
     result = evaluate_changes(
         lines=lines,
