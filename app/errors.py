@@ -85,9 +85,17 @@ class LiveStartRefused(AppError):
     http_status = 503
 
     def __init__(self, reason: str) -> None:
-        known = {"PRICES_NOT_CONFIGURED", "KEY_NOT_CONFIGURED", "LIVE_DISABLED"}
+        known = {
+            "PRICES_NOT_CONFIGURED",
+            "KEY_NOT_CONFIGURED",
+            "LIVE_DISABLED",
+            "BASE_URL_NOT_CONFIGURED",
+        }
+        message = f"live 模式拒绝启动（{reason}），保持 FIXTURE"
+        if reason == "BASE_URL_NOT_CONFIGURED":
+            message += "：openai_compatible 必须配置 OOS_LLM_BASE_URL"
         super().__init__(
-            f"live 模式拒绝启动（{reason}），保持 FIXTURE",
+            message,
             code=reason if reason in known else "LIVE_START_REFUSED",
             http_status=503,
             details={"reason": reason},

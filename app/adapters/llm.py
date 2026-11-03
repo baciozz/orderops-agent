@@ -8,6 +8,7 @@ from schemas.common import ApiModel, UsageReport
 from schemas.enums import RuntimeMode
 
 from app.config import Settings
+from app.errors import LiveStartRefused
 
 
 class StructuredCallRequest(ApiModel):
@@ -37,7 +38,7 @@ class ModeResolution:
 
 
 def resolve_mode(settings: Settings) -> ModeResolution:
-    """Refuse to start live when the flag, prices, or key are missing.
+    """Refuse live when the flag, prices, required key, or compatible config are missing.
 
     The process keeps running in FIXTURE. Missing prices are not filled in.
     """
@@ -53,7 +54,20 @@ def resolve_mode(settings: Settings) -> ModeResolution:
             live_requested=True,
             live_block_reason="PRICES_NOT_CONFIGURED",
         )
-    if settings.llm_api_key_value() is None:
+    if settings.llm_provider == "openai_compatible":
+        from app.adapters.providers.openai_compatible import OpenAICompatibleChatProvider
+
+        try:
+            OpenAICompatibleChatProvider(settings).validate(settings)
+        except LiveStartRefused as exc:
+            return ModeResolution(
+                mode=RuntimeMode.FIXTURE,
+                live_requested=True,
+                live_block_reason=exc.reason,
+            )
+    # Unknown providers are refused by provider selection, rather than misreported
+    # as a missing OpenAI key. Preserve the existing unconfigured-provider fallback.
+    elif settings.llm_provider in (None, "openai") and settings.llm_api_key_value() is None:
         return ModeResolution(
             mode=RuntimeMode.FIXTURE,
             live_requested=True,
