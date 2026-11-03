@@ -19,3 +19,14 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 禁止用途：连接真实客户、ERP、支付、采购或发货；把 fixture 成功说成模型理解；在单价未知时打开 live；把 `T-STUB` 当成业务结果。
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过；这不代表完整 UI 或已验证真实 live 理解质量。
+
+## 输入错误、预算崩溃恢复和进程并发
+
+- 输入在创建任务、事件或调度步骤之前校验。`POST /inputs`、`POST /tasks/{id}/answers` 和 `POST /dispatch` 拒绝空白消息（`INPUT_EMPTY`）、NUL/无效 Unicode（`ENCODING_INVALID`）和超过 5 MiB 的文本（`UPLOAD_TOO_LARGE`）；仅提供来源的 inbox 请求仍可用。上传拒绝空文件/无非空内容的文件、非 UTF-8 或含 NUL 的 TXT/MD、损坏/截断/非工作簿 XLSX，分别使用 `INPUT_EMPTY`、`ENCODING_INVALID`、`UPLOAD_CORRUPT`。保留 `UPLOAD_REJECTED` 表示其他文件策略拒绝。上传失败保留 `parser_status=rejected`，使用统一错误 envelope（包括 request/correlation ID、schema_version、retryable 和 details），在数据库事务失败时删除对应原始文件。
+- 单文件上限仍为 5 MiB；文件过大继续返回 HTTP 400（兼容已有上传契约），代码为 `UPLOAD_TOO_LARGE`。实际请求体上限为 5 MiB + 64 KiB（含 multipart/JSON 开销），无论是否有 Content-Length 都在读取流时限制，超出返回 HTTP 413 和相同代码；JSON 文本本身超限也为 413。不猜测或修复损坏编码。
+- `model_usage` 的 `status` 为 `RESERVED` / `SETTLED` / `ORPHANED`，同时记录 `reserved_at` / `settled_at`。迁移 `budget_reservations` 将历史行标为 SETTLED，两个时间以原 `at` 回填；它无法识别旧版本遗留的未结算预留，历史费用保持原值。部署前运行 `.venv/bin/python -m app.cli init-db` 迁移，启动生命周期不会自动建库或迁移。
+- `reserve()` 原子写入悲观估算及 RESERVED 状态。`reconcile_reservations(factory, now=..., ttl=timedelta(...))` 只将年龄严格大于 TTL 的 RESERVED 行改成 ORPHANED，**完整保留费用、token 估算和每任务调用次数占用**。它不判断请求是否已发送，不释放任何可能已计费的预算。重复扫描无副作用；年轻预留以及刚好达到 TTL 的预留不变。
+- 已初始化数据库在 FastAPI lifespan 启动时执行扫描；手工执行 `.venv/bin/python -m app.cli reconcile-budget` 可再次扫描。`OOS_BUDGET_RESERVATION_TTL_S` 必须是正整数，有效值为配置值与 `2 * model_timeout_s + 60` 秒的较大者；默认 timeout=60 秒时 TTL=180 秒。没有常驻定时扫描器，长时间运行的服务可由操作者调用该命令。
+- ORPHANED 允许迟到的 `settle()`：在原行记录实际 token/费用，状态改 SETTLED 并设置 settled_at，因此既不会插入第二次调用，也不会累加两笔费用。相同 token 数的重复结算保持第一次结果和时间；不同 token 数的重复结算抛出 ValueError，防止覆盖已经确认的用量。实际用量高于估算仍照实记账；未知用量沿用悲观估算。结算继续使用调用方账本的配置单价，操作者跨重启迟到结算时应使用原调用单价。
+- `tests/test_multiprocess.py` 使用独立 venv Python 子进程、文件 SQLite、同时起跑屏障。四进程争用同一批六个任务，通过原 worker lease/fence API 执行，再由测试中的 demo human 显式批准并提交；检查任务、操作、库存预占/流水、outbox 和消费者回执各一次，并重放 commit 验证幂等。独立合成 SKU 避免把正常的库存版本冲突误判成重复领取问题。另测四进程争用只容纳三笔的预算，以及旧 worker 暂停、父进程到期接管后，旧调度及内核写入都被 fence 拒绝。worker 本身仍停在 AWAITING_APPROVAL，不自动批准。
+- 并发测试沿用生产连接的 WAL、foreign_keys=ON、busy_timeout=5000ms 和写事务 BEGIN IMMEDIATE；未观察到 database is locked，不新增自动重试，也不放宽版本/库存/批准/fence 检查。SQLite 仍只有一个写者，锁持有超过 busy timeout 会报错；短事务是当前运行约束。这些测试不模拟杀死处于提交系统调用中的进程或任意长时间写锁。

@@ -20,6 +20,7 @@ from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.llm import LLMClient, resolve_mode
+from app.adapters.uploads import validate_text
 from app.config import Settings, get_settings
 from app.db.models import (
     AuditRecord,
@@ -105,6 +106,7 @@ def dispatch_text(
     client_factory: Callable[[Settings, BudgetLedger], LLMClient] | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
+    validate_text(text, allow_empty=bool(source_ids))
     moment = _moment(now)
     registered = registry or build_default_registry()
     router = Router(registered)

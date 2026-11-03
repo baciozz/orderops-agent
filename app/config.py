@@ -3,7 +3,7 @@
 from decimal import Decimal
 from functools import lru_cache
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 HARD_BUDGET_CEILING_USD = Decimal("5.00")
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     approval_ttl_seconds: int = 600
     worker_max_active: int = 2
     model_timeout_s: int = 60
+    budget_reservation_ttl_s: int | None = Field(default=None, gt=0)
     model_max_tokens: int = 1000
     model_max_calls_per_task: int = 3
 
@@ -62,6 +63,11 @@ class Settings(BaseSettings):
     def effective_live_budget_usd(self) -> Decimal:
         """Config cap and the code ceiling both apply. The smaller one wins."""
         return min(self.live_budget_usd, HARD_BUDGET_CEILING_USD)
+
+    @property
+    def effective_budget_reservation_ttl_s(self) -> int:
+        """Never orphan an in-flight call merely because its timeout was raised."""
+        return max(self.budget_reservation_ttl_s or 0, 2 * self.model_timeout_s + 60)
 
     def llm_api_key_value(self) -> str | None:
         if self.llm_api_key is None:

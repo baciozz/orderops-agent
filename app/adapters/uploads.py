@@ -4,11 +4,16 @@ from contextlib import contextmanager
 from io import BytesIO
 from pathlib import PurePath
 from zipfile import BadZipFile, ZipFile
+from zlib import error as ZlibError
 
 import openpyxl
 from defusedxml import DefusedXmlException
+from openpyxl.utils.exceptions import InvalidFileException
+
+from app.errors import AppError
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
+MAX_REQUEST_BYTES = MAX_FILE_BYTES + 64 * 1024
 MAX_FILES = 3
 MAX_SHEETS = 5
 MAX_NONEMPTY_ROWS = 5000
@@ -19,6 +24,29 @@ MAX_CELLS = 100_000
 ALLOWED_SUFFIXES = frozenset({".txt", ".md", ".xlsx"})
 
 
+class UploadValidationError(ValueError):
+    """A rejected file, also usable by non-HTTP static readers."""
+
+    def __init__(self, message: str, code: str = "UPLOAD_REJECTED") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def validate_text(text: str | None, *, allow_empty: bool = False) -> None:
+    """Validate message text before opening tasks or invalidating existing intent."""
+    if text is not None:
+        try:
+            size = len(text.encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise AppError("文本必须是有效 UTF-8", code="ENCODING_INVALID") from exc
+        if "\x00" in text:
+            raise AppError("文本不能包含 NUL 字符", code="ENCODING_INVALID")
+        if size > MAX_FILE_BYTES:
+            raise AppError("文本超过大小上限", code="UPLOAD_TOO_LARGE", http_status=413)
+    if not allow_empty and (text is None or not text.strip()):
+        raise AppError("输入不能为空", code="INPUT_EMPTY")
+
+
 def validate_upload(filename: str, content: bytes) -> str:
     suffix = PurePath(filename).suffix.lower()
     if suffix == ".xlsm":
@@ -26,7 +54,9 @@ def validate_upload(filename: str, content: bytes) -> str:
     if suffix not in ALLOWED_SUFFIXES:
         raise ValueError("不支持的文件类型；仅接受 TXT、MD、XLSX")
     if len(content) > MAX_FILE_BYTES:
-        raise ValueError("文件超过 5 MB 上限")
+        raise UploadValidationError("文件超过 5 MB 上限", "UPLOAD_TOO_LARGE")
+    if not content:
+        raise UploadValidationError("文件不能为空", "INPUT_EMPTY")
     return suffix
 
 
@@ -65,7 +95,11 @@ def static_workbook(content: bytes):
             )
         except ValueError as exc:
             # openpyxl can wrap defusedxml's security exceptions in ValueError.
-            raise ValueError("无法读取 XLSX，请提供有效的静态工作簿") from exc
+            raise UploadValidationError(
+                "无法读取 XLSX，请提供有效的静态工作簿", "UPLOAD_CORRUPT"
+            ) from exc
+        if not workbook.worksheets:
+            raise UploadValidationError("XLSX 不含工作表", "UPLOAD_CORRUPT")
         if len(workbook.worksheets) > MAX_SHEETS:
             raise ValueError("工作表超过 5 张上限")
         nonempty_rows = 0
@@ -90,10 +124,26 @@ def static_workbook(content: bytes):
                         raise ValueError(
                             f"{sheet.title}!{cell.coordinate} 含公式，请改为明确静态值"
                         )
-    except (BadZipFile, KeyError, OSError, SyntaxError, DefusedXmlException) as exc:
+    except (
+        BadZipFile,
+        KeyError,
+        OSError,
+        SyntaxError,
+        DefusedXmlException,
+        InvalidFileException,
+        TypeError,
+        IndexError,
+        AttributeError,
+        EOFError,
+        ZlibError,
+        NotImplementedError,
+        RuntimeError,
+    ) as exc:
         if workbook is not None:
             workbook.close()
-        raise ValueError("无法读取 XLSX，请提供有效的静态工作簿") from exc
+        raise UploadValidationError(
+            "无法读取 XLSX，请提供有效的静态工作簿", "UPLOAD_CORRUPT"
+        ) from exc
     except Exception:
         if workbook is not None:
             workbook.close()

@@ -561,6 +561,9 @@ class ModelUsage(Base):
     __table_args__ = (
         CheckConstraint("input_tokens >= 0", name="ck_in_tok"),
         CheckConstraint("output_tokens >= 0", name="ck_out_tok"),
+        CheckConstraint(
+            "status IN ('RESERVED', 'SETTLED', 'ORPHANED')", name="ck_model_usage_status"
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -573,6 +576,11 @@ class ModelUsage(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     price_version: Mapped[str] = mapped_column(String(128), nullable=False)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="SETTLED", server_default="SETTLED"
+    )
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class InputPayload(Base):
