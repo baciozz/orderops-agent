@@ -51,7 +51,13 @@ make run
 ```bash
 make lint
 make test
+make typecheck   # mypy，配置在 pyproject.toml [tool.mypy]
+make cov         # pytest + 覆盖率，低于 fail_under（90%）即失败
+make check       # lint + typecheck + cov，一次跑完
 ```
+
+当前 GitHub Actions 只跑 `make lint` 和 `make test`。类型检查、覆盖率和离线评测这几步写在
+`ci/pending-workflow-changes.yml` 里，等仓库补上 workflow 权限后整份替换 `.github/workflows/ci.yml`。
 
 `pytest` 会列出跳过的 B/R 用例和原因。跳过不是通过。清单在 `tests/acceptance_cases.py`。
 

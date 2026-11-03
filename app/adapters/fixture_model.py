@@ -1,5 +1,7 @@
 """Fixed fixture responses. A successful fixture call is not evidence of a live model."""
 
+from typing import Literal
+
 from schemas.common import UsageReport
 
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult
@@ -7,7 +9,7 @@ from app.errors import FixtureNotFound
 
 
 class FixtureLLMClient:
-    mode = "FIXTURE"
+    mode: Literal["FIXTURE", "LIVE"] = "FIXTURE"
 
     def __init__(self, fixtures: dict[str, dict[str, object]] | None = None) -> None:
         self._fixtures = fixtures or {}

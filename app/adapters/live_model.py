@@ -5,6 +5,7 @@ import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -21,7 +22,7 @@ startup_logger = logging.getLogger(__name__)
 
 
 class LiveLLMClient:
-    mode = "LIVE"
+    mode: Literal["FIXTURE", "LIVE"] = "LIVE"
 
     def __init__(
         self,
@@ -36,6 +37,9 @@ class LiveLLMClient:
             raise LiveStartRefused(resolution.live_block_reason or "LIVE_DISABLED")
         self._provider = provider_for_settings(settings)
         self._provider.validate(settings)
+        if not settings.llm_model:
+            raise LiveStartRefused("MODEL_NOT_CONFIGURED")
+        self._model: str = settings.llm_model
         self._settings = settings
         self._ledger = ledger
         self._transport = transport
@@ -67,7 +71,7 @@ class LiveLLMClient:
         key = self._settings.llm_api_key_value()
         reservation_id = self._ledger.reserve(
             provider=self._provider.name,
-            model=self._settings.llm_model,
+            model=self._model,
             input_tokens=estimate,
             max_output_tokens=request.max_output_tokens,
             task_id=request.task_id,
@@ -107,7 +111,7 @@ class LiveLLMClient:
             usage=UsageReport(
                 mode="LIVE",
                 provider=self._provider.name,
-                model=self._settings.llm_model,
+                model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=format(row.cost_usd, "f"),

@@ -1,6 +1,9 @@
 """Read-only task projection. Business authorization remains in the kernel."""
 
+from typing import cast
+
 from schemas.common import SourceRef
+from schemas.enums import DisabledReason, LockedKind, RuntimeMode, VerificationState, WaitingOn
 from schemas.task_view import (
     ApprovalBlock,
     DispatchStepView,
@@ -103,7 +106,9 @@ def _line_diffs(session, task, plan, operation):
                 new_qty=new,
                 delta=new - old,
                 locked_qty=locked,
-                locked_kind=("cut" if mode == "MTO" else "shipped") if locked else "none",
+                locked_kind=cast(
+                    LockedKind, ("cut" if mode == "MTO" else "shipped") if locked else "none"
+                ),
                 unexecuted_qty=max(new - locked, 0),
                 reservation_delta=new - old if mode == "STOCK" else 0,
                 available_qty=available.get(sku),
@@ -161,7 +166,7 @@ def _approval_block(session, task, plan, now, generated_at):
         generated_at=generated_at,
         expires_at=aware(approval.expires_at) if approval else None,
         approvable=reason is None,
-        disabled_reason=reason,
+        disabled_reason=cast(DisabledReason | None, reason),
     )
 
 
@@ -258,10 +263,10 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             order_id=task.order_id,
             status=task.status,
             intent_revision=task.intent_revision,
-            waiting_on=waiting,
-            mode="LIVE"
+            waiting_on=cast(WaitingOn, waiting),
+            mode=RuntimeMode.LIVE
             if session.scalar(select(ModelUsage.id).where(ModelUsage.task_id == task.id).limit(1))
-            else "FIXTURE",
+            else RuntimeMode.FIXTURE,
         ),
         dispatch=dispatch,
         line_diffs=diffs,
@@ -273,9 +278,12 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
         result=TaskResultBlock(
             operation_id=operation.id if operation else None,
             revision=result.get("revision"),
-            verification=("pending" if operation.committed_verification_pending else "passed")
-            if operation
-            else None,
+            verification=cast(
+                VerificationState | None,
+                ("pending" if operation.committed_verification_pending else "passed")
+                if operation
+                else None,
+            ),
             download_url=f"/tasks/{task.id}/download" if diffs else None,
         ),
     )
