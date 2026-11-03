@@ -32,6 +32,6 @@ Router 按「事件类型 → 能力」选 Agent，不写死 Agent 名。
 
 统一输出信封是 `AgentProposal`。`fencing_token` 或 `intent_revision` 不匹配时 `accept_proposal` 丢弃提案。输出不合 schema 时按 `max_retries` 重试，仍失败则任务为 `SCHEMA_INVALID`，不进入预检。超时把 DispatchStep 标为 TIMEOUT，并把本次 attempt 的 fencing token 加一；晚到提案对不上 token 就被丢掉。
 
-`POST /dispatch` 是同步的 fixture 入口。方案里的 `POST /inputs` 仍留给阶段 2 的 inbox，这里不占用那个契约。parser 按整段文本精确查找 fixture，找不到就失败，不会改走 live。
+`POST /dispatch` 是同步的 fixture 入口。`POST /inputs` 已由 Stage 2 的持久 inbox 接管；worker 复用此调度器，在结果写入前检查租约与 fencing。parser 按整段文本精确查找 fixture，找不到就失败，不会改走 live。
 
 外部 Agent 使用同一套契约，kind 为 `external`。Stage 0 拒绝注册。说明文字里可以写「兼容某种 WebAPI 格式的模拟服务，非官方」，但不能用该厂商的名字做产品名。

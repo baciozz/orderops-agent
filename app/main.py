@@ -17,6 +17,7 @@ from app.adapters.llm import resolve_mode
 from app.api.dispatch import router as dispatch_router
 from app.api.errors import json_error
 from app.api.health import router as health_router
+from app.api.inputs import router as inputs_router
 from app.api.orders import router as orders_router
 from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
@@ -79,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(task_router)
     application.include_router(orders_router)
     application.include_router(dispatch_router)
+    application.include_router(inputs_router)
     return application
 
 

@@ -65,3 +65,24 @@ Stage 0 的 Router 已经能按事件类型选出能力。找不到能力时返�
 ## 停止条件
 
 Ctrl+C 停止 API 进程。没有模型密钥时不要打开 live。没有单价时代码会拒绝 live，不要在代码里填一个“大概的价格”。
+
+## Stage 2 已实现
+
+`inbox.accept_input` 原子保存输入和任务；`state.ALLOWED` 定义允许转换。
+`worker.claim` 使用短 BEGIN IMMEDIATE 事务领取任务，最多两条 RUNNING；JobAttempt
+每次接管增加 attempt_no 与 fencing_token。fixture 子 Agent 在普通读事务运行，
+结果写事务重新检查当前 token、任务状态及租约，旧 attempt 不能写入预检或轨迹。
+步骤完成更新 heartbeat/progress；`heartbeat` 可单独续租。默认 lease 60 秒、无进展
+120 秒、3 次 attempt、8 步，参数集中在 `worker.Limits`。等待人工时释放租约；
+问题及来源保存于计划或输入 payload，回答经新事件恢复同一任务。
+
+`watchdog.scan` 检查 Operation、outbox、有效租约、截止时间及进展，决定对账或
+重新排队；不统一判失败。业务提交和取消共用 SQLite 写序列。回执丢失可由
+`recovery.durable_commit` 故障钩子模拟，再以原幂等键读取同一 Operation。
+提交事务已有 outbox；投递先发送再确认，失败退避重试。消费者 `consume` 在同一
+事务执行效果并写唯一 `(event_id, consumer)` receipt，支持重复发送后的去重。
+这是 at-least-once，不宣称 exactly-once。
+
+`python -m app.cli worker-once` 执行恢复扫描、一条任务及 outbox 投递，可由本地
+调度器重复运行；API 只负责入库，不在 HTTP 请求中执行 worker。新迁移保存
+InputPayload 与 ConsumerReceipt，`init-db` 继续执行 Alembic upgrade head。

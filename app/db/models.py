@@ -566,3 +566,19 @@ class ModelUsage(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     price_version: Mapped[str] = mapped_column(String(128), nullable=False)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class InputPayload(Base):
+    __tablename__ = "input_payload"
+
+    event_id: Mapped[str] = mapped_column(ForeignKey("event.id"), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), nullable=False)
+    body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class ConsumerReceipt(Base):
+    __tablename__ = "consumer_receipt"
+
+    event_id: Mapped[str] = mapped_column(ForeignKey("event.id"), primary_key=True)
+    consumer: Mapped[str] = mapped_column(String(64), primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

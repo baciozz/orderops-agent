@@ -28,6 +28,7 @@ from app.db.models import (
     DocRevision,
     DownstreamLink,
     Event,
+    JobAttempt,
     MaterialUsage,
     Operation,
     OrderLine,
@@ -52,6 +53,7 @@ from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
 from app.domain.orders import derive_order_status
 from app.errors import AppError
+from app.orchestration.state import enforce, transition
 
 DEMO_ACTOR_ID = "demo-user"
 _THREAD = "demo"
@@ -119,6 +121,7 @@ def plan_change(
     outcome: PlanOutcome | None = None
     try:
         with begin_immediate(session):
+            enforce(session)
             prior = _existing_outcome(session, client_event_key)
             if prior is not None:
                 outcome, error = prior
@@ -155,6 +158,7 @@ def note_ambiguous(
     session = session_factory()
     try:
         with begin_immediate(session):
+            enforce(session)
             prior = _existing_outcome(session, client_event_key)
             if prior is not None:
                 outcome, error = prior
@@ -202,6 +206,7 @@ def plan_new_order(
     outcome: PlanOutcome | None = None
     try:
         with begin_immediate(session):
+            enforce(session)
             prior = _existing_outcome(session, client_event_key)
             if prior is not None:
                 outcome, error = prior
@@ -292,6 +297,7 @@ def commit_plan(
     idempotency_key: str,
     actor_id: str = DEMO_ACTOR_ID,
     now: datetime | None = None,
+    acknowledge: bool = True,
 ) -> CommitOutcome:
     moment = _now(now)
     request_hash = canonical_hash(
@@ -319,7 +325,17 @@ def commit_plan(
     assert outcome is not None
     if not outcome.replayed:
         _post_verify(session_factory, outcome.operation_id)
+    if acknowledge:
+        acknowledge_commit(session_factory, outcome.task_id)
     return outcome
+
+
+def acknowledge_commit(session_factory: sessionmaker[Session], task_id: str) -> None:
+    """Complete a durable commit without reopening an already acknowledged task."""
+    with session_factory() as session, begin_immediate(session):
+        task = session.get(Task, task_id)
+        if task.status in {TaskStatus.COMMITTING, TaskStatus.RECONCILING}:
+            transition(task, TaskStatus.SUCCEEDED)
 
 
 def record_receipt(
@@ -764,6 +780,8 @@ def _commit_locked(
     task = session.get(Task, plan.task_id)
     if task is None:
         return None, AppError("任务不存在", code="NOT_FOUND", http_status=404)
+    if task.cancel_requested or task.status == TaskStatus.CANCELLED:
+        return _err("任务已取消", "CANCELLED", 409)
     if plan.plan_kind == PlanKind.CHANGE:
         order = _require_order(session, str(task.order_id))
         if order.intent_revision != approval.intent_revision:
@@ -835,6 +853,7 @@ def _commit_locked(
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
         _revoke_if_active(approval)
         return None, AppError("计划内容与批准哈希不一致", code="HASH_MISMATCH", http_status=409)
+    transition(task, TaskStatus.COMMITTING)
     _hit_failpoint("before_write")
     operation_id = _id("OP")
     audit_id = _id("AUD")
@@ -926,7 +945,6 @@ def _commit_locked(
     approval.status = ApprovalStatus.CONSUMED
     approval.consumed_operation_id = operation_id
     plan.status = PlanStatus.COMMITTED
-    task.status = TaskStatus.SUCCEEDED
     task.result_ref = operation_id
     result = {
         "order_id": order.id,
@@ -1290,7 +1308,10 @@ def _attach_task(
             raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
         task.chain_id = chain_id
         task.order_id = order_id
-        task.status = status
+        transition(task, status)
+        for attempt in session.scalars(select(JobAttempt).where(JobAttempt.task_id == task.id)):
+            attempt.lease_until = None
+            attempt.lease_owner = None
         task.intent_revision = intent_revision
         task.last_event_id = event_id
         task.error_code = error_code
@@ -1520,7 +1541,9 @@ def _existing_outcome(
     )
 
 
-def _invalidate_order(session: Session, order_id: str) -> None:
+def _invalidate_order(
+    session: Session, order_id: str, *, exclude_task_id: str | None = None
+) -> None:
     tasks = list(session.scalars(select(Task).where(Task.order_id == order_id)).all())
     if not tasks:
         return
@@ -1539,8 +1562,11 @@ def _invalidate_order(session: Session, order_id: str) -> None:
         for approval in approvals:
             approval.status = ApprovalStatus.REVOKED
     for task in tasks:
-        if task.status in {TaskStatus.AWAITING_APPROVAL, TaskStatus.NEEDS_CLARIFICATION}:
-            task.status = TaskStatus.SUPERSEDED
+        if task.id != exclude_task_id and task.status in {
+            TaskStatus.AWAITING_APPROVAL,
+            TaskStatus.NEEDS_CLARIFICATION,
+        }:
+            transition(task, TaskStatus.SUPERSEDED)
 
 
 def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:

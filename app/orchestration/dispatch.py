@@ -6,18 +6,18 @@ Agent payloads are checked, recorded, and then ignored by the precheck.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 from schemas.business import BusinessEvent, ExtractionResult
 from schemas.enums import BusinessEventType, DispatchStatus, TaskStatus
 from schemas.subagent import AgentProposal, SubAgentSpec
-from sqlalchemy import select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.fixture_model import FixtureLLMClient
-from app.db.models import AuditRecord, DispatchStep, JobAttempt, SalesOrder, Task
+from app.db.models import AuditRecord, DispatchStep, InputPayload, JobAttempt, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, ProposalRejected, SchemaInvalid, ToolNotAllowed
@@ -27,6 +27,8 @@ from app.orchestration.fixtures import golden_fixtures
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import Registry, tool_executor
 from app.orchestration.router import PlannedStep, Router
+from app.orchestration.state import enforce, transition
+from app.orchestration.state import guard as durable_guard
 from app.orchestration.tools import ToolGateway
 from app.services.kernel import _current_links as current_links
 from app.services.kernel import (
@@ -84,6 +86,7 @@ def dispatch_text(
     fixtures: dict[str, dict[str, object]] | None = None,
     before_step: Callable[[StepContext], None] | None = None,
     timeout_agent: str | None = None,
+    durable_task_id: str | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
     moment = _moment(now)
@@ -93,7 +96,7 @@ def dispatch_text(
     if fixtures:
         library.update(fixtures)
     client = FixtureLLMClient(library)
-    task_id = _open_task(session_factory, moment)
+    task_id = durable_task_id or _open_task(session_factory, moment)
     routed = router.plan("unstructured", input_mode=input_mode)
     if not routed.ok:
         return _fail(session_factory, task_id, routed.code, routed.message)
@@ -287,7 +290,7 @@ def _run_planned(
             work=work,
             moment=moment,
             runner=runner,
-            before_step=None if probe_done else before_step,
+            before_step=before_step if durable_guard.get() else None if probe_done else before_step,
             timeout_agent=timeout_agent,
         )
         probe_done = True
@@ -321,7 +324,7 @@ def _one_attempt(
     """Return (run, should_retry, abort outcome)."""
     session = session_factory()
     try:
-        with begin_immediate(session):
+        with session.no_autoflush:
             task, attempt = _lock(session, task_id)
             gateway = ToolGateway(
                 session,
@@ -359,7 +362,6 @@ def _one_attempt(
             except AgentTimeout:
                 code = "TIMEOUT"
                 message = f"{spec.agent_id} 超时，本步结果作废"
-                attempt.fencing_token += 1
             except SchemaInvalid as exc:
                 code = "SCHEMA_INVALID"
                 message = str(exc)
@@ -373,48 +375,76 @@ def _one_attempt(
             finally:
                 work.model_calls = ctx.model_calls
                 tool_executor.reset(token)
-            if code is None and run is not None:
+            # The runner's session only reads, with autoflush disabled. Persist its
+            # changes through a fresh writer so the fence sees current committed state.
+            with session_factory() as writer, begin_immediate(writer):
+                task, attempt = _lock(writer, task_id)
+                _copy_step_writes(session, writer)
+                if code == "TIMEOUT":
+                    attempt.fencing_token += 1
+                if code is None and run is not None:
+                    _add_step(
+                        writer,
+                        task=task,
+                        attempt=attempt,
+                        spec=spec,
+                        capability=capability,
+                        status=DispatchStatus.SUCCEEDED,
+                        now=moment,
+                        output_ref=canonical_hash(run.payload),
+                        tokens=run.tokens,
+                        cost=Decimal("0"),
+                    )
+                    return run, False, None
+                status = DispatchStatus.TIMEOUT if code == "TIMEOUT" else DispatchStatus.FAILED
                 _add_step(
-                    session,
+                    writer,
                     task=task,
                     attempt=attempt,
                     spec=spec,
                     capability=capability,
-                    status=DispatchStatus.SUCCEEDED,
+                    status=status,
                     now=moment,
-                    output_ref=canonical_hash(run.payload),
-                    tokens=run.tokens,
-                    cost=Decimal("0"),
+                    error_code=code,
+                    tokens=0 if code == "SCHEMA_INVALID" else None,
+                    cost=Decimal("0") if code == "SCHEMA_INVALID" else None,
                 )
-                return run, False, None
-            status = DispatchStatus.TIMEOUT if code == "TIMEOUT" else DispatchStatus.FAILED
-            _add_step(
-                session,
-                task=task,
-                attempt=attempt,
-                spec=spec,
-                capability=capability,
-                status=status,
-                now=moment,
-                error_code=code,
-                tokens=0 if code == "SCHEMA_INVALID" else None,
-                cost=Decimal("0") if code == "SCHEMA_INVALID" else None,
-            )
-            if retry:
-                return None, True, None
-            task.status = TaskStatus.FAILED
-            task.error_code = code
-            task.result_ref = message[:255]
-            failed = _view(
-                session,
-                task,
-                status=TaskStatus.FAILED,
-                error_code=code,
-                issues=[message],
-            )
-            return None, False, failed
+                if retry:
+                    return None, True, None
+                transition(task, TaskStatus.FAILED)
+                attempt.lease_until = None
+                attempt.lease_owner = None
+                task.error_code = code
+                task.result_ref = message[:255]
+                failed = _view(
+                    writer,
+                    task,
+                    status=TaskStatus.FAILED,
+                    error_code=code,
+                    issues=[message],
+                )
+                return None, False, failed
     finally:
         session.close()
+
+
+def _copy_step_writes(source: Session, writer: Session) -> None:
+    """Copy changed columns only; never merge a stale snapshot over current rows."""
+    for obj in source.dirty:
+        state = inspect(obj)
+        current = writer.get(type(obj), state.identity)
+        for column in state.mapper.column_attrs:
+            if state.attrs[column.key].history.has_changes():
+                setattr(current, column.key, getattr(obj, column.key))
+    for obj in source.new:
+        writer.add(
+            type(obj)(
+                **{
+                    column.key: getattr(obj, column.key)
+                    for column in inspect(obj).mapper.column_attrs
+                }
+            )
+        )
 
 
 def _precheck(
@@ -448,12 +478,25 @@ def _precheck(
                 if not event.order_id:
                     return _fail(session_factory, task_id, "NEEDS_CLARIFICATION", "改单缺少订单号")
                 base_revision, intent_revision = _versions(session_factory, event.order_id)
+                bump_intent = True
+                if durable_guard.get():
+                    with session_factory() as read_session:
+                        durable_task = read_session.get(Task, task_id)
+                        if durable_task.order_id:
+                            if durable_task.order_id != event.order_id:
+                                raise AppError(
+                                    "输入订单与选择订单不一致", code="ORDER_SCOPE", http_status=409
+                                )
+                            if durable_task.intent_revision != intent_revision:
+                                raise AppError("意图已更新", code="STALE_INTENT", http_status=409)
+                            bump_intent = False
                 outcome = plan_change(
                     session_factory,
                     order_id=event.order_id,
                     base_revision=base_revision,
                     intent_revision=intent_revision,
                     changes=_change_rows(event),
+                    bump_intent=bump_intent,
                     source_refs=refs,
                     client_event_key=client_event_key,
                     now=now,
@@ -580,12 +623,23 @@ def _add_step(
     agent_id: str | None = None,
     agent_version: str | None = None,
 ) -> None:
+    if durable_guard.get():
+        now = durable_guard.get()[2]()
+        attempt.heartbeat_at = now
+        attempt.lease_until = now + timedelta(seconds=durable_guard.get()[3])
+        attempt.last_progress_at = now
     attempt.step_count += 1
     session.add(
         DispatchStep(
             id=_new_id("DS"),
             task_id=task.id,
-            step_no=attempt.step_count,
+            step_no=(
+                session.scalar(
+                    select(func.max(DispatchStep.step_no)).where(DispatchStep.task_id == task.id)
+                )
+                or 0
+            )
+            + 1,
             agent_id=agent_id or (spec.agent_id if spec else "doc-check"),
             agent_version=agent_version or (spec.version if spec else "0.1.0"),
             capability=capability,
@@ -614,13 +668,27 @@ def _fail(
     session = session_factory()
     try:
         with begin_immediate(session):
+            enforce(session)
             task = session.get(Task, task_id)
             if task is None:
                 raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
             if task.status == TaskStatus.RUNNING:
-                task.status = status
+                transition(task, status)
                 task.error_code = code
                 task.result_ref = message[:255]
+                payload = (
+                    session.get(InputPayload, task.last_event_id) if task.last_event_id else None
+                )
+                if payload:
+                    payload.body = {**payload.body, "questions": [message]}
+                attempt = session.scalar(
+                    select(JobAttempt)
+                    .where(JobAttempt.task_id == task.id)
+                    .order_by(JobAttempt.attempt_no.desc())
+                )
+                if attempt:
+                    attempt.lease_until = None
+                    attempt.lease_owner = None
             return _view(
                 session,
                 task,
@@ -638,9 +706,10 @@ def _fail_if_running(
     session = session_factory()
     try:
         with begin_immediate(session):
+            enforce(session)
             task = session.get(Task, task_id)
             if task is not None and task.status == TaskStatus.RUNNING:
-                task.status = TaskStatus.FAILED
+                transition(task, TaskStatus.FAILED)
                 task.error_code = code
                 task.result_ref = message[:255]
     finally:
@@ -724,8 +793,13 @@ def _step_views(session: Session, task_id: str) -> list[StepView]:
 
 
 def _lock(session: Session, task_id: str) -> tuple[Task, JobAttempt]:
+    enforce(session)
     task = session.get(Task, task_id)
-    attempt = session.scalar(select(JobAttempt).where(JobAttempt.task_id == task_id))
+    attempt = session.scalar(
+        select(JobAttempt)
+        .where(JobAttempt.task_id == task_id)
+        .order_by(JobAttempt.attempt_no.desc())
+    )
     if task is None or attempt is None:
         raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
     return task, attempt
