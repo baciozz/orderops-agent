@@ -209,7 +209,10 @@ def test_group_coverage_and_zero_quantity_annotations():
             row.get("qty") == 0 for key in ("line_changes", "new_lines") for row in event[key]
         ):
             zero_cases.append(case)
-            assert "待 Qi 确认" in case["product_question"]
+            assert "待 Qi 确认" not in case["product_question"]
+            assert "Qi 已确认" in case["product_question"]
+            assert "不会取消这一行" in case["product_question"]
+            assert "取消这一行剩余未执行的部分" in case["product_question"]
             assert case["expected"]["error_code"] == "BUSINESS_CONFLICT"
     assert len(zero_cases) == 3
 

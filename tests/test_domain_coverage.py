@@ -1,9 +1,11 @@
 """Behavior at quantity, execution and downstream document boundaries."""
 
+import re
+from copy import deepcopy
 from typing import Any
 
 import pytest
-from app.domain.changes import SnapLine, business_error, evaluate_changes
+from app.domain.changes import ZERO_QUANTITY_MESSAGE, SnapLine, business_error, evaluate_changes
 from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.orders import derive_order_status, unexecuted_qty
 from app.errors import AppError
@@ -97,11 +99,29 @@ def test_multiple_changes_merge_target_and_release_only_unshipped_reservations(c
     assert lines["A-BLACK-M"].ordered_qty == 10
 
 
-@pytest.mark.parametrize("mode", ["set_total", "cancel_remaining"])
-def test_removing_an_unexecuted_line_releases_its_reservation(catalog, mode):
+def test_zero_total_does_not_remove_an_unexecuted_line_or_release_its_reservation(catalog):
+    lines = {"A-BLACK-L": SnapLine("A-BLACK-L", 5, "STOCK")}
+    before = deepcopy(lines)
     result = evaluate(
         catalog,
-        [{"mode": mode, "sku_id": "A-BLACK-L", "qty": 0}],
+        [{"mode": "set_total", "sku_id": "A-BLACK-L", "qty": 0}],
+        lines,
+    )
+    assert lines == before
+    assert (result.kind, result.code) == ("reject", "BUSINESS_CONFLICT")
+    assert result.message is not None
+    assert result.message == ZERO_QUANTITY_MESSAGE
+    assert "不能把数量改成 0" in result.message
+    assert "不会取消这一行" in result.message
+    assert "取消这一行剩余未执行的部分" in result.message
+    assert re.search(r"[A-Za-z]", result.message) is None
+    assert result.reservation_delta == {}
+
+
+def test_removing_an_unexecuted_line_releases_its_reservation(catalog):
+    result = evaluate(
+        catalog,
+        [{"mode": "cancel_remaining", "sku_id": "A-BLACK-L", "qty": 0}],
         {"A-BLACK-L": SnapLine("A-BLACK-L", 5, "STOCK")},
     )
     assert result.kind == "validated"
@@ -198,7 +218,13 @@ def test_demand_cannot_drop_below_cut_work_order_quantity(cut, message):
 
 @pytest.mark.parametrize(
     "demand,target,qty",
-    [({"B": 10}, "B", 10), ({"A": 4, "B": 6}, None, None), ({"A": 4}, "A", 4), ({"B": 4}, "B", 4)],
+    [
+        ({"B": 10}, "B", 10),
+        ({"A": 11}, "A", 11),
+        ({"A": 4, "B": 6}, None, None),
+        ({"A": 4}, "A", 4),
+        ({"B": 4}, "B", 4),
+    ],
 )
 def test_uncut_work_order_moves_or_shrinks_to_cover_new_demand(demand, target, qty):
     verdicts, error = assess(demand, [mo()])
@@ -211,6 +237,7 @@ def test_uncut_work_order_moves_or_shrinks_to_cover_new_demand(demand, target, q
             sku_id=target, planned_qty=qty, cut_qty=0, status="NOT_STARTED"
         )
         assert verdicts[0]["order_line_sku"] == target
+        assert verdicts[0]["verdict"] == "CHANGE_DRAFT"
 
 
 def test_cancelling_unstarted_production_also_cancels_unreceived_purchase():
@@ -235,7 +262,6 @@ def test_cancelling_unstarted_production_also_cancels_unreceived_purchase():
         ({"A": 3}, [mo()], [po(received=8)], None, "PO 已到料部分不能改面料或减量"),
         ({"A": 10}, [mo()], [po()], {}, "A 没有面料单耗"),
         ({}, [], [po()], None, "采购单 PO 没有对应的生产单"),
-        ({"A": 11}, [mo()], [], None, "P0 不支持为剩余数量追加生产单"),
     ],
 )
 def test_downstream_refuses_changes_that_cannot_preserve_execution(

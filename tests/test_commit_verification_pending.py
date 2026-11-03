@@ -4,11 +4,17 @@ from datetime import UTC, datetime
 
 import pytest
 from app.config import Settings
+from app.db.base import Base
 from app.db.models import AuditRecord, Event, Operation, OutboxDelivery, SalesOrder, Task
 from app.main import create_app
 from app.orchestration.watchdog import scan
 from app.services import kernel as kernel_service
-from app.services.kernel import approve_plan, commit_plan, plan_change
+from app.services.kernel import (
+    approve_plan,
+    commit_plan,
+    plan_change,
+    retry_pending_verification,
+)
 from app.services.seed import load_seed
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -120,7 +126,7 @@ def test_watchdog_after_crash_keeps_pending_without_recommit(
     before = _row_counts(kernel)
     task_id = approved_commit[0]
 
-    # Keep the crash hook installed: watchdog must recover without readback.
+    # Keep the crash hook installed: a failed retry must not prevent task recovery.
     assert scan(kernel, clock=lambda: NOW) == [task_id]
     assert _row_counts(kernel) == before
     with kernel() as session:
@@ -131,9 +137,7 @@ def test_watchdog_after_crash_keeps_pending_without_recommit(
     assert _verification(client, task_id) == "pending"
 
 
-def test_idempotent_replay_after_crash_reports_pending(
-    kernel, client, approved_commit, monkeypatch
-):
+def test_idempotent_replay_after_crash_reports_passed(kernel, client, approved_commit, monkeypatch):
     with monkeypatch.context() as patch:
         operation_id = _crash_before_readback(kernel, approved_commit, patch)
     # Restore the real verifier before replaying the exact same idempotency key.
@@ -149,7 +153,7 @@ def test_idempotent_replay_after_crash_reports_pending(
         assert task.status == "SUCCEEDED"
         assert task.result_ref == operation_id
         assert session.get(SalesOrder, "SO-1001").current_revision == 2
-    assert _verification(client, task_id) == "pending"
+    assert _verification(client, task_id) == "passed"
 
 
 def test_normal_commit_reports_passed(kernel, client, approved_commit):
@@ -175,3 +179,73 @@ def test_verification_failure_reports_pending(kernel, client, approved_commit):
         assert operation.committed_verification_pending is True
         assert session.get(Task, task_id).status == "SUCCEEDED"
     assert _verification(client, task_id) == "pending"
+
+
+def _contents_except_verification_flag(kernel):
+    with kernel() as session:
+        return {
+            table.name: [
+                dict(row)
+                for row in session.execute(
+                    select(
+                        *(col for col in table.c if col.name != "committed_verification_pending")
+                    ).order_by(*table.primary_key.columns)
+                ).mappings()
+            ]
+            for table in Base.metadata.sorted_tables
+        }
+
+
+@pytest.mark.parametrize("raises", [False, True], ids=["problems", "exception"])
+def test_slower_failed_verification_preserves_concurrent_pass(
+    kernel, approved_commit, monkeypatch, raises
+):
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        original = commit_plan(kernel, **approved_commit[1])
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    before = _contents_except_verification_flag(kernel)
+    real_consistency = kernel_service.consistency_problems
+
+    def slower_failure(session):
+        # Keep a stale ORM instance in the reader while another retry passes.
+        stale = session.get(Operation, original.operation_id)
+        assert stale.committed_verification_pending is True
+        with monkeypatch.context() as patch:
+            patch.setattr(kernel_service, "consistency_problems", real_consistency)
+            retry_pending_verification(kernel, original.operation_id)
+        assert stale.committed_verification_pending is True
+        if raises:
+            raise RuntimeError("合成回读异常")
+        return ["合成回读核验失败"]
+
+    monkeypatch.setattr(kernel_service, "consistency_problems", slower_failure)
+    retry_pending_verification(kernel, original.operation_id)
+    with kernel() as session:
+        assert session.get(Operation, original.operation_id).committed_verification_pending is False
+    assert _contents_except_verification_flag(kernel) == before
+
+
+@pytest.mark.parametrize("status", ["PENDING", "FAILED"])
+def test_retry_skips_noncommitted_and_missing_operations(
+    kernel, approved_commit, monkeypatch, status
+):
+    original = commit_plan(kernel, **approved_commit[1])
+    with kernel() as session:
+        operation = session.get(Operation, original.operation_id)
+        operation.status = status
+        operation.committed_verification_pending = True
+        session.commit()
+    before = _contents_except_verification_flag(kernel)
+
+    def unexpected_verification(*args):
+        pytest.fail("非已提交操作不应回读核验")
+
+    monkeypatch.setattr(kernel_service, "_post_verify", unexpected_verification)
+    retry_pending_verification(kernel)
+    retry_pending_verification(kernel, original.operation_id)
+    retry_pending_verification(kernel, "missing-operation")
+    with kernel() as session:
+        assert session.get(Operation, original.operation_id).committed_verification_pending is True
+    assert _contents_except_verification_flag(kernel) == before

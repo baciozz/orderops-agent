@@ -48,7 +48,13 @@ from app.db.models import (
     Task,
 )
 from app.db.session import begin_immediate
-from app.domain.changes import ChangeEval, SnapLine, business_error, evaluate_changes
+from app.domain.changes import (
+    ZERO_QUANTITY_MESSAGE,
+    ChangeEval,
+    SnapLine,
+    business_error,
+    evaluate_changes,
+)
 from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
@@ -368,7 +374,9 @@ def commit_plan(
         revision=outcome.revision,
         replayed=outcome.replayed,
     )
-    if not outcome.replayed:
+    if outcome.replayed:
+        retry_pending_verification(session_factory, outcome.operation_id)
+    else:
         _post_verify(session_factory, outcome.operation_id)
     if acknowledge:
         acknowledge_commit(session_factory, outcome.task_id)
@@ -534,6 +542,7 @@ def _plan_change_locked(
             production=documents["production"],
             purchase=documents["purchase"],
             usage=usage,
+            reserved_purchase_ids=set(session.scalars(select(PurchaseOrder.id))),
         )
         if downstream_error:
             return _locked_clarification(
@@ -562,7 +571,7 @@ def _plan_change_locked(
                 now=now,
                 suspected_duplicate_of=None,
                 verdicts=verdicts,
-                expected_docs=_doc_fingerprint(documents),
+                expected_docs=_doc_fingerprint(documents, verdicts),
             ),
             None,
         )
@@ -658,7 +667,9 @@ def _plan_new_locked(
     line_refs: list[dict[str, object]] = list(source_refs)
     for line in lines:
         qty = line.get("qty")
-        if not isinstance(qty, int) or isinstance(qty, bool) or qty <= 0:
+        if isinstance(qty, int) and not isinstance(qty, bool) and qty == 0:
+            return _err(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT", 422)
+        if not isinstance(qty, int) or isinstance(qty, bool) or qty < 0:
             return _err("新建订单的数量必须是正整数", "BUSINESS_CONFLICT", 422)
         sku_id = line.get("sku_id")
         if not sku_id:
@@ -848,6 +859,12 @@ def _commit_locked(
         base_lines = _load_lines(session, order.id)
         customer_id = order.customer_id
         current_docs = _doc_fingerprint_loaded(_load_documents(session, order.id))
+        for doc_id, expected in (plan.expected_doc_revisions or {}).items():
+            if expected.get("exists") is False:
+                current_docs[doc_id] = {
+                    "doc_type": "purchase_order",
+                    "exists": session.get(PurchaseOrder, doc_id) is not None,
+                }
         if _stable(current_docs) != _stable(dict(plan.expected_doc_revisions or {})):
             _revoke_if_active(approval)
             return None, AppError(
@@ -890,6 +907,7 @@ def _commit_locked(
             production=_load_documents(session, order.id)["production"],
             purchase=_load_documents(session, order.id)["purchase"],
             usage=_usage_map(session),
+            reserved_purchase_ids=set(session.scalars(select(PurchaseOrder.id))),
         )
         if downstream_error:
             _revoke_if_active(approval)
@@ -1450,6 +1468,26 @@ def _new_task_plan(
     return task, plan
 
 
+def retry_pending_verification(
+    session_factory: sessionmaker[Session], operation_id: str | None = None
+) -> None:
+    """Retry readback only; exceptions leave the durable flag available for retry."""
+    with session_factory() as session:
+        pending = select(Operation.id).where(
+            Operation.status == "COMMITTED", Operation.committed_verification_pending.is_(True)
+        )
+        if operation_id is not None:
+            pending = pending.where(Operation.id == operation_id)
+        operation_ids = list(session.scalars(pending))
+    for pending_id in operation_ids:
+        try:
+            _post_verify(session_factory, pending_id)
+        except Exception:
+            # Verification must not prevent acknowledgement or other pending retries.
+            # No compensating write: a concurrent successful verification wins.
+            continue
+
+
 def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
     session = session_factory()
     try:
@@ -1464,7 +1502,13 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
-            if operation is not None:
+            # Re-read under the write lock after ending the readback transaction.
+            # Passed is sticky: a slower failed readback must not undo a concurrent pass.
+            if (
+                operation is not None
+                and operation.status == "COMMITTED"
+                and operation.committed_verification_pending
+            ):
                 operation.committed_verification_pending = bool(problems)
     finally:
         session.close()
@@ -1954,13 +1998,17 @@ def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str,
                     "change_state": purchase_row.change_state,
                     "doc_revision": purchase_row.doc_revision,
                     "production_order_id": purchase_row.production_order_id,
+                    "supplier_id": purchase_row.supplier_id,
                     "order_line_sku": link.order_line_sku,
                 }
             )
     return {"production": production, "purchase": purchase}
 
 
-def _doc_fingerprint(documents: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+def _doc_fingerprint(
+    documents: dict[str, list[dict[str, Any]]],
+    verdicts: list[dict[str, object]] | None = None,
+) -> dict[str, dict[str, Any]]:
     found: dict[str, dict[str, Any]] = {}
     for row in documents["production"]:
         found[str(row["doc_id"])] = {
@@ -1980,7 +2028,12 @@ def _doc_fingerprint(documents: dict[str, list[dict[str, Any]]]) -> dict[str, di
             "ordered_qty": int(row["ordered_qty"]),
             "change_state": row["change_state"],
             "material_id": row["material_id"],
+            "supplier_id": row["supplier_id"],
+            "production_order_id": row["production_order_id"],
         }
+    for verdict in verdicts or []:
+        if verdict["before"] is None:
+            found[str(verdict["doc_id"])] = {"doc_type": "purchase_order", "exists": False}
     return found
 
 
@@ -2054,14 +2107,27 @@ def _apply_downstream(
                 rev_no = row.doc_revision
             else:
                 row_po = session.get(PurchaseOrder, doc_id)
-                if row_po is None:
+                if verdict["before"] is None:
+                    if row_po is not None:
+                        raise AppError(
+                            "下游单据版本或状态已变化", code="STALE_DEPENDENCY", http_status=409
+                        )
+                    row_po = PurchaseOrder(
+                        id=doc_id,
+                        supplier_id=str(verdict["supplier_id"]),
+                        production_order_id=str(verdict["production_order_id"]),
+                        doc_revision=1,
+                    )
+                    session.add(row_po)
+                elif row_po is None:
                     raise AppError(f"没有采购单 {doc_id}", code="NOT_FOUND", http_status=404)
+                else:
+                    row_po.doc_revision += 1
                 row_po.material_id = str(after["material_id"])
                 row_po.ordered_qty = int(after["ordered_qty"])
                 row_po.received_qty = int(after["received_qty"])
                 row_po.status = str(after["status"])
                 row_po.change_state = str(after["change_state"])
-                row_po.doc_revision += 1
                 rev_no = row_po.doc_revision
             session.add(
                 DocRevision(
@@ -2155,8 +2221,8 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                         "repair": {"action": "draft", "ordered_qty": line.ordered_qty},
                     }
                 )
-        expected: dict[str, int] = {}
-        actual: dict[str, int] = {}
+        expected: dict[tuple[str, str], int] = {}
+        actual: dict[tuple[str, str], int] = {}
         for link in links:
             if link.doc_type == "production_order":
                 row = session.get(ProductionOrder, link.doc_id)
@@ -2166,18 +2232,29 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                 if material is None:
                     continue
                 material_id, per_piece = material
-                expected[material_id] = expected.get(material_id, 0) + row.planned_qty * per_piece
+                key = (row.id, material_id)
+                expected[key] = row.planned_qty * per_piece
             else:
                 row_po = session.get(PurchaseOrder, link.doc_id)
                 if row_po is None or row_po.status == "CANCELLED":
                     continue
-                actual[row_po.material_id] = actual.get(row_po.material_id, 0) + row_po.ordered_qty
-        if expected != actual:
+                key = (row_po.production_order_id, row_po.material_id)
+                actual[key] = actual.get(key, 0) + row_po.ordered_qty
+        for mo_id in sorted({key[0] for key in expected} | {key[0] for key in actual}):
+            expected_materials = {mat: qty for (mo, mat), qty in expected.items() if mo == mo_id}
+            actual_materials = {mat: qty for (mo, mat), qty in actual.items() if mo == mo_id}
+            if expected_materials == actual_materials:
+                continue
             findings.append(
                 {
-                    "doc_id": order.id,
-                    "problem": f"{order.id} 面料采购 {actual} 与单耗 {expected} 不一致",
-                    "repair": {"action": "draft", "expected": expected},
+                    "doc_id": mo_id,
+                    "problem": (
+                        f"{mo_id} 面料采购 {actual_materials} 与单耗 {expected_materials} 不一致"
+                    ),
+                    "repair": {
+                        "action": "draft",
+                        "expected": expected_materials,
+                    },
                 }
             )
     return findings

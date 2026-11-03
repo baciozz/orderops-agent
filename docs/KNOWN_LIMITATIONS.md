@@ -4,6 +4,7 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 
 - Worker 由 `worker-once` / Python 调用驱动，没有常驻调度服务；`OOS_WORKER_MAX_ACTIVE` 必须大于等于 1，默认 2。`claim()` 保留 `min(2, limits.active)` 的硬上限，配置大于 2 时，`worker-once` 在 logger `oos.worker` 上记录 WARNING，并按 2 生效，仍限制为 2 条 RUNNING 任务。outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。
 - 与 `docs/PLAN_v1.0_dot.md` 的设计不同，批准后尚未排队新的 commit job，也不领取新的 lease / fencing_token。`POST /plans/{plan_id}/commit` 同步调用内核，在一个 BEGIN IMMEDIATE 事务内原子提交业务写入；worker 的 lease / fencing 只用于规划阶段的 JobAttempt。
+- `Operation.committed_verification_pending=True` 表示业务已提交但尚未回读核验或核验失败，不表示业务事务失败。首次提交回读一次；`commit_plan` 幂等重放（包括 `recovery.durable_commit`）仅重试该操作仍 pending 的核验，`watchdog.scan` 在现有写事务结束后重试所有 COMMITTED 且 pending 的操作，包括任务已经 SUCCEEDED 的操作。通过后只清除此标记，失败或异常保留 pending；已通过的操作跳过，写事务内重新读取标记，保留并发重试已通过的结果，不用较慢的失败结果覆盖它。重试不重新提交、不修复数据、不新增业务修订/审计/事件；核验的是当前库存流水和下游一致性，不是历史快照。没有常驻调度器，watchdog 仅在调用时运行，例如 `python -m app.cli worker-once`；无人调用且没有提交重放时，pending 不会自行消失。
 - 上传为 `POST /sources` 的 multipart `task_id` + `file`，一次一个文件，每任务最多三个；任务须已存在。服务端生成存储路径，通过 `task_source` 关联限制 spans 查询，原始文件放在服务端临时目录，生产持久存储/清理策略尚未实现。拒绝返回 HTTP 400、parser_status=rejected 和中文原因，不保存部分 spans。
 - UTF-8 TXT/MD 按非空行、静态 XLSX 按单元格切分；spans 摘要最多 500 字，完整原文独立保存。XLSM、VBA/宏类型、公式、外部链接和 XML 实体被拒绝；XLSX 有压缩包大小/压缩比及非空单元格上限。上传不会触发调度、批准或外传。
 - R14 已接入 worker 的 `source_ids`：只读取当前任务关联的静态 spans，精确 fixture 聊天与匹配表格行数量不同时，保存 conflicts、questions 和聊天/单元格双来源，返回 NEEDS_CLARIFICATION，不创建计划、批准或提交。JSON 和 HTML 可展开来源并显示问题；抽取结果保存在当前事件的 InputPayload 中，原 text/source_ids 保留。
@@ -16,15 +17,19 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 - LIVE 的 `replace_remaining` 若模型返回 `qty: null` 且没有明确的 `only_uncut` 选择，返回 NEEDS_CLARIFICATION，询问总件数或是否只改未开裁；不会把“全部”自行解释为未执行量。精确 FIXTURE `TEXT_ALL_NAVY` 提供 300 件，仍走已裁剪锁定的 B19 澄清。离线顺序回放确认：原 STALE_ATTEMPT 是缺数量导致内核先持久化 FAILED/BUSINESS_CONFLICT、清理阶段再次校验 RUNNING fence 后掩盖原错误；不是同链等待任务、超时或 usage 独立事务导致。清理对已结束任务只读返回，实际写入仍校验完整 fence。
 - 结构化日志（见 `docs/OBSERVABILITY.md`）中批准、提交、outbox 事件不带 `mode`，因为 Task 表未持久化 mode；需要时用 `task_id` 关联同任务的 dispatch 事件获取。lease、recovery、watchdog 尚未打点。
 - ORM relationship、生产认证、CSRF、多用户。Alembic 初始迁移已经接入。
+- Qi 已确认支持按变更后 MO 计划量生成补购草稿：同一 MO、同一面料的有效 PO 全部 `RECEIVED` 且总采购量不足时，已收货 PO 只重链、永不重写数量或内容修订，缺口生成 `before=None` 的 `CHANGE_DRAFT`（`PLACED`、到料 0、`PENDING_SUPPLIER`），沿用供应商和 MO，服装 SKU 跟随新订单行。补单 ID 为按 ID 排序的首张有效已收货 PO 的 `{received_po_id}-S{n}`，从 1 起取最小空闲后缀，取消单和未链接现存单也占用 ID。已有补单计入覆盖，重复规划/提交不重复补购；批准后 ID 被占用则以现有单据过期错误拒绝，不覆盖。多个 PO 按 `(MO, 面料)` 汇总，减量优先调整未到料补单；低于已到料总量、取消已到料采购或更换已到料面料仍拒绝。草稿不代表已向供应商实际下单。未取消且未开裁（`cut_qty == 0` / `NOT_STARTED`）的 MO 可扩大 `planned_qty`，吸收同 SKU 的全部剩余订单需求；部分或全部开裁的 MO 仍不得超过原 `planned_qty`。分配后若仍有剩余需求、没有可扩容的同 SKU MO，保留「P0 不支持为剩余数量追加生产单」，不新建 MO。常见的未开裁 MO 计划量等于订单量时，同 SKU 订单增量会扩容 MO，并在同面料有效 PO 全部已收货且采购不足时生成补购草稿。
 - `docs/TEST_REPORT.md`、`HANDOFF.md`、`LEARNING_GUIDE.md` 留到阶段 5。现在的测试清单是 `docs/TEST_CHECKLIST.md`
 
 禁止用途：连接真实客户、ERP、支付、采购或发货；把 fixture 成功说成模型理解；在单价未知时打开 live；把 `T-STUB` 当成业务结果。
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过；这不代表完整 UI 或已验证真实 live 理解质量。
 
-待 Qi 确认的产品问题：服装批发里把某行改成 0 可能表示取消这一行。
-当前 qty=0 仍按 BUSINESS_CONFLICT 拒绝，离线评测仅锁定当前行为，业务规则保持不变。
-负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID；取消行语义及适用操作待确认。
+Qi 已确认：设置总数量、替换剩余数量、增加数量和新建订单行时，数量为 0 均拒绝处理，
+以免误删已安排的生产或发货。用户提示为：「不能把数量改成 0：改成 0 不会取消这一行，
+为了避免误删已安排的生产或发货。如果要取消，请直接说明“取消这一行剩余未执行的部分”，
+系统会按取消流程处理；已发货或已开裁的部分不会被取消。」
+错误状态仍为 HTTP 422，错误码仍为 BUSINESS_CONFLICT；用户提示不含英文接口或模式名称。
+负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。
 
 ## 输入错误、预算崩溃恢复和进程并发
 

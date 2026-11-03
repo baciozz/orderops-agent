@@ -22,6 +22,7 @@ def assess_downstream(
     production: list[dict[str, Any]],
     purchase: list[dict[str, Any]],
     usage: dict[str, tuple[str, int]],
+    reserved_purchase_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Return verdicts, or an error message when the change cannot be covered."""
     demand = {
@@ -76,8 +77,12 @@ def assess_downstream(
         sku = str(row["sku_id"])
         planned = int(row["planned_qty"])
         if demand.get(sku, 0) >= planned:
-            take(sku, planned)
-            verdicts.append(_unchanged_mo(row))
+            kept = demand[sku]
+            take(sku, kept)
+            if kept == planned:
+                verdicts.append(_unchanged_mo(row))
+            else:
+                verdicts.append(_change_mo(row, sku, kept, "NOT_STARTED"))
             assigned[str(row["doc_id"])] = sku
             continue
         target = next((item for item in sorted(demand) if demand[item] >= planned), None)
@@ -102,37 +107,112 @@ def assess_downstream(
         return [], "P0 不支持为剩余数量追加生产单"
 
     by_id = {str(item["doc_id"]): item for item in verdicts}
+    purchases_by_mo: dict[str, list[dict[str, Any]]] = {}
+    occupied = {str(row["doc_id"]) for row in purchase} | (reserved_purchase_ids or set())
     for row in sorted(purchase, key=lambda item: str(item["doc_id"])):
         if row["status"] == "CANCELLED":
             continue
         mo_id = str(row["production_order_id"])
-        mo = by_id.get(mo_id)
-        if mo is None:
+        if mo_id not in by_id:
             return [], f"采购单 {row['doc_id']} 没有对应的生产单"
+        purchases_by_mo.setdefault(mo_id, []).append(row)
+    for mo_id, rows in sorted(purchases_by_mo.items()):
+        mo = by_id[mo_id]
         new_sku = assigned[mo_id]
         material = usage.get(new_sku)
         if material is None:
             return [], f"{new_sku} 没有面料单耗"
         material_id, per_piece = material
         new_qty = int(mo["after"]["planned_qty"]) * per_piece
-        if mo["verdict"] == CANCEL:
-            if int(row["received_qty"]) > 0:
-                return [], f"{row['doc_id']} 已到料，不能取消"
-            verdicts.append(_cancel_po(row, new_sku))
-            continue
-        unchanged = (
-            material_id == row["material_id"]
-            and new_qty == int(row["ordered_qty"])
-            and mo["verdict"] == UNAFFECTED
-        )
-        if unchanged:
-            verdicts.append(_unchanged_po(row))
-            continue
-        if int(row["received_qty"]) > 0 and (
-            material_id != row["material_id"] or new_qty < int(row["received_qty"])
-        ):
+        po_verdicts, error = _assess_purchases(rows, mo, new_sku, material_id, new_qty, occupied)
+        if error:
+            return [], error
+        verdicts.extend(po_verdicts)
+    return verdicts, None
+
+
+def _assess_purchases(
+    rows: list[dict[str, Any]],
+    mo: dict[str, Any],
+    sku: str,
+    material_id: str,
+    needed: int,
+    occupied: set[str],
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Allocate one MO's fabric need once, preserving every fully received PO."""
+    for row in rows:
+        received = int(row["received_qty"])
+        if mo["verdict"] == CANCEL and received:
+            return [], f"{row['doc_id']} 已到料，不能取消"
+        if received and material_id != row["material_id"]:
             return [], f"{row['doc_id']} 已到料部分不能改面料或减量"
-        verdicts.append(_change_po(row, new_sku, material_id, new_qty))
+    if mo["verdict"] == CANCEL:
+        return [_cancel_po(row, sku) for row in rows], None
+
+    fixed = [row for row in rows if row["status"] == "RECEIVED"]
+    adjustable = sorted(
+        [row for row in rows if row["status"] != "RECEIVED"],
+        key=lambda row: (
+            int(row["received_qty"]) > 0,
+            not str(row["doc_id"]).rpartition("-S")[2].isdigit(),
+            str(row["doc_id"]),
+        ),
+    )
+    floor = sum(int(row["received_qty"]) for row in rows)
+    if needed < floor:
+        locked = next(row for row in rows if int(row["received_qty"]) > 0)
+        return [], f"{locked['doc_id']} 已到料部分不能改面料或减量"
+    quantities = {str(row["doc_id"]): int(row["ordered_qty"]) for row in adjustable}
+    delta = needed - sum(int(row["ordered_qty"]) for row in rows)
+    if delta > 0 and adjustable:
+        quantities[str(adjustable[0]["doc_id"])] += delta
+    elif delta < 0:
+        for row in adjustable:
+            doc_id = str(row["doc_id"])
+            reduction = min(-delta, quantities[doc_id] - int(row["received_qty"]))
+            quantities[doc_id] -= reduction
+            delta += reduction
+
+    verdicts = [_unchanged_po(row, sku) for row in fixed]
+    for row in adjustable:
+        qty = quantities[str(row["doc_id"])]
+        if qty == 0 and int(row["ordered_qty"]) > 0:
+            verdicts.append(_cancel_po(row, sku))
+        elif (
+            material_id == row["material_id"]
+            and qty == int(row["ordered_qty"])
+            and mo["verdict"] == UNAFFECTED
+        ):
+            verdicts.append(_unchanged_po(row, sku))
+        else:
+            verdicts.append(_change_po(row, sku, material_id, qty))
+    if delta > 0 and not adjustable:
+        # All active POs are fully received. Cancelled IDs remain reserved.
+        anchor = fixed[0]
+        suffix = 1
+        while f"{anchor['doc_id']}-S{suffix}" in occupied:
+            suffix += 1
+        doc_id = f"{anchor['doc_id']}-S{suffix}"
+        occupied.add(doc_id)
+        verdicts.append(
+            {
+                "doc_type": "purchase_order",
+                "doc_id": doc_id,
+                "verdict": CHANGE,
+                "before": None,
+                "after": {
+                    "material_id": material_id,
+                    "ordered_qty": delta,
+                    "received_qty": 0,
+                    "status": "PLACED",
+                    "change_state": "PENDING_SUPPLIER",
+                },
+                "production_order_id": anchor["production_order_id"],
+                "supplier_id": anchor["supplier_id"],
+                "order_line_sku": sku,
+                "reason": "已收货采购单保持不变，仅为面料缺口生成补购草稿",
+            }
+        )
     return verdicts, None
 
 
@@ -236,7 +316,7 @@ def _before_po(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _unchanged_po(row: dict[str, Any]) -> dict[str, Any]:
+def _unchanged_po(row: dict[str, Any], garment_sku: str) -> dict[str, Any]:
     body = _before_po(row)
     return {
         "doc_type": "purchase_order",
@@ -244,7 +324,7 @@ def _unchanged_po(row: dict[str, Any]) -> dict[str, Any]:
         "verdict": UNAFFECTED,
         "before": body,
         "after": body,
-        "order_line_sku": row["order_line_sku"],
+        "order_line_sku": garment_sku,
         "reason": "内容不变，只重新链接",
     }
 

@@ -151,7 +151,12 @@ worker 的 lease / fencing 只用于规划阶段的 JobAttempt，提交不领取
   `AuditRecord` / `audit_record`、Operation、order.committed Event 及 `OutboxDelivery` / `outbox_delivery`。
   批准变为 CONSUMED，计划变为 COMMITTED；异常回滚整个业务事务。
 
-提交后 `_post_verify` 回读库存流水和下游一致性；失败只标 committed_verification_pending，不改写业务历史。
+业务提交事务将 `committed_verification_pending` 设为 True，表示尚未核验或核验失败。
+首次提交后 `_post_verify` 回读当前库存流水和下游一致性，通过后清除标记。
+幂等重放（包括 `durable_commit`）经内核 `retry_pending_verification` 仅重试该操作
+仍 pending 的核验；已通过的操作跳过。失败或异常保留 pending，不重新提交或修复数据，
+不新增业务修订、审计或事件。更新标记前在写事务内重新读取，若并发核验已经通过，
+保留 False，避免较慢的失败结果覆盖成功结果；核验不重建历史快照。
 `acknowledge_commit` 将任务置 SUCCEEDED；响应丢失可进入 RECONCILING，用原请求和原 key 对账。
 `publish_pending` 至少一次发送，失败按 available_at 退避，发送成功后标 DELIVERED。
 `consume` 在同一事务执行本地 effect 并写 `ConsumerReceipt` / `consumer_receipt`，
@@ -224,8 +229,11 @@ COMMITTING、RECONCILING、SUCCEEDED 返回 ALREADY_COMMITTED，不回滚已提�
 `app/orchestration/watchdog.py` 的 `scan` 先查 Operation，再决定恢复：
 已提交操作对应的任务经 RECONCILING 到 SUCCEEDED，并补建缺失的 ui outbox。
 RUNNING 租约过期、无进展或到期时可重新排队；截止或尝试/步数耗尽则 FAILED。
+现有 BEGIN IMMEDIATE 事务结束后调用内核重试所有 COMMITTED 且 pending 的核验，
+包括任务已经 SUCCEEDED 的操作；返回值仍只包含本次恢复的任务 ID。
 `app/orchestration/recovery.py` 的 `durable_commit` 处理提交成功但确认丢失的边界。
 当前不是常驻 worker；`python -m app.cli worker-once` 依次执行迁移、scan、run_once、publish_pending。
+没有常驻调度器，watchdog 仅在被调用时扫描和重试；pending 不会自行触发后台核验。
 
 下面精确列出 `app/orchestration/state.py` 的 `ALLOWED` 全部转换。
 终态 SUCCEEDED、FAILED、CANCELLED、SUPERSEDED 的允许目标集合为空。

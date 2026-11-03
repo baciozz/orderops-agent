@@ -9,6 +9,12 @@ from schemas.enums import FulfillmentMode, LineMode
 
 from app.errors import AppError
 
+ZERO_QUANTITY_MESSAGE = (
+    "不能把数量改成 0：改成 0 不会取消这一行，为了避免误删已安排的生产或发货。"
+    "如果要取消，请直接说明“取消这一行剩余未执行的部分”，系统会按取消流程处理；"
+    "已发货或已开裁的部分不会被取消。"
+)
+
 
 @dataclass
 class SnapLine:
@@ -175,7 +181,9 @@ def _replace(
     candidates_for: dict[str, list[str]],
     include_executed: bool,
 ) -> ChangeEval | None:
-    if qty <= 0:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
+    if qty < 0:
         return _reject("replace_remaining 的数量必须是正整数", "BUSINESS_CONFLICT")
     source = working.get(from_sku)
     if source is None:
@@ -220,6 +228,8 @@ def _set_total(
     known_skus: dict[str, str],
     candidates_for: dict[str, list[str]],
 ) -> ChangeEval | None:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
     if qty < 0:
         return _reject("总量不能为负", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
@@ -240,9 +250,6 @@ def _set_total(
         return mode
     if current is not None and mode != current.fulfillment_mode:
         return _reject("不能改变履约方式", "BUSINESS_CONFLICT")
-    if qty == 0 and shipped == 0 and cut == 0:
-        working.pop(sku_id, None)
-        return None
     working[sku_id] = SnapLine(sku_id, qty, mode, shipped, cut_qty=cut)
     return None
 
@@ -255,7 +262,9 @@ def _increment(
     known_skus: dict[str, str],
     candidates_for: dict[str, list[str]],
 ) -> ChangeEval | None:
-    if qty <= 0:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
+    if qty < 0:
         return _reject("增加的数量必须是正整数", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
     mode = _require_sku(sku_id, known_skus, candidates_for)
