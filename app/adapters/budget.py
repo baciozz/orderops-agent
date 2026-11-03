@@ -8,6 +8,7 @@ are never guessed. Fixture calls do not write this ledger.
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -17,6 +18,9 @@ from app.config import HARD_BUDGET_CEILING_USD
 from app.db.models import ModelUsage
 from app.db.session import begin_immediate
 from app.errors import BudgetExceeded, CallLimitExceeded, PricesNotConfigured
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 _MILLION = Decimal(1_000_000)
 _QUANTUM = Decimal("0.000001")
@@ -33,10 +37,13 @@ def reconcile_reservations(
     if ttl <= timedelta(0):
         raise ValueError("预留 TTL 必须大于零")
     with session_factory() as session, begin_immediate(session):
-        result = session.execute(
-            update(ModelUsage)
-            .where(ModelUsage.status == "RESERVED", ModelUsage.reserved_at < now - ttl)
-            .values(status="ORPHANED")
+        result = cast(
+            "CursorResult[Any]",
+            session.execute(
+                update(ModelUsage)
+                .where(ModelUsage.status == "RESERVED", ModelUsage.reserved_at < now - ttl)
+                .values(status="ORPHANED")
+            ),
         )
         return result.rowcount
 

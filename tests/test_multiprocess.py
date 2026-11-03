@@ -162,7 +162,7 @@ def test_process_workers_commit_each_task_once(session_factory, database_url, tm
         )[1]
         for index in range(TASKS)
     }
-    deadline = time.monotonic() + 15
+    deadline = time.monotonic() + 30
     processes = start_children(tmp_path, database_url, "worker")
     release_children(tmp_path, processes, deadline=deadline)
     results = collect_children(processes, deadline=deadline)

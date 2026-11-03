@@ -32,4 +32,5 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 - 已初始化数据库在 FastAPI lifespan 启动时执行扫描；手工执行 `.venv/bin/python -m app.cli reconcile-budget` 可再次扫描。`OOS_BUDGET_RESERVATION_TTL_S` 必须是正整数，有效值为配置值与 `2 * model_timeout_s + 60` 秒的较大者；默认 timeout=60 秒时 TTL=180 秒。没有常驻定时扫描器，长时间运行的服务可由操作者调用该命令。
 - ORPHANED 允许迟到的 `settle()`：在原行记录实际 token/费用，状态改 SETTLED 并设置 settled_at，因此既不会插入第二次调用，也不会累加两笔费用。相同 token 数的重复结算保持第一次结果和时间；不同 token 数的重复结算抛出 ValueError，防止覆盖已经确认的用量。实际用量高于估算仍照实记账；未知用量沿用悲观估算。`reserve()` 将当时的输入/输出单价写入行，普通和 ORPHANED 迟到结算均使用行内快照，因此跨重启改价不影响原调用费用。仅当行内某项单价为 NULL（未知历史单价）时，该项才回落到当前账本单价；零单价不会触发回落。
 - `tests/test_multiprocess.py` 使用独立 venv Python 子进程、文件 SQLite、同时起跑屏障。四进程争用同一批六个任务，通过原 worker lease/fence API 执行，再由测试中的 demo human 显式批准并提交；检查任务、操作、库存预占/流水、outbox 和消费者回执各一次，并重放 commit 验证幂等。独立合成 SKU 避免把正常的库存版本冲突误判成重复领取问题。另测四进程争用只容纳三笔的预算，以及旧 worker 暂停、父进程到期接管后，旧调度及内核写入都被 fence 拒绝。worker 本身仍停在 AWAITING_APPROVAL，不自动批准。
+- `tests/test_multiprocess.py` 在高负载机器上偶发变慢，等待子进程 ready 的上限已从 15 秒放宽到 30 秒。
 - 并发测试沿用生产连接的 WAL、foreign_keys=ON、busy_timeout=5000ms 和写事务 BEGIN IMMEDIATE；未观察到 database is locked，不新增自动重试，也不放宽版本/库存/批准/fence 检查。SQLite 仍只有一个写者，锁持有超过 busy timeout 会报错；短事务是当前运行约束。这些测试不模拟杀死处于提交系统调用中的进程或任意长时间写锁。
