@@ -7,6 +7,7 @@ from app.adapters.budget import reconcile_reservations
 from app.config import get_settings
 from app.db.schema import init_db
 from app.db.session import ensure_sqlite_parent, make_engine, make_session_factory
+from app.observability import configure_logging
 from app.services.seed import load_seed
 
 
@@ -19,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("reconcile-budget", help="标记过期模型预算预留，保留全部悲观费用")
     args = parser.parse_args(argv)
     settings = get_settings()
+    configure_logging(settings)
     ensure_sqlite_parent(settings.database_url)
     engine = make_engine(settings.database_url)
     try:

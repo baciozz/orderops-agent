@@ -54,7 +54,17 @@ from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
 from app.domain.orders import derive_order_status
 from app.errors import AppError
+from app.observability import (
+    enrich,
+    get_logger,
+    observed,
+    task_fields_from_factory,
+    task_log_fields,
+)
 from app.orchestration.state import enforce, transition
+
+logger = get_logger(__name__)
+
 
 DEMO_ACTOR_ID = "demo-user"
 _THREAD = "demo"
@@ -229,6 +239,13 @@ def plan_new_order(
     return outcome
 
 
+@observed(
+    logger,
+    "approval.granted",
+    failed_event="approval.rejected",
+    exclude=("mode",),
+    fields=lambda plan_id, actor_id, **_: {"plan_id": plan_id, "actor": actor_id},
+)
 def approve_plan(
     session_factory: sessionmaker[Session],
     *,
@@ -245,6 +262,13 @@ def approve_plan(
     try:
         with begin_immediate(session):
             plan = session.get(Plan, plan_id)
+            if plan is not None:
+                enrich(**task_log_fields(session, plan.task_id))
+                enrich(
+                    task_id=plan.task_id,
+                    base_revision=plan.base_order_revision,
+                    intent_revision=plan.intent_revision,
+                )
             if plan is None or plan.status not in {PlanStatus.VALIDATED, PlanStatus.APPROVED}:
                 raise AppError("计划不可批准", code="NOT_APPROVED", http_status=409)
             if plan.plan_hash != plan_hash:
@@ -270,6 +294,7 @@ def approve_plan(
                 )
             ).first()
             if active is not None and active.plan_hash == plan_hash:
+                enrich(approval_id=active.id)
                 return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
             approval = Approval(
                 id=_id("AP"),
@@ -284,11 +309,23 @@ def approve_plan(
             )
             plan.status = PlanStatus.APPROVED
             session.add(approval)
+            enrich(approval_id=approval.id)
             return ApprovalOutcome(approval.id, plan.id, approval.expires_at)
     finally:
         session.close()
 
 
+@observed(
+    logger,
+    "commit.applied",
+    failed_event="commit.failed",
+    exclude=("mode",),
+    fields=lambda plan_id, approval_id, actor_id, **_: {
+        "plan_id": plan_id,
+        "approval_id": approval_id,
+        "actor": actor_id,
+    },
+)
 def commit_plan(
     session_factory: sessionmaker[Session],
     *,
@@ -324,6 +361,13 @@ def commit_plan(
     if error is not None:
         raise error
     assert outcome is not None
+    enrich(**task_fields_from_factory(session_factory, outcome.task_id))
+    enrich(
+        task_id=outcome.task_id,
+        order_id=outcome.order_id,
+        revision=outcome.revision,
+        replayed=outcome.replayed,
+    )
     if not outcome.replayed:
         _post_verify(session_factory, outcome.operation_id)
     if acknowledge:
@@ -771,6 +815,13 @@ def _commit_locked(
         )
     approval = session.get(Approval, approval_id)
     plan = session.get(Plan, plan_id)
+    if plan is not None:
+        enrich(**task_log_fields(session, plan.task_id))
+        enrich(
+            task_id=plan.task_id,
+            base_revision=plan.base_order_revision,
+            intent_revision=plan.intent_revision,
+        )
     if approval is None or plan is None or approval.plan_id != plan.id:
         return None, AppError("批准不存在", code="NOT_APPROVED", http_status=404)
     if plan_hash != approval.plan_hash:

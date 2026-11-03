@@ -34,6 +34,7 @@ from app.db.models import (
 from app.db.session import begin_immediate
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, ProposalRejected, SchemaInvalid, ToolNotAllowed
+from app.observability import enrich, get_logger, log_event, observed, task_fields_from_factory
 from app.orchestration.agents import RUNNERS, AgentRun, StepContext
 from app.orchestration.defaults import build_default_registry
 from app.orchestration.fixtures import golden_fixtures
@@ -49,6 +50,8 @@ from app.services.kernel import (
     plan_change,
     plan_new_order,
 )
+
+logger = get_logger(__name__)
 
 
 class AgentTimeout(Exception):
@@ -89,6 +92,11 @@ class _Work:
     source_ids: list[str] = field(default_factory=list)
 
 
+@observed(
+    logger,
+    "dispatch.finish",
+    fields=lambda durable_task_id, **_: {"task_id": durable_task_id},
+)
 def dispatch_text(
     session_factory: sessionmaker[Session],
     *,
@@ -114,6 +122,7 @@ def dispatch_text(
     if fixtures:
         library.update(fixtures)
     configured = settings or get_settings()
+    enrich(mode=resolve_mode(configured).mode.value)
     client: LLMClient = FixtureLLMClient(library)
     if resolve_mode(configured).mode == "LIVE":
         ledger = BudgetLedger(
@@ -125,6 +134,8 @@ def dispatch_text(
         # LiveLLMClient selects/validates llm_provider; all providers share this ledger.
         client = (client_factory or LiveLLMClient)(configured, ledger)
     task_id = durable_task_id or _open_task(session_factory, moment)
+    enrich(**task_fields_from_factory(session_factory, task_id))
+    log_event(logger, "dispatch.start", outcome="started", duration_ms=0.0)
     routed = router.plan("unstructured", input_mode=input_mode)
     if not routed.ok:
         return _fail(session_factory, task_id, routed.code, routed.message)
@@ -575,6 +586,7 @@ def _precheck(
     issues = list(outcome.issues)
     if outcome.questions:
         issues.extend(question for question in outcome.questions if question not in issues)
+    enrich(status=outcome.status, outcome="success")
     return _snapshot(
         session_factory,
         task_id,
@@ -725,6 +737,7 @@ def _fail(
     *,
     status: str = TaskStatus.FAILED,
 ) -> DispatchOutcome:
+    enrich(outcome="failed", status=status, error_code=code)
     session = session_factory()
     try:
         with begin_immediate(session):
@@ -801,6 +814,7 @@ def _snapshot(
         task = session.get(Task, task_id)
         if task is None:
             raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
+        enrich(status=status, outcome="failed" if error_code else "success", error_code=error_code)
         return DispatchOutcome(
             task_id=task.id,
             chain_id=task.chain_id,
@@ -826,6 +840,7 @@ def _view(
     error_code: str | None,
     issues: list[str],
 ) -> DispatchOutcome:
+    enrich(status=status, outcome="failed" if error_code else "success", error_code=error_code)
     return DispatchOutcome(
         task_id=task.id,
         chain_id=task.chain_id,
@@ -869,6 +884,7 @@ def _lock(session: Session, task_id: str) -> tuple[Task, JobAttempt]:
     )
     if task is None or attempt is None:
         raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
+    enrich(attempt_id=attempt.id)
     return task, attempt
 
 

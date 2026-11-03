@@ -6,6 +6,9 @@ from schemas.common import UsageReport
 
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult
 from app.errors import FixtureNotFound
+from app.observability import get_logger, observed
+
+logger = get_logger(__name__)
 
 
 class FixtureLLMClient:
@@ -14,6 +17,18 @@ class FixtureLLMClient:
     def __init__(self, fixtures: dict[str, dict[str, object]] | None = None) -> None:
         self._fixtures = fixtures or {}
 
+    @observed(
+        logger,
+        "model.call",
+        fields=lambda self, request: {
+            "mode": self.mode,
+            "model": "fixture",
+            "task_id": request.task_id,
+            "prompt_kind": request.response_schema_id,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        },
+    )
     def structured_call(self, request: StructuredCallRequest) -> StructuredCallResult:
         if not request.fixture_key or request.fixture_key not in self._fixtures:
             raise FixtureNotFound(

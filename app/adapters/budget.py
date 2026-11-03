@@ -18,9 +18,13 @@ from app.config import HARD_BUDGET_CEILING_USD
 from app.db.models import ModelUsage
 from app.db.session import begin_immediate
 from app.errors import BudgetExceeded, CallLimitExceeded, PricesNotConfigured
+from app.observability import enrich, get_logger, observed
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import CursorResult
+
+logger = get_logger(__name__)
+
 
 _MILLION = Decimal(1_000_000)
 _QUANTUM = Decimal("0.000001")
@@ -104,6 +108,17 @@ class BudgetLedger:
             session.close()
         return len(rows)
 
+    @observed(
+        logger,
+        "budget.reserve",
+        failed_event="budget.refused",
+        fields=lambda self, task_id, input_tokens, max_output_tokens, **_: {
+            "task_id": task_id,
+            "cap_usd": self.cap_usd,
+            "input_tokens": input_tokens,
+            "output_tokens": max_output_tokens,
+        },
+    )
     def reserve(
         self,
         *,
@@ -123,6 +138,7 @@ class BudgetLedger:
             price_in_per_mtok=self.price_in_per_mtok,
             price_out_per_mtok=self.price_out_per_mtok,
         )
+        enrich(reserved_usd=estimate, actual_usd=None)
         price_version = f"in={self.price_in_per_mtok};out={self.price_out_per_mtok}"
         reserved_at = at or datetime.now(UTC)
         row = ModelUsage(
@@ -169,8 +185,19 @@ class BudgetLedger:
                 session.add(row)
         finally:
             session.close()
+        enrich(reservation_id=row.id)
         return row.id
 
+    @observed(
+        logger,
+        "budget.settle",
+        fields=lambda self, reservation_id, input_tokens, output_tokens, **_: {
+            "cap_usd": self.cap_usd,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "reservation_id": reservation_id,
+        },
+    )
     def settle(
         self,
         reservation_id: str,
@@ -196,9 +223,7 @@ class BudgetLedger:
                     if (row.input_tokens, row.output_tokens) != (input_tokens, output_tokens):
                         raise ValueError("模型用量已经结算，不能覆盖不同用量")
                     return row
-                row.input_tokens = input_tokens
-                row.output_tokens = output_tokens
-                row.cost_usd = quote_cost(
+                cost = quote_cost(
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     price_in_per_mtok=(
@@ -212,6 +237,10 @@ class BudgetLedger:
                         else self.price_out_per_mtok
                     ),
                 )
+                enrich(task_id=row.task_id, reserved_usd=row.cost_usd, actual_usd=cost)
+                row.input_tokens = input_tokens
+                row.output_tokens = output_tokens
+                row.cost_usd = cost
                 row.status = "SETTLED"
                 row.settled_at = at or datetime.now(UTC)
         finally:

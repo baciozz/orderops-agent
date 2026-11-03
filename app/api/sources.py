@@ -27,6 +27,9 @@ from app.api.errors import error_payload
 from app.db.models import InputSource, SourceSpan, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
+from app.observability import enrich, get_logger, observed
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 LIMITS = {
@@ -124,6 +127,7 @@ def task_spans(session, task_id: str, source_id: str | None = None) -> list[Sour
 
 
 @router.post("/sources", response_model=SourceUploadResponse)
+@observed(logger, "upload.received")
 async def upload_source(request: Request):
     source_id = f"SRC-{uuid4().hex}"
     response = SourceUploadResponse(
@@ -135,8 +139,16 @@ async def upload_source(request: Request):
     )
     try:
         task_id, filename, content = await _upload_form(request)
+        enrich(
+            task_id=task_id,
+            source_id=source_id,
+            file_size=len(content),
+            file_sha256=sha256(content).hexdigest()[:12],
+        )
         spans = split_source(source_id, filename, content)
     except ValueError as exc:
+        enrich(outcome="failed", error_code="UPLOAD_REJECTED")
+        request.state.error_code = "UPLOAD_REJECTED"
         response.parser_status = "rejected"
         code = getattr(exc, "code", "UPLOAD_REJECTED")
         error = AppError(

@@ -17,6 +17,9 @@ from app.adapters.providers import provider_for_settings
 from app.adapters.providers.schema import ensure_supported_schema, validate_payload
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
+from app.observability import enrich, get_logger, observed
+
+logger = get_logger(__name__)
 
 startup_logger = logging.getLogger(__name__)
 
@@ -50,6 +53,18 @@ class LiveLLMClient:
             urlsplit(settings.llm_base_url).hostname,
         )
 
+    @observed(
+        logger,
+        "model.call",
+        fields=lambda self, request: {
+            "mode": self.mode,
+            "model": self._settings.llm_model,
+            "task_id": request.task_id,
+            "prompt_kind": request.response_schema_id,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        },
+    )
     def structured_call(self, request: StructuredCallRequest) -> StructuredCallResult:
         if request.max_output_tokens > self._settings.model_max_tokens:
             raise AppError("单次输出 token 超过配置上限", code="TOKEN_LIMIT", http_status=422)
@@ -103,6 +118,7 @@ class LiveLLMClient:
                 validate_payload(payload, schema)
         finally:
             # Exactly one settlement on every path; crashes leave the reservation intact.
+            enrich(input_tokens=input_tokens, output_tokens=output_tokens)
             row = self._ledger.settle(
                 reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
             )

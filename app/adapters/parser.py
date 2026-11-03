@@ -1,8 +1,12 @@
 """Deterministic file-to-span splitting; text is evidence, never instructions."""
 
 from app.adapters.uploads import UploadValidationError, static_workbook, validate_upload
+from app.observability import enrich, get_logger, observed, text_digest
+
+logger = get_logger(__name__)
 
 
+@observed(logger, "source.parsed", fields=lambda source_id, **_: {"source_id": source_id})
 def split_source(source_id: str, filename: str, content: bytes) -> list[dict]:
     suffix = validate_upload(filename, content)
     spans = []
@@ -41,4 +45,6 @@ def split_source(source_id: str, filename: str, content: bytes) -> list[dict]:
                             add(str(cell.value), sheet=sheet.title, cell_range=cell.coordinate)
     if not spans:
         raise UploadValidationError("文件没有非空内容", "INPUT_EMPTY")
+    enrich(**text_digest("\n".join(span["text_excerpt"] for span in spans)))
+    enrich(span_count=len(spans))
     return spans

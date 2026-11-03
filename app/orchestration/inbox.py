@@ -8,7 +8,10 @@ from app.adapters.uploads import validate_text
 from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
+from app.observability import enrich, get_logger, observed, text_digest
 from app.orchestration.state import transition, utcnow
+
+logger = get_logger(__name__)
 
 
 def latest_input(session, task):
@@ -29,6 +32,7 @@ def latest_input(session, task):
     )
 
 
+@observed(logger, "inbox.received", fields=lambda task_id, **_: {"task_id": task_id})
 def accept_input(
     factory,
     *,
@@ -42,6 +46,7 @@ def accept_input(
     fault=lambda _: None,
 ):
     validate_text(text, allow_empty=bool(source_ids))
+    enrich(**text_digest(text or ""))
     with factory() as session, begin_immediate(session):
         event = session.scalar(
             select(Event).where(
@@ -50,6 +55,7 @@ def accept_input(
         )
         if event:
             receipt = session.get(InputPayload, event.id)
+            enrich(task_id=receipt.task_id, input_id=event.id, duplicate=True)
             return event.id, receipt.task_id, session.get(Task, receipt.task_id).status
         if selected_order_id and session.get(SalesOrder, selected_order_id) is None:
             raise AppError("订单不存在", code="NOT_FOUND", http_status=404)
@@ -114,4 +120,5 @@ def accept_input(
                 available_at=clock(),
             )
         )
+        enrich(task_id=task.id, input_id=event.id, duplicate=False, status=task.status)
         return event.id, task.id, task.status
