@@ -226,6 +226,8 @@ def _set_total(
     known_skus: dict[str, str],
     candidates_for: dict[str, list[str]],
 ) -> ChangeEval | None:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
     if qty < 0:
         return _reject("总量不能为负", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
@@ -246,9 +248,6 @@ def _set_total(
         return mode
     if current is not None and mode != current.fulfillment_mode:
         return _reject("不能改变履约方式", "BUSINESS_CONFLICT")
-    if qty == 0 and shipped == 0 and cut == 0:
-        working.pop(sku_id, None)
-        return None
     working[sku_id] = SnapLine(sku_id, qty, mode, shipped, cut_qty=cut)
     return None
 

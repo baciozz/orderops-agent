@@ -24,11 +24,9 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过；这不代表完整 UI 或已验证真实 live 理解质量。
 
-Qi 已确认：`replace_remaining`、`increment` 和新建订单行的数量 0 不表示取消该行，
+Qi 已确认：`set_total`、`replace_remaining`、`increment` 和新建订单行的数量 0 不表示取消该行，
 仍以 HTTP 422 / BUSINESS_CONFLICT 拒绝，并提示取消请走显式 `cancel_remaining`，仅取消未执行部分。
 负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。
-`set_total` 在该行没有已发货或已裁剪数量时设为 0，目前仍会被接受并移除该行；
-这是现有行为，本次 PR 不修改，是否也应拒绝仍需 Qi 决定。
 
 ## 输入错误、预算崩溃恢复和进程并发
 
