@@ -431,6 +431,7 @@ def _one_attempt(
                 if code is None and run is not None:
                     if run.extraction is not None and task.last_event_id:
                         receipt = writer.get(InputPayload, task.last_event_id)
+                        assert receipt is not None  # last_event_id refers to persisted input.
                         receipt.body = {
                             **receipt.body,
                             "extraction": run.extraction.model_dump(mode="json"),
@@ -537,6 +538,8 @@ def _precheck(
                 if durable_guard.get():
                     with session_factory() as read_session:
                         durable_task = read_session.get(Task, task_id)
+                        if durable_task is None:
+                            raise AppError("调度任务不存在", code="NOT_FOUND", http_status=404)
                         if durable_task.order_id:
                             if durable_task.order_id != event.order_id:
                                 raise AppError(
@@ -678,10 +681,11 @@ def _add_step(
     agent_id: str | None = None,
     agent_version: str | None = None,
 ) -> None:
-    if durable_guard.get():
-        now = durable_guard.get()[2]()
+    guard = durable_guard.get()
+    if guard is not None:
+        now = guard[2]()
         attempt.heartbeat_at = now
-        attempt.lease_until = now + timedelta(seconds=durable_guard.get()[3])
+        attempt.lease_until = now + timedelta(seconds=guard[3])
         attempt.last_progress_at = now
     attempt.step_count += 1
     session.add(

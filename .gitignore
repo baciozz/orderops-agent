@@ -14,4 +14,5 @@ data/
 *.db-wal
 *.db-shm
 .coverage
+coverage.xml
 htmlcov/

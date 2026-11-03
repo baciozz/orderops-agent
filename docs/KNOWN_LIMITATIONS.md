@@ -20,6 +20,10 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过；这不代表完整 UI 或已验证真实 live 理解质量。
 
+待 Qi 确认的产品问题：服装批发里把某行改成 0 可能表示取消这一行。
+当前 qty=0 仍按 BUSINESS_CONFLICT 拒绝，离线评测仅锁定当前行为，业务规则保持不变。
+负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID；取消行语义及适用操作待确认。
+
 ## 输入错误、预算崩溃恢复和进程并发
 
 - 输入在创建任务、事件或调度步骤之前校验。`POST /inputs`、`POST /tasks/{id}/answers` 和 `POST /dispatch` 拒绝空白消息（`INPUT_EMPTY`）、NUL/无效 Unicode（`ENCODING_INVALID`）和超过 5 MiB 的文本（`UPLOAD_TOO_LARGE`）；仅提供来源的 inbox 请求仍可用。上传拒绝空文件/无非空内容的文件、非 UTF-8 或含 NUL 的 TXT/MD、损坏/截断/非工作簿 XLSX，分别使用 `INPUT_EMPTY`、`ENCODING_INVALID`、`UPLOAD_CORRUPT`。保留 `UPLOAD_REJECTED` 表示其他文件策略拒绝。上传失败保留 `parser_status=rejected`，使用统一错误 envelope（包括 request/correlation ID、schema_version、retryable 和 details），在数据库事务失败时删除对应原始文件。

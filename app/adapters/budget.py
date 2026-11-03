@@ -150,6 +150,7 @@ class BudgetLedger:
                         .select_from(ModelUsage)
                         .where(ModelUsage.task_id == task_id)
                     )
+                    assert used is not None  # COUNT always returns a row.
                     if used >= max_calls_per_task:
                         raise CallLimitExceeded(
                             f"任务 {task_id} 已达到模型调用次数上限 {max_calls_per_task}",

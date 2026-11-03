@@ -25,6 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "mypy==2.4.1",
+    "pytest-cov==7.1.0",
     "pytest==9.2.0",
     "ruff==0.17.3",
 ]
@@ -54,3 +56,25 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 "alembic/versions/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["openpyxl", "openpyxl.*", "defusedxml", "defusedxml.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["app"]
+branch = false
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 90
