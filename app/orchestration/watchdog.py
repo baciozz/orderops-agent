@@ -9,6 +9,7 @@ from app.db.models import Event, JobAttempt, Operation, OutboxDelivery, Plan, Ta
 from app.db.session import begin_immediate
 from app.orchestration.state import aware, transition, utcnow
 from app.orchestration.worker import DEFAULT_LIMITS
+from app.services.kernel import retry_pending_verification
 
 
 def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
@@ -82,4 +83,5 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                     attempt.lease_until = None
                     attempt.lease_owner = None
                 changed.append(task.id)
+    retry_pending_verification(factory)
     return changed

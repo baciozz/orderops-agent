@@ -4,6 +4,7 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 
 - Worker 由 `worker-once` / Python 调用驱动，没有常驻调度服务；`OOS_WORKER_MAX_ACTIVE` 必须大于等于 1，默认 2。`claim()` 保留 `min(2, limits.active)` 的硬上限，配置大于 2 时，`worker-once` 在 logger `oos.worker` 上记录 WARNING，并按 2 生效，仍限制为 2 条 RUNNING 任务。outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。
 - 与 `docs/PLAN_v1.0_dot.md` 的设计不同，批准后尚未排队新的 commit job，也不领取新的 lease / fencing_token。`POST /plans/{plan_id}/commit` 同步调用内核，在一个 BEGIN IMMEDIATE 事务内原子提交业务写入；worker 的 lease / fencing 只用于规划阶段的 JobAttempt。
+- `Operation.committed_verification_pending=True` 表示业务已提交但尚未回读核验或核验失败，不表示业务事务失败。首次提交回读一次；`commit_plan` 幂等重放（包括 `recovery.durable_commit`）仅重试该操作仍 pending 的核验，`watchdog.scan` 在现有写事务结束后重试所有 COMMITTED 且 pending 的操作，包括任务已经 SUCCEEDED 的操作。通过后只清除此标记，失败或异常保留 pending；已通过的操作跳过，写事务内重新读取标记，保留并发重试已通过的结果，不用较慢的失败结果覆盖它。重试不重新提交、不修复数据、不新增业务修订/审计/事件；核验的是当前库存流水和下游一致性，不是历史快照。没有常驻调度器，watchdog 仅在调用时运行，例如 `python -m app.cli worker-once`；无人调用且没有提交重放时，pending 不会自行消失。
 - 上传为 `POST /sources` 的 multipart `task_id` + `file`，一次一个文件，每任务最多三个；任务须已存在。服务端生成存储路径，通过 `task_source` 关联限制 spans 查询，原始文件放在服务端临时目录，生产持久存储/清理策略尚未实现。拒绝返回 HTTP 400、parser_status=rejected 和中文原因，不保存部分 spans。
 - UTF-8 TXT/MD 按非空行、静态 XLSX 按单元格切分；spans 摘要最多 500 字，完整原文独立保存。XLSM、VBA/宏类型、公式、外部链接和 XML 实体被拒绝；XLSX 有压缩包大小/压缩比及非空单元格上限。上传不会触发调度、批准或外传。
 - R14 已接入 worker 的 `source_ids`：只读取当前任务关联的静态 spans，精确 fixture 聊天与匹配表格行数量不同时，保存 conflicts、questions 和聊天/单元格双来源，返回 NEEDS_CLARIFICATION，不创建计划、批准或提交。JSON 和 HTML 可展开来源并显示问题；抽取结果保存在当前事件的 InputPayload 中，原 text/source_ids 保留。

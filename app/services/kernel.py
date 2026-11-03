@@ -374,7 +374,9 @@ def commit_plan(
         revision=outcome.revision,
         replayed=outcome.replayed,
     )
-    if not outcome.replayed:
+    if outcome.replayed:
+        retry_pending_verification(session_factory, outcome.operation_id)
+    else:
         _post_verify(session_factory, outcome.operation_id)
     if acknowledge:
         acknowledge_commit(session_factory, outcome.task_id)
@@ -1466,6 +1468,26 @@ def _new_task_plan(
     return task, plan
 
 
+def retry_pending_verification(
+    session_factory: sessionmaker[Session], operation_id: str | None = None
+) -> None:
+    """Retry readback only; exceptions leave the durable flag available for retry."""
+    with session_factory() as session:
+        pending = select(Operation.id).where(
+            Operation.status == "COMMITTED", Operation.committed_verification_pending.is_(True)
+        )
+        if operation_id is not None:
+            pending = pending.where(Operation.id == operation_id)
+        operation_ids = list(session.scalars(pending))
+    for pending_id in operation_ids:
+        try:
+            _post_verify(session_factory, pending_id)
+        except Exception:
+            # Verification must not prevent acknowledgement or other pending retries.
+            # No compensating write: a concurrent successful verification wins.
+            continue
+
+
 def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
     session = session_factory()
     try:
@@ -1480,7 +1502,13 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
-            if operation is not None:
+            # Re-read under the write lock after ending the readback transaction.
+            # Passed is sticky: a slower failed readback must not undo a concurrent pass.
+            if (
+                operation is not None
+                and operation.status == "COMMITTED"
+                and operation.committed_verification_pending
+            ):
                 operation.committed_verification_pending = bool(problems)
     finally:
         session.close()
