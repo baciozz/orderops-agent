@@ -8,6 +8,7 @@ from app.db.models import (
     DownstreamLink,
     Operation,
     OrderLine,
+    Plan,
     ProductionOrder,
     PurchaseOrder,
     SalesOrder,
@@ -140,6 +141,35 @@ def kernel(supplement_kernel):
         assert consistency_problems(session) == []
         assert downstream_problems(session) == []
     return supplement_kernel
+
+
+@pytest.mark.parametrize("mode", ["set_total", "increment"])
+def test_uncut_mo_expansion_plan_event_replay_reuses_plan_without_writes(kernel, mode):
+    key = f"qi-expand-plan-replay-{mode}"
+    before = _counts(kernel)
+    first = _plan(kernel, key=key, mode=mode)
+    assert first.status == "VALIDATED", first
+    assert sorted((_without_reason(v) for v in first.verdicts), key=lambda v: v["doc_id"]) == (
+        _expansion_with_supplement()
+    )
+    with kernel() as session:
+        plan_ids = list(session.scalars(select(Plan.id).order_by(Plan.id)))
+
+    replay = _plan(kernel, key=key, mode=mode)
+
+    assert replay.status == "VALIDATED", replay
+    assert replay.requires_human_approval is True
+    assert (replay.plan_id, replay.task_id, replay.plan_hash, replay.intent_revision) == (
+        first.plan_id,
+        first.task_id,
+        first.plan_hash,
+        first.intent_revision,
+    )
+    assert _counts(kernel) == before
+    with kernel() as session:
+        assert list(session.scalars(select(Plan.id).order_by(Plan.id))) == plan_ids
+        assert session.get(SalesOrder, ORDER_ID).intent_revision == first.intent_revision
+        assert session.get(Plan, first.plan_id).normalized_changes["downstream"] == first.verdicts
 
 
 @pytest.mark.parametrize("mode", ["set_total", "increment"])

@@ -77,8 +77,12 @@ def assess_downstream(
         sku = str(row["sku_id"])
         planned = int(row["planned_qty"])
         if demand.get(sku, 0) >= planned:
-            take(sku, planned)
-            verdicts.append(_unchanged_mo(row))
+            kept = demand[sku]
+            take(sku, kept)
+            if kept == planned:
+                verdicts.append(_unchanged_mo(row))
+            else:
+                verdicts.append(_change_mo(row, sku, kept, "NOT_STARTED"))
             assigned[str(row["doc_id"])] = sku
             continue
         target = next((item for item in sorted(demand) if demand[item] >= planned), None)
