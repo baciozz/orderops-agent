@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "order-ops-superagent"
+version = "0.1.0"
+description = "服装批发订单的多 Agent 调度系统（订单变更协调层）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "baciozz" }]
+dependencies = [
+    "fastapi==0.162.0",
+    "jinja2==3.1.6",
+    "openpyxl==3.1.5",
+    "pydantic==2.14.2",
+    "pydantic-settings==2.16.2",
+    "sqlalchemy==2.1.6",
+    "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx==0.28.1",
+    "pytest==9.2.0",
+    "ruff==0.17.3",
+]
+
+[project.scripts]
+oos = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*", "schemas*", "seeds*"]
+
+[tool.setuptools.package-data]
+app = ["web/templates/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["app", "schemas", "seeds", "tests"]
+extend-exclude = [".venv", "data", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
