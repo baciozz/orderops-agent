@@ -25,7 +25,7 @@ from app.db.models import (
     Task,
 )
 from app.db.session import begin_immediate
-from app.errors import AppError, BudgetExceeded, LiveStartRefused, SchemaInvalid
+from app.errors import AppError, BudgetExceeded, CallLimitExceeded, LiveStartRefused, SchemaInvalid
 from app.orchestration.dispatch import _fail_if_running
 from app.orchestration.fixtures import (
     TEXT_ALL_NAVY,
@@ -198,11 +198,11 @@ def test_budget_breaker_precedes_http_and_caps_config(session_factory, cap, expe
     configured = settings(live_budget_usd=Decimal(cap))
     book = ledger(session_factory, configured)
     assert book.cap_usd == Decimal(expected)
-    book.record(
+    book.reserve(
         provider="openai",
         model="mock",
         input_tokens=0,
-        output_tokens=int(Decimal(expected) * 2_000_000),
+        max_output_tokens=int(Decimal(expected) * 2_000_000),
     )
 
     def forbidden(req):
@@ -251,13 +251,13 @@ def test_transport_failure_records_pessimistic_usage(session_factory, error, cod
     configured = settings()
     book = ledger(session_factory)
     authorized = []
-    original = book.authorize
+    original = book.reserve
 
-    def authorize(**kwargs):
+    def reserve(**kwargs):
         authorized.append(kwargs)
         return original(**kwargs)
 
-    book.authorize = authorize
+    book.reserve = reserve
 
     def fail(req):
         raise error(f"unsafe {MOCK_CREDENTIAL}", request=req)
@@ -266,7 +266,7 @@ def test_transport_failure_records_pessimistic_usage(session_factory, error, cod
         LiveLLMClient(configured, book, transport=httpx.MockTransport(fail)).structured_call(
             request()
         )
-    assert caught.value.code == code and caught.value.retryable
+    assert caught.value.code == code and caught.value.retryable is False
     assert MOCK_CREDENTIAL not in str(caught.value) + str(caught.value.details) + caplog.text
     with session_factory() as session:
         row = session.scalar(select(ModelUsage))
@@ -280,8 +280,8 @@ def test_transport_failure_records_pessimistic_usage(session_factory, error, cod
     [
         (401, "MODEL_AUTH", False),
         (403, "MODEL_AUTH", False),
-        (429, "MODEL_RATE_LIMIT", True),
-        (503, "MODEL_UPSTREAM", True),
+        (429, "MODEL_RATE_LIMIT", False),
+        (503, "MODEL_UPSTREAM", False),
     ],
 )
 def test_http_errors_only_expose_safe_metadata(session_factory, status, code, retryable, caplog):
@@ -386,6 +386,119 @@ def test_call_limit_is_persistent_per_task(session_factory):
         assert row.task_id == task_id and row.agent_id == "parser"
 
 
+@pytest.mark.parametrize("statuses", [(500, 500, 500), (400, 429, 400)])
+def test_http_failures_consume_task_call_limit_without_billed_usage(session_factory, statuses):
+    _, task_id, _ = accept_input(
+        session_factory, thread_id="failed-calls", client_event_key="one", text="x"
+    )
+    book = ledger(session_factory)
+    calls = []
+
+    def handle(req):
+        status = statuses[len(calls)]
+        calls.append(req)
+        return httpx.Response(status, json={"error": {"type": "rejected"}})
+
+    for _ in statuses:
+        # New clients/ledgers must still share the persistent per-task call count.
+        client = LiveLLMClient(
+            settings(), ledger(session_factory), transport=httpx.MockTransport(handle)
+        )
+        with pytest.raises(AppError) as caught:
+            client.structured_call(request(task_id=task_id))
+        assert caught.value.code in {"MODEL_UPSTREAM", "MODEL_HTTP", "MODEL_RATE_LIMIT"}
+        assert caught.value.retryable is False
+    with pytest.raises(CallLimitExceeded):
+        client.structured_call(request(task_id=task_id))
+    assert len(calls) == 3
+    assert book.calls_for_task(task_id) == 3
+    assert book.spent() == Decimal("0.000000")
+    with session_factory() as session:
+        rows = session.scalars(select(ModelUsage).where(ModelUsage.task_id == task_id)).all()
+        assert all(row.input_tokens == row.output_tokens == row.cost_usd == 0 for row in rows)
+        view = build_task_view(session, task_id, request_id="r", correlation_id="c", now=NOW)
+        assert view.card.mode == "LIVE"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "success",
+        "timeout",
+        "transport",
+        "http_error",
+        "http_error_with_usage",
+        "missing_usage",
+        "invalid_usage",
+        "incomplete",
+        "invalid_output",
+    ],
+)
+def test_live_call_reserves_before_http_and_settles_same_row_once(
+    session_factory, monkeypatch, outcome
+):
+    book = ledger(session_factory)
+    reservations, settlements = [], []
+    original_reserve, original_settle = book.reserve, book.settle
+
+    def reserve(**kwargs):
+        reservation_id = original_reserve(**kwargs)
+        reservations.append(reservation_id)
+        return reservation_id
+
+    def settle(reservation_id, **kwargs):
+        settlements.append(reservation_id)
+        return original_settle(reservation_id, **kwargs)
+
+    monkeypatch.setattr(book, "reserve", reserve)
+    monkeypatch.setattr(book, "settle", settle)
+    reserved_tokens = []
+
+    def handle(req):
+        with session_factory() as session:
+            row = session.get(ModelUsage, reservations[0])
+            assert row is not None and row.cost_usd == book.spent() > 0
+            reserved_tokens.append((row.input_tokens, row.output_tokens))
+        if outcome == "timeout":
+            raise httpx.ReadTimeout("offline", request=req)
+        if outcome == "transport":
+            raise httpx.ConnectError("offline", request=req)
+        if outcome == "http_error":
+            return httpx.Response(500, text="not JSON")
+        if outcome == "http_error_with_usage":
+            return httpx.Response(500, json={"usage": {"input_tokens": 1000, "output_tokens": 200}})
+        data = response().json()
+        if outcome == "missing_usage":
+            del data["usage"]
+        if outcome == "invalid_usage":
+            data["usage"]["input_tokens"] = True
+        if outcome == "incomplete":
+            data["status"] = "incomplete"
+        if outcome == "invalid_output":
+            data["output"] = []
+        return httpx.Response(200, json=data)
+
+    client = LiveLLMClient(settings(), book, transport=httpx.MockTransport(handle))
+    if outcome == "success":
+        client.structured_call(request())
+    else:
+        with pytest.raises(AppError):
+            client.structured_call(request())
+    assert len(reservations) == 1
+    assert settlements == reservations
+    with session_factory() as session:
+        rows = session.scalars(select(ModelUsage)).all()
+        assert len(rows) == 1 and rows[0].id == reservations[0]
+        expected = (
+            reserved_tokens[0]
+            if outcome in {"timeout", "transport", "missing_usage", "invalid_usage"}
+            else (0, 0)
+            if outcome == "http_error"
+            else (1000, 200)
+        )
+        assert (rows[0].input_tokens, rows[0].output_tokens) == expected
+
+
 def pipeline(factory, database_url, *, text=TEXT_BLACK_TO_WHITE, payload=None, configured=None):
     load_seed(factory, database_url=database_url)
     _, task_id, _ = accept_input(
@@ -430,9 +543,7 @@ def test_live_pipeline_golden_and_alias_preserve_kernel_checks(session_factory, 
         extraction = receipt.body["extraction"]
         assert extraction["source_refs"][0]["source_id"] == "SRC-INPUT"
         assert extraction["source_refs"][0]["text_excerpt"] == text
-        view = build_task_view(
-            session, result.task_id, request_id="r", correlation_id="c", mode="FIXTURE", now=NOW
-        )
+        view = build_task_view(session, result.task_id, request_id="r", correlation_id="c", now=NOW)
         assert view.card.mode == "LIVE"
     approval = approve_plan(
         session_factory,
@@ -721,9 +832,7 @@ def test_missing_price_or_key_dispatch_stays_fixture(session_factory, database_u
     assert result.status == "AWAITING_APPROVAL" and requests == []
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(ModelUsage)) == 0
-        view = build_task_view(
-            session, result.task_id, request_id="r", correlation_id="c", mode="LIVE", now=NOW
-        )
+        view = build_task_view(session, result.task_id, request_id="r", correlation_id="c", now=NOW)
         assert view.card.mode == "FIXTURE"
 
 

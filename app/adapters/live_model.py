@@ -57,12 +57,6 @@ class LiveLLMClient:
             (request.system_prompt + request.user_prompt + json.dumps(schema)).encode("utf-8")
         )
         estimate = max(request.input_tokens, prompt_bytes + 256)
-        self._ledger.authorize(
-            input_tokens=estimate,
-            max_output_tokens=request.max_output_tokens,
-            task_id=request.task_id,
-            max_calls_per_task=self._settings.model_max_calls_per_task,
-        )
         key = self._settings.llm_api_key_value()
         body = {
             "model": self._settings.llm_model,
@@ -82,90 +76,58 @@ class LiveLLMClient:
             "reasoning": {"effort": self._settings.model_reasoning_effort},
             "store": False,
         }
+        reservation_id = self._ledger.reserve(
+            provider="openai",
+            model=self._settings.llm_model,
+            input_tokens=estimate,
+            max_output_tokens=request.max_output_tokens,
+            task_id=request.task_id,
+            agent_id=request.agent_id,
+            max_calls_per_task=self._settings.model_max_calls_per_task,
+            at=self._clock(),
+        )
+        # Unknown billing (including transport failures) keeps the pessimistic estimate.
+        input_tokens, output_tokens = estimate, request.max_output_tokens
         try:
-            with httpx.Client(
-                transport=self._transport,
-                timeout=self._settings.model_timeout_s,
-                trust_env=False,
-                follow_redirects=False,
-            ) as client:
-                response = client.post(
-                    self._settings.llm_base_url.rstrip("/") + "/responses",
-                    headers={"Authorization": f"Bearer {key}"},
-                    json=body,
-                )
-        except httpx.TimeoutException:
-            self._record(request, estimate, request.max_output_tokens)
-            raise AppError(
-                "模型请求超时，用量按授权上限记账",
-                code="MODEL_TIMEOUT",
-                http_status=504,
-                retryable=True,
-            ) from None
-        except httpx.TransportError:
-            self._record(request, estimate, request.max_output_tokens)
-            raise AppError(
-                "模型连接失败，用量按授权上限记账",
-                code="MODEL_TRANSPORT",
-                http_status=502,
-                retryable=True,
-            ) from None
-        if not response.is_success:
-            details: dict[str, object] = {"status_code": response.status_code}
+            response = self._send(body, key)
             try:
-                error = response.json().get("error", {})
-                for field in ("type", "code"):
-                    value = error.get(field)
-                    # Do not reflect arbitrary upstream messages, headers or bodies.
-                    if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_]{1,80}", value):
-                        details[f"error_{field}"] = "REDACTED" if key and key in value else value
-            except (ValueError, AttributeError):
-                pass
-            status = response.status_code
-            code = (
-                "MODEL_AUTH"
-                if status in (401, 403)
-                else "MODEL_RATE_LIMIT"
-                if status == 429
-                else "MODEL_UPSTREAM"
-                if status >= 500
-                else "MODEL_HTTP"
+                data = response.json()
+                usage = data["usage"]
+                reported_in, reported_out = usage["input_tokens"], usage["output_tokens"]
+                if any(type(n) is not int or n < 0 for n in (reported_in, reported_out)):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError):
+                if response.is_success:
+                    raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账") from None
+                # HTTP rejection without billed usage still consumes a call slot.
+                input_tokens, output_tokens = 0, 0
+            else:
+                input_tokens, output_tokens = reported_in, reported_out
+            if not response.is_success:
+                self._raise_http_error(response, key)
+            if data.get("status") != "completed":
+                raise AppError("模型输出未完成", code="MODEL_INCOMPLETE", http_status=422)
+            try:
+                output_text = "".join(
+                    part["text"]
+                    for output in data["output"]
+                    if output.get("type") == "message"
+                    for part in output["content"]
+                    if part.get("type") == "output_text"
+                )
+                payload = json.loads(output_text)
+                if not isinstance(payload, dict):
+                    raise ValueError
+                # Upstream text is untrusted, even if it somehow echoes a credential.
+                if key and key in json.dumps(payload, ensure_ascii=False):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError, AttributeError):
+                raise SchemaInvalid("模型输出不是有效的结构化对象") from None
+        finally:
+            # Exactly one settlement on every path; crashes leave the reservation intact.
+            row = self._ledger.settle(
+                reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
             )
-            raise AppError(
-                "模型提供方拒绝请求",
-                code=code,
-                http_status=502,
-                retryable=status == 429 or status >= 500,
-                details=details,
-            )
-        try:
-            data = response.json()
-            usage = data["usage"]
-            input_tokens, output_tokens = usage["input_tokens"], usage["output_tokens"]
-            if any(type(n) is not int or n < 0 for n in (input_tokens, output_tokens)):
-                raise ValueError
-        except (ValueError, KeyError, TypeError):
-            self._record(request, estimate, request.max_output_tokens)
-            raise SchemaInvalid("模型响应缺少有效用量，按授权上限记账") from None
-        row = self._record(request, input_tokens, output_tokens)
-        if data.get("status") != "completed":
-            raise AppError("模型输出未完成", code="MODEL_INCOMPLETE", http_status=422)
-        try:
-            output_text = "".join(
-                part["text"]
-                for output in data["output"]
-                if output.get("type") == "message"
-                for part in output["content"]
-                if part.get("type") == "output_text"
-            )
-            payload = json.loads(output_text)
-            if not isinstance(payload, dict):
-                raise ValueError
-            # Upstream text is untrusted, even if it somehow echoes a credential.
-            if key and key in json.dumps(payload, ensure_ascii=False):
-                raise ValueError
-        except (ValueError, KeyError, TypeError, AttributeError):
-            raise SchemaInvalid("模型输出不是有效的结构化对象") from None
         return StructuredCallResult(
             payload=payload,
             usage=UsageReport(
@@ -179,13 +141,61 @@ class LiveLLMClient:
             ),
         )
 
-    def _record(self, request: StructuredCallRequest, input_tokens: int, output_tokens: int):
-        return self._ledger.record(
-            provider="openai",
-            model=self._settings.llm_model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            task_id=request.task_id,
-            agent_id=request.agent_id,
-            at=self._clock(),
+    def _send(self, body: dict[str, object], key: str | None) -> httpx.Response:
+        # No automatic retry; caller must re-submit a new task.
+        try:
+            with httpx.Client(
+                transport=self._transport,
+                timeout=self._settings.model_timeout_s,
+                trust_env=False,
+                follow_redirects=False,
+            ) as client:
+                return client.post(
+                    self._settings.llm_base_url.rstrip("/") + "/responses",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json=body,
+                )
+        except httpx.TimeoutException:
+            raise AppError(
+                "模型请求超时，用量按授权上限记账",
+                code="MODEL_TIMEOUT",
+                http_status=504,
+                retryable=False,
+            ) from None
+        except httpx.TransportError:
+            raise AppError(
+                "模型连接失败，用量按授权上限记账",
+                code="MODEL_TRANSPORT",
+                http_status=502,
+                retryable=False,
+            ) from None
+
+    @staticmethod
+    def _raise_http_error(response: httpx.Response, key: str | None) -> None:
+        details: dict[str, object] = {"status_code": response.status_code}
+        try:
+            error = response.json().get("error", {})
+            for field in ("type", "code"):
+                value = error.get(field)
+                # Do not reflect arbitrary upstream messages, headers or bodies.
+                if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_]{1,80}", value):
+                    details[f"error_{field}"] = "REDACTED" if key and key in value else value
+        except (ValueError, AttributeError):
+            pass
+        status = response.status_code
+        code = (
+            "MODEL_AUTH"
+            if status in (401, 403)
+            else "MODEL_RATE_LIMIT"
+            if status == 429
+            else "MODEL_UPSTREAM"
+            if status >= 500
+            else "MODEL_HTTP"
+        )
+        raise AppError(
+            "模型提供方拒绝请求",
+            code=code,
+            http_status=502,
+            retryable=False,
+            details=details,
         )

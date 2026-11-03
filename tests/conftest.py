@@ -6,9 +6,18 @@ import socket
 from pathlib import Path
 
 import pytest
-from app.config import reset_settings_cache
+from app.config import Settings, reset_settings_cache
 from app.db.schema import init_db
 from app.db.session import make_engine, make_session_factory
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable dotenv before collection can import app.main's default app."""
+    patch = pytest.MonkeyPatch()
+    patch.setitem(Settings.model_config, "env_file", None)
+    reset_settings_cache()
+    config.add_cleanup(patch.undo)
+    config.add_cleanup(reset_settings_cache)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -42,10 +51,12 @@ def _sandbox_asyncio_polling():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_oos_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolate_oos_env(monkeypatch: pytest.MonkeyPatch):
     for key in list(os.environ):
         if key.startswith("OOS_"):
             monkeypatch.delenv(key, raising=False)
+    reset_settings_cache()
+    yield
     reset_settings_cache()
 
 

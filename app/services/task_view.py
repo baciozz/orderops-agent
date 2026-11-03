@@ -165,7 +165,7 @@ def _approval_block(session, task, plan, now, generated_at):
     )
 
 
-def build_task_view(session, task_id, *, request_id, correlation_id, mode, now):
+def build_task_view(session, task_id, *, request_id, correlation_id, now):
     task = session.get(Task, task_id)
     if task is None:
         raise AppError("任务不存在", code="TASK_NOT_FOUND", http_status=404)
