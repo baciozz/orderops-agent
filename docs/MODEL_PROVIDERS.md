@@ -94,3 +94,32 @@ OOS_LLM_JSON_SCHEMA_SUPPORTED=false
 - 仅配置密钥时添加 `Authorization: Bearer ...`；密钥不进入请求 JSON、业务数据或用量账本，回显密钥的模型输出被拒绝。HTTP 错误仅反映安全的状态码及 allowlist 格式的 type/code，密钥子串会被替换为 `REDACTED`。
 - HTTP 使用超时、`trust_env=False`、`follow_redirects=False`，不继承环境代理，不跟随跳转，无自动 HTTP 重试。401/403 → `MODEL_AUTH`，429 → `MODEL_RATE_LIMIT`，5xx → `MODEL_UPSTREAM`，其他 → `MODEL_HTTP`，全部 `retryable=False`；超时/连接错误同样不自动重试。既有 parser 的 schema 失败处理可能再次调用，仍受持久调用上限和预算约束。
 - 提供方只返回意图。人工批准、库存、版本及 fencing 检查继续由内核执行；黄金输入仅进入 `AWAITING_APPROVAL`，不会自动创建 Approval 或 Operation。
+
+## 对外错误码与 details.reason 对照
+
+`LiveStartRefused`（`app/errors.py`）总是带 `details.reason`。reason 属于 PRICES_NOT_CONFIGURED、KEY_NOT_CONFIGURED、LIVE_DISABLED、BASE_URL_NOT_CONFIGURED 时，对外 `code` 与 reason 相同；其余 reason 对外统一为 `LIVE_START_REFUSED`。以下取值均来自当前代码。HTTP 状态见 `app/errors.py` 与 `app/adapters/live_model.py`。
+
+| 对外 code | details.reason | 抛出位置 |
+|---|---|---|
+| `PRICES_NOT_CONFIGURED` | `PRICES_NOT_CONFIGURED` | `resolve_mode`（`app/adapters/llm.py`）返回的 live_block_reason，由 `LiveLLMClient.__init__` 抛出 |
+| `KEY_NOT_CONFIGURED` | `KEY_NOT_CONFIGURED` | `resolve_mode`（openai 无密钥）；`OpenAICompatibleChatProvider.validate`（远端 URL 无密钥） |
+| `LIVE_DISABLED` | `LIVE_DISABLED` | `LiveLLMClient.__init__`：未开启 live 且没有其他 block reason 时的兜底值 |
+| `BASE_URL_NOT_CONFIGURED` | `BASE_URL_NOT_CONFIGURED` | `OpenAICompatibleChatProvider.validate`；`app/adapters/providers/urls.py` |
+| `LIVE_START_REFUSED` | `PROVIDER_UNSUPPORTED` | `provider_for_settings`（`app/adapters/providers/__init__.py`） |
+| `LIVE_START_REFUSED` | `MODEL_NOT_CONFIGURED` | `LiveLLMClient.__init__`；两个 provider 的 `validate` 与 `build_request` |
+| `LIVE_START_REFUSED` | `BASE_URL_UNSUPPORTED` | `OpenAIResponsesProvider`（非官方 URL 或未配置 URL）；`urls.py`（URL 无法解析或含 userinfo/query/fragment 等） |
+| `LIVE_START_REFUSED` | `BASE_URL_INSECURE` | `urls.py`：协议不是 HTTPS，且不是 loopback 主机上的 HTTP |
+
+以下 code 不带 `details.reason`：
+
+| 对外 code | details | 抛出位置 |
+|---|---|---|
+| `TOKEN_LIMIT` | 无 | `LiveLLMClient.structured_call`：输出 token 超上限或为负 |
+| `SCHEMA_INVALID` | 无 | `SchemaInvalid`：缺有效用量、非结构化对象（`live_model.py`）；不支持的 schema 关键字或输出不合 schema（`app/adapters/providers/schema.py`） |
+| `MODEL_INCOMPLETE` | 无 | `live_model.py`：provider 解析为未完成（如兼容 Chat 的 `finish_reason` 不是 `stop`） |
+| `MODEL_TIMEOUT` / `MODEL_TRANSPORT` | 无 | `live_model.py` 发送阶段：httpx 超时 / 连接错误 |
+| `MODEL_AUTH` / `MODEL_RATE_LIMIT` / `MODEL_UPSTREAM` / `MODEL_HTTP` | `status_code`，以及 allowlist 格式的 `error_type`、`error_code` | `LiveLLMClient._raise_http_error`：401/403、429、5xx、其他 |
+| `BUDGET_EXCEEDED` | `spent_usd`、`estimate_usd`、`cap_usd` | `BudgetLedger.reserve`（`app/adapters/budget.py`） |
+| `CALL_LIMIT` | `task_id`、`calls` | `BudgetLedger.reserve` |
+| `PRICES_NOT_CONFIGURED`（`PricesNotConfigured`） | 无 | `quote_cost`：账本缺单价；与上表的 LiveStartRefused 同 code，但不带 reason |
+
