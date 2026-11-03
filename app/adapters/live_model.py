@@ -17,7 +17,7 @@ from app.adapters.providers.schema import ensure_supported_schema, validate_payl
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
 
-logger = logging.getLogger(__name__)
+startup_logger = logging.getLogger(__name__)
 
 
 class LiveLLMClient:
@@ -40,7 +40,7 @@ class LiveLLMClient:
         self._ledger = ledger
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(UTC))
-        logger.info(
+        startup_logger.info(
             "live model provider=%s host=%s",
             self._provider.name,
             urlsplit(settings.llm_base_url).hostname,
