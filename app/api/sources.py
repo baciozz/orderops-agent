@@ -15,7 +15,15 @@ from schemas.common import SourceRef
 from sqlalchemy import func, select
 
 from app.adapters.parser import split_source
-from app.adapters.uploads import MAX_FILE_BYTES, MAX_FILES, MAX_NONEMPTY_ROWS, MAX_SHEETS
+from app.adapters.uploads import (
+    MAX_FILE_BYTES,
+    MAX_FILES,
+    MAX_NONEMPTY_ROWS,
+    MAX_REQUEST_BYTES,
+    MAX_SHEETS,
+    UploadValidationError,
+)
+from app.api.errors import error_payload
 from app.db.models import InputSource, SourceSpan, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
@@ -48,8 +56,8 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
         raise ValueError("需要 multipart/form-data 上传")
     body = bytearray()
     async for chunk in request.stream():
-        if len(body) + len(chunk) > MAX_FILE_BYTES + 64 * 1024:
-            raise ValueError("上传请求超过大小上限")
+        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+            raise UploadValidationError("上传请求超过大小上限", "UPLOAD_TOO_LARGE")
         body.extend(chunk)
     message = BytesParser(policy=policy.HTTP).parsebytes(
         f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
@@ -130,11 +138,19 @@ async def upload_source(request: Request):
         spans = split_source(source_id, filename, content)
     except ValueError as exc:
         response.parser_status = "rejected"
+        code = getattr(exc, "code", "UPLOAD_REJECTED")
+        error = AppError(
+            str(exc), code=code, http_status=400, details=getattr(exc, "details", None)
+        )
         return JSONResponse(
-            status_code=400,
+            status_code=error.http_status,
             content={
                 **response.model_dump(),
-                "error": {"code": "UPLOAD_REJECTED", "message": str(exc)},
+                **error_payload(
+                    error,
+                    request_id=request.state.request_id,
+                    correlation_id=request.state.correlation_id,
+                ),
             },
         )
     storage_path = None
