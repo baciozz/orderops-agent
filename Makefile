@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck cov check run seed init-db
+.PHONY: install test lint typecheck cov check run seed init-db eval-offline
 
 PY ?= python
 
@@ -7,6 +7,9 @@ install:
 
 test:
 	$(PY) -m pytest
+
+eval-offline:
+	$(PY) scripts/eval_offline.py
 
 lint:
 	$(PY) -m ruff check .
