@@ -106,7 +106,8 @@ payload，写明 `known_issue`，让报告保持失败；不要为通过评测�
 管道回归（pipeline regression）覆盖显式结构化答案下的别名、含糊措辞、多行变更和黄金链。
 管道回归不代表模型理解准确率，不得表述为模型 100% 准确率（如简历）。
 
-待 Qi 确认的产品问题：服装批发里把某行改成 0 可能表示取消这一行。
-当前 qty=0 仍按 BUSINESS_CONFLICT 拒绝，评测仅锁定当前行为，不调整业务规则；
-负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。改单和新建的零数量样本
-均带有 `product_question` 注释；是否支持取消行及适用操作需另行确认。
+Qi 已确认：`replace_remaining`、`increment` 和新建订单行的数量 0 不表示取消该行，
+仍以 HTTP 422 / BUSINESS_CONFLICT 拒绝，并提示取消请走显式 `cancel_remaining`，仅取消未执行部分。
+负数返回 BUSINESS_CONFLICT，小数返回 SCHEMA_INVALID。三个零数量样本均带有
+`product_question` 确认注释。`set_total` 的现有零数量行为未改，例外及待确认项见
+[`docs/KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。

@@ -9,6 +9,10 @@ from schemas.enums import FulfillmentMode, LineMode
 
 from app.errors import AppError
 
+ZERO_QUANTITY_MESSAGE = (
+    "数量 0 不表示取消该行；取消请走显式 cancel_remaining 流程，仅取消未执行部分"
+)
+
 
 @dataclass
 class SnapLine:
@@ -175,7 +179,9 @@ def _replace(
     candidates_for: dict[str, list[str]],
     include_executed: bool,
 ) -> ChangeEval | None:
-    if qty <= 0:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
+    if qty < 0:
         return _reject("replace_remaining 的数量必须是正整数", "BUSINESS_CONFLICT")
     source = working.get(from_sku)
     if source is None:
@@ -255,7 +261,9 @@ def _increment(
     known_skus: dict[str, str],
     candidates_for: dict[str, list[str]],
 ) -> ChangeEval | None:
-    if qty <= 0:
+    if qty == 0:
+        return _reject(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT")
+    if qty < 0:
         return _reject("增加的数量必须是正整数", "BUSINESS_CONFLICT")
     current = working.get(sku_id)
     mode = _require_sku(sku_id, known_skus, candidates_for)

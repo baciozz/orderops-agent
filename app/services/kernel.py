@@ -48,7 +48,13 @@ from app.db.models import (
     Task,
 )
 from app.db.session import begin_immediate
-from app.domain.changes import ChangeEval, SnapLine, business_error, evaluate_changes
+from app.domain.changes import (
+    ZERO_QUANTITY_MESSAGE,
+    ChangeEval,
+    SnapLine,
+    business_error,
+    evaluate_changes,
+)
 from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
@@ -658,7 +664,9 @@ def _plan_new_locked(
     line_refs: list[dict[str, object]] = list(source_refs)
     for line in lines:
         qty = line.get("qty")
-        if not isinstance(qty, int) or isinstance(qty, bool) or qty <= 0:
+        if isinstance(qty, int) and not isinstance(qty, bool) and qty == 0:
+            return _err(ZERO_QUANTITY_MESSAGE, "BUSINESS_CONFLICT", 422)
+        if not isinstance(qty, int) or isinstance(qty, bool) or qty < 0:
             return _err("新建订单的数量必须是正整数", "BUSINESS_CONFLICT", 422)
         sku_id = line.get("sku_id")
         if not sku_id:
