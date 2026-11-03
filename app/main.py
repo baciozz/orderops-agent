@@ -16,8 +16,10 @@ from app import __version__
 from app.adapters.llm import resolve_mode
 from app.api.errors import json_error
 from app.api.health import router as health_router
+from app.api.orders import router as orders_router
 from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
+from app.db.session import make_engine, make_session_factory
 from app.errors import AppError
 from app.orchestration.defaults import build_default_registry
 
@@ -29,8 +31,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="order-ops-superagent",
         version=__version__,
-        description="Stage 0 skeleton. Fixture mode by default. Not a production ERP.",
+        description="Stage 1A business kernel. Fixture mode by default. Not a production ERP.",
     )
+    engine = make_engine(settings.database_url)
+    application.state.engine = engine
+    application.state.session_factory = make_session_factory(engine)
     application.state.settings = settings
     application.state.registry = registry
     application.state.mode_resolution = resolution
@@ -71,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(task_router)
+    application.include_router(orders_router)
     return application
 
 

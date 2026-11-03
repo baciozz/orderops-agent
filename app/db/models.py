@@ -1,10 +1,9 @@
-"""Relational schema frozen for Stage 0.
+"""Relational schema.
 
-Business services do not write these tables yet. The seed loader is the only
-writer. Status values the plans enumerate are CHECK constraints. Mappers do
-not declare relationships, so a flush does not order inserts by foreign key;
-writers flush parents first. See docs/ARCHITECTURE.md for columns the plans
-left unnamed.
+Status values the plans enumerate are CHECK constraints. Mappers do not
+declare relationships, so a flush does not order inserts by foreign key;
+writers flush parents before children. See docs/ARCHITECTURE.md for columns
+the plans left unnamed.
 """
 
 from datetime import datetime

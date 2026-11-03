@@ -4,7 +4,7 @@ OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分�
 
 OrderOps SuperAgent: a multi-agent coordination layer for garment-wholesale order changes.
 
-**状态：Stage 0（范围与契约）。** 可启动、可载入合成 seed、可回归。预检、批准、原子提交、持久任务和完整界面都还没做。
+**状态：Stage 1A（业务内核）在 `cursor/stage-1a-kernel-9fd8`，Stage 0 在主干 PR。** 现货改单和新建订单可以预检、批准、原子提交。跨单据核对、子 Agent 执行、持久任务和完整界面还没做。
 
 ## 架构
 

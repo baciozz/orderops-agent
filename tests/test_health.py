@@ -30,4 +30,5 @@ def test_openapi_lists_mounted_routes() -> None:
     schema = client.get("/openapi.json").json()
     assert "/health" in schema["paths"]
     assert "/tasks/{task_id}/view" in schema["paths"]
-    assert "/plans" not in schema["paths"]
+    assert "/plans" in schema["paths"]
+    assert "/orders/{order_id}" in schema["paths"]

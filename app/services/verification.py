@@ -1,6 +1,6 @@
-"""Post-commit read-back check.
+"""Post-commit stock check lives in app.services.kernel.
 
-TODO(stage-1B): verify downstream links, MTO coverage, and fabric coverage.
+TODO(stage-1B): also verify downstream links, MTO coverage, and fabric coverage.
 On failure set committed_verification_pending and do not write again (B21).
 """
 
