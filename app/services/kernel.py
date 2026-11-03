@@ -1017,7 +1017,7 @@ def _commit_locked(
             plan_id=plan.id,
             status="COMMITTED",
             result_json=result,
-            committed_verification_pending=False,
+            committed_verification_pending=True,
         )
     )
     session.add(
@@ -1460,12 +1460,10 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
         except Exception as exc:
             problems = [str(exc)]
         session.rollback()
-        if not problems:
-            return
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
             if operation is not None:
-                operation.committed_verification_pending = True
+                operation.committed_verification_pending = bool(problems)
     finally:
         session.close()
 
