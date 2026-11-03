@@ -113,13 +113,13 @@ def test_compat_startup_logs_only_provider_and_hostname(session_factory, caplog)
     settings = configured(
         llm_base_url="https://provider.example/v1/secret-path", llm_api_key=MOCK_KEY
     )
-    with caplog.at_level(logging.INFO, logger="app.adapters.live_model"):
+    with caplog.at_level(logging.INFO, logger="oos.adapters.live_model"):
         LiveLLMClient(
             settings,
             ledger(session_factory, settings),
             transport=httpx.MockTransport(lambda req: pytest.fail("Startup reached HTTP")),
         )
-    records = [record for record in caplog.records if record.name == "app.adapters.live_model"]
+    records = [record for record in caplog.records if record.name == "oos.adapters.live_model"]
     assert len(records) == 1 and records[0].levelno == logging.INFO
     message = records[0].getMessage()
     assert message == "live model provider=openai_compatible host=provider.example"

@@ -1,7 +1,6 @@
 """Guarded synchronous model transport. Providers never send or manage billing."""
 
 import json
-import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -20,8 +19,6 @@ from app.errors import AppError, LiveStartRefused, SchemaInvalid
 from app.observability import enrich, get_logger, observed
 
 logger = get_logger(__name__)
-
-startup_logger = logging.getLogger(__name__)
 
 
 class LiveLLMClient:
@@ -47,7 +44,7 @@ class LiveLLMClient:
         self._ledger = ledger
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(UTC))
-        startup_logger.info(
+        logger.info(
             "live model provider=%s host=%s",
             self._provider.name,
             urlsplit(settings.llm_base_url).hostname,
