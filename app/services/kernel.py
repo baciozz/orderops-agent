@@ -897,6 +897,7 @@ def _commit_locked(
     payload = _payload(
         plan_kind=plan.plan_kind,
         order_id=order.id if order is not None else None,
+        customer_id=customer_id,
         base_revision=plan.base_order_revision,
         intent_revision=plan.intent_revision,
         evaluation=evaluation,
@@ -1132,6 +1133,7 @@ def _store_validated(
     payload = _payload(
         plan_kind=plan_kind,
         order_id=order_id,
+        customer_id=customer_id,
         base_revision=base_revision,
         intent_revision=intent_revision,
         evaluation=evaluation,
@@ -1520,6 +1522,7 @@ def _payload(
     *,
     plan_kind: str,
     order_id: str | None,
+    customer_id: str,
     base_revision: int,
     intent_revision: int,
     evaluation: ChangeEval,
@@ -1531,6 +1534,7 @@ def _payload(
         "schema_version": "1.0",
         "plan_kind": plan_kind,
         "order_id": order_id,
+        "customer_id": customer_id,
         "base_revision": base_revision,
         "intent_revision": intent_revision,
         "lines": [
