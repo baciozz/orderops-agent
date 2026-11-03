@@ -13,6 +13,7 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 - live HTTP 传输已实现，仅支持官方 OpenAI Responses API，默认关闭；预算熔断和缺单价/密钥保持 FIXTURE 延续 R22/R23。`scripts/live_smoke.py` 是操作者手动运行的临时合成库评估，真实 live 结果见 `docs/LIVE_EVAL.md`（2026-11-03，gpt-6-luna，两次合计 $0.003645）。单次 smoke 上限 1 美元，普通 live 硬上限 5 美元。CI 永远只用 fixture / MockTransport。
 - live 预算和每任务调用次数在同一个 SQLite 写事务中预留，响应后在原用量行结算；进程崩溃、超时、连接失败或成功响应缺有效用量时保留悲观估算。提供方报告的实际用量即使超过估算也照实记录。HTTP 错误仍占调用次数，无用量时费用/token 为零，任务卡仍标注 LIVE。429/5xx/超时/连接错误不会自动重试，须重新提交新任务。测试从收集阶段起禁用 dotenv，生产 `.env` 加载不变。
 - LIVE 的 `replace_remaining` 若模型返回 `qty: null` 且没有明确的 `only_uncut` 选择，返回 NEEDS_CLARIFICATION，询问总件数或是否只改未开裁；不会把“全部”自行解释为未执行量。精确 FIXTURE `TEXT_ALL_NAVY` 提供 300 件，仍走已裁剪锁定的 B19 澄清。离线顺序回放确认：原 STALE_ATTEMPT 是缺数量导致内核先持久化 FAILED/BUSINESS_CONFLICT、清理阶段再次校验 RUNNING fence 后掩盖原错误；不是同链等待任务、超时或 usage 独立事务导致。清理对已结束任务只读返回，实际写入仍校验完整 fence。
+- 结构化日志（见 `docs/OBSERVABILITY.md`）中批准、提交、outbox 事件不带 `mode`，因为 Task 表未持久化 mode；需要时用 `task_id` 关联同任务的 dispatch 事件获取。lease、recovery、watchdog 尚未打点。
 - ORM relationship、生产认证、CSRF、多用户。Alembic 初始迁移已经接入。
 - `docs/TEST_REPORT.md`、`HANDOFF.md`、`LEARNING_GUIDE.md` 留到阶段 5。现在的测试清单是 `docs/TEST_CHECKLIST.md`
 
