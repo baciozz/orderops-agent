@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import Literal
 
 import httpx
 from schemas.common import UsageReport
@@ -33,6 +33,7 @@ class LiveLLMClient:
             raise LiveStartRefused("PROVIDER_UNSUPPORTED")
         if not settings.llm_model:
             raise LiveStartRefused("MODEL_NOT_CONFIGURED")
+        self._model: str = settings.llm_model
         # Keep the credential on the official origin, including when configured.
         if settings.llm_base_url.rstrip("/") != "https://api.openai.com/v1":
             raise LiveStartRefused("BASE_URL_UNSUPPORTED")
@@ -60,7 +61,7 @@ class LiveLLMClient:
         estimate = max(request.input_tokens, prompt_bytes + 256)
         key = self._settings.llm_api_key_value()
         body: dict[str, object] = {
-            "model": self._settings.llm_model,
+            "model": self._model,
             "input": [
                 {"role": "system", "content": request.system_prompt},
                 {"role": "user", "content": request.user_prompt},
@@ -79,7 +80,7 @@ class LiveLLMClient:
         }
         reservation_id = self._ledger.reserve(
             provider="openai",
-            model=cast(str, self._settings.llm_model),
+            model=self._model,
             input_tokens=estimate,
             max_output_tokens=request.max_output_tokens,
             task_id=request.task_id,
@@ -134,7 +135,7 @@ class LiveLLMClient:
             usage=UsageReport(
                 mode="LIVE",
                 provider="openai",
-                model=cast(str, self._settings.llm_model),
+                model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=format(row.cost_usd, "f"),
