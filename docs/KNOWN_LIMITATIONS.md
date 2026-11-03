@@ -16,6 +16,7 @@ Stage 4 在静态文件切分、安全上传/导出、任务来源隔离和 DB �
 - LIVE 的 `replace_remaining` 若模型返回 `qty: null` 且没有明确的 `only_uncut` 选择，返回 NEEDS_CLARIFICATION，询问总件数或是否只改未开裁；不会把“全部”自行解释为未执行量。精确 FIXTURE `TEXT_ALL_NAVY` 提供 300 件，仍走已裁剪锁定的 B19 澄清。离线顺序回放确认：原 STALE_ATTEMPT 是缺数量导致内核先持久化 FAILED/BUSINESS_CONFLICT、清理阶段再次校验 RUNNING fence 后掩盖原错误；不是同链等待任务、超时或 usage 独立事务导致。清理对已结束任务只读返回，实际写入仍校验完整 fence。
 - 结构化日志（见 `docs/OBSERVABILITY.md`）中批准、提交、outbox 事件不带 `mode`，因为 Task 表未持久化 mode；需要时用 `task_id` 关联同任务的 dispatch 事件获取。lease、recovery、watchdog 尚未打点。
 - ORM relationship、生产认证、CSRF、多用户。Alembic 初始迁移已经接入。
+- Qi 已确认支持现有 MO 产能内的补购草稿：同一 MO、同一面料的有效 PO 全部 `RECEIVED` 且总采购量不足时，已收货 PO 只重链、永不重写数量或内容修订，缺口生成 `before=None` 的 `CHANGE_DRAFT`（`PLACED`、到料 0、`PENDING_SUPPLIER`），沿用供应商和 MO，服装 SKU 跟随新订单行。补单 ID 为按 ID 排序的首张有效已收货 PO 的 `{received_po_id}-S{n}`，从 1 起取最小空闲后缀，取消单和未链接现存单也占用 ID。已有补单计入覆盖，重复规划/提交不重复补购；批准后 ID 被占用则以现有单据过期错误拒绝，不覆盖。多个 PO 按 `(MO, 面料)` 汇总，减量优先调整未到料补单；低于已到料总量、取消已到料采购或更换已到料面料仍拒绝。草稿不代表已向供应商实际下单。MO 仍不得超过原 `planned_qty`，保留「P0 不支持为剩余数量追加生产单」；常见的 MO 计划量等于订单量时，订单增量仍要求澄清。
 - `docs/TEST_REPORT.md`、`HANDOFF.md`、`LEARNING_GUIDE.md` 留到阶段 5。现在的测试清单是 `docs/TEST_CHECKLIST.md`
 
 禁止用途：连接真实客户、ERP、支付、采购或发货；把 fixture 成功说成模型理解；在单价未知时打开 live；把 `T-STUB` 当成业务结果。

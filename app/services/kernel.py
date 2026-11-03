@@ -540,6 +540,7 @@ def _plan_change_locked(
             production=documents["production"],
             purchase=documents["purchase"],
             usage=usage,
+            reserved_purchase_ids=set(session.scalars(select(PurchaseOrder.id))),
         )
         if downstream_error:
             return _locked_clarification(
@@ -568,7 +569,7 @@ def _plan_change_locked(
                 now=now,
                 suspected_duplicate_of=None,
                 verdicts=verdicts,
-                expected_docs=_doc_fingerprint(documents),
+                expected_docs=_doc_fingerprint(documents, verdicts),
             ),
             None,
         )
@@ -856,6 +857,12 @@ def _commit_locked(
         base_lines = _load_lines(session, order.id)
         customer_id = order.customer_id
         current_docs = _doc_fingerprint_loaded(_load_documents(session, order.id))
+        for doc_id, expected in (plan.expected_doc_revisions or {}).items():
+            if expected.get("exists") is False:
+                current_docs[doc_id] = {
+                    "doc_type": "purchase_order",
+                    "exists": session.get(PurchaseOrder, doc_id) is not None,
+                }
         if _stable(current_docs) != _stable(dict(plan.expected_doc_revisions or {})):
             _revoke_if_active(approval)
             return None, AppError(
@@ -898,6 +905,7 @@ def _commit_locked(
             production=_load_documents(session, order.id)["production"],
             purchase=_load_documents(session, order.id)["purchase"],
             usage=_usage_map(session),
+            reserved_purchase_ids=set(session.scalars(select(PurchaseOrder.id))),
         )
         if downstream_error:
             _revoke_if_active(approval)
@@ -1962,13 +1970,17 @@ def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str,
                     "change_state": purchase_row.change_state,
                     "doc_revision": purchase_row.doc_revision,
                     "production_order_id": purchase_row.production_order_id,
+                    "supplier_id": purchase_row.supplier_id,
                     "order_line_sku": link.order_line_sku,
                 }
             )
     return {"production": production, "purchase": purchase}
 
 
-def _doc_fingerprint(documents: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+def _doc_fingerprint(
+    documents: dict[str, list[dict[str, Any]]],
+    verdicts: list[dict[str, object]] | None = None,
+) -> dict[str, dict[str, Any]]:
     found: dict[str, dict[str, Any]] = {}
     for row in documents["production"]:
         found[str(row["doc_id"])] = {
@@ -1988,7 +2000,12 @@ def _doc_fingerprint(documents: dict[str, list[dict[str, Any]]]) -> dict[str, di
             "ordered_qty": int(row["ordered_qty"]),
             "change_state": row["change_state"],
             "material_id": row["material_id"],
+            "supplier_id": row["supplier_id"],
+            "production_order_id": row["production_order_id"],
         }
+    for verdict in verdicts or []:
+        if verdict["before"] is None:
+            found[str(verdict["doc_id"])] = {"doc_type": "purchase_order", "exists": False}
     return found
 
 
@@ -2062,14 +2079,27 @@ def _apply_downstream(
                 rev_no = row.doc_revision
             else:
                 row_po = session.get(PurchaseOrder, doc_id)
-                if row_po is None:
+                if verdict["before"] is None:
+                    if row_po is not None:
+                        raise AppError(
+                            "下游单据版本或状态已变化", code="STALE_DEPENDENCY", http_status=409
+                        )
+                    row_po = PurchaseOrder(
+                        id=doc_id,
+                        supplier_id=str(verdict["supplier_id"]),
+                        production_order_id=str(verdict["production_order_id"]),
+                        doc_revision=1,
+                    )
+                    session.add(row_po)
+                elif row_po is None:
                     raise AppError(f"没有采购单 {doc_id}", code="NOT_FOUND", http_status=404)
+                else:
+                    row_po.doc_revision += 1
                 row_po.material_id = str(after["material_id"])
                 row_po.ordered_qty = int(after["ordered_qty"])
                 row_po.received_qty = int(after["received_qty"])
                 row_po.status = str(after["status"])
                 row_po.change_state = str(after["change_state"])
-                row_po.doc_revision += 1
                 rev_no = row_po.doc_revision
             session.add(
                 DocRevision(
@@ -2163,8 +2193,8 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                         "repair": {"action": "draft", "ordered_qty": line.ordered_qty},
                     }
                 )
-        expected: dict[str, int] = {}
-        actual: dict[str, int] = {}
+        expected: dict[tuple[str, str], int] = {}
+        actual: dict[tuple[str, str], int] = {}
         for link in links:
             if link.doc_type == "production_order":
                 row = session.get(ProductionOrder, link.doc_id)
@@ -2174,18 +2204,29 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                 if material is None:
                     continue
                 material_id, per_piece = material
-                expected[material_id] = expected.get(material_id, 0) + row.planned_qty * per_piece
+                key = (row.id, material_id)
+                expected[key] = row.planned_qty * per_piece
             else:
                 row_po = session.get(PurchaseOrder, link.doc_id)
                 if row_po is None or row_po.status == "CANCELLED":
                     continue
-                actual[row_po.material_id] = actual.get(row_po.material_id, 0) + row_po.ordered_qty
-        if expected != actual:
+                key = (row_po.production_order_id, row_po.material_id)
+                actual[key] = actual.get(key, 0) + row_po.ordered_qty
+        for mo_id in sorted({key[0] for key in expected} | {key[0] for key in actual}):
+            expected_materials = {mat: qty for (mo, mat), qty in expected.items() if mo == mo_id}
+            actual_materials = {mat: qty for (mo, mat), qty in actual.items() if mo == mo_id}
+            if expected_materials == actual_materials:
+                continue
             findings.append(
                 {
-                    "doc_id": order.id,
-                    "problem": f"{order.id} 面料采购 {actual} 与单耗 {expected} 不一致",
-                    "repair": {"action": "draft", "expected": expected},
+                    "doc_id": mo_id,
+                    "problem": (
+                        f"{mo_id} 面料采购 {actual_materials} 与单耗 {expected_materials} 不一致"
+                    ),
+                    "repair": {
+                        "action": "draft",
+                        "expected": expected_materials,
+                    },
                 }
             )
     return findings
