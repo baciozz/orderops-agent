@@ -95,18 +95,6 @@ class LiveStartRefused(AppError):
         self.reason = reason
 
 
-class LiveTransportNotReady(AppError):
-    code = "LIVE_TRANSPORT_NOT_READY"
-    http_status = 503
-
-    def __init__(self) -> None:
-        super().__init__(
-            "TODO(stage-4): live 传输未实现，本次不会访问网络",
-            code="LIVE_TRANSPORT_NOT_READY",
-            http_status=503,
-        )
-
-
 class FixtureNotFound(AppError):
     code = "FIXTURE_NOT_FOUND"
     http_status = 422

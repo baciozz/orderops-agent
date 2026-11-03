@@ -1,9 +1,9 @@
-"""LLM client surface. Fixture is the default. Live is a guarded stub."""
+"""LLM client surface. Fixture is the default; live requires explicit configuration."""
 
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from schemas.common import ApiModel, UsageReport
 from schemas.enums import RuntimeMode
 
@@ -18,6 +18,9 @@ class StructuredCallRequest(ApiModel):
     max_output_tokens: int = 1000
     response_schema_id: str
     prompt_ref: str
+    system_prompt: str = ""
+    user_prompt: str = ""
+    response_schema: dict[str, object] = Field(default_factory=dict)
 
 
 class StructuredCallResult(ApiModel):

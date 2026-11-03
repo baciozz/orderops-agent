@@ -1,12 +1,44 @@
 """Isolated settings and a file-backed SQLite engine for each test."""
 
 import os
+import selectors
+import socket
 from pathlib import Path
 
 import pytest
 from app.config import reset_settings_cache
 from app.db.schema import init_db
 from app.db.session import make_engine, make_session_factory
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _sandbox_asyncio_polling():
+    """TestClient needs thread wakeups even where sandboxed local IPC is denied.
+
+    CPython silently ignores EPERM from its socketpair wakeup. A short selector
+    timeout lets queued callbacks run without IPC. Normal environments are unchanged.
+    No IP socket or outbound connection is opened by this probe.
+    """
+    reader, writer = socket.socketpair()
+    try:
+        try:
+            writer.send(b"x")
+        except PermissionError:
+            restricted = True
+        else:
+            restricted = False
+    finally:
+        reader.close()
+        writer.close()
+    with pytest.MonkeyPatch.context() as patch:
+        if restricted:
+            original = selectors.DefaultSelector.select
+
+            def poll(self, timeout=None):
+                return original(self, 0.01 if timeout is None else min(timeout, 0.01))
+
+            patch.setattr(selectors.DefaultSelector, "select", poll)
+        yield
 
 
 @pytest.fixture(autouse=True)

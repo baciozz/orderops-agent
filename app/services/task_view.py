@@ -18,6 +18,7 @@ from app.db.models import (
     DispatchStep,
     DownstreamLink,
     Event,
+    ModelUsage,
     Operation,
     OrderLine,
     OrderRevision,
@@ -258,7 +259,9 @@ def build_task_view(session, task_id, *, request_id, correlation_id, mode, now):
             status=task.status,
             intent_revision=task.intent_revision,
             waiting_on=waiting,
-            mode=mode,
+            mode="LIVE"
+            if session.scalar(select(ModelUsage.id).where(ModelUsage.task_id == task.id).limit(1))
+            else "FIXTURE",
         ),
         dispatch=dispatch,
         line_diffs=diffs,

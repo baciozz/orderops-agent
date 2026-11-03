@@ -3,6 +3,7 @@
 import socket
 from decimal import Decimal
 
+import httpx
 import pytest
 from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
@@ -10,7 +11,7 @@ from app.adapters.live_model import LiveLLMClient
 from app.adapters.llm import StructuredCallRequest, resolve_mode
 from app.api.errors import error_payload
 from app.config import HARD_BUDGET_CEILING_USD, Settings
-from app.errors import BudgetExceeded, LiveStartRefused, LiveTransportNotReady, PricesNotConfigured
+from app.errors import BudgetExceeded, LiveStartRefused, PricesNotConfigured
 from app.main import create_app
 from fastapi.testclient import TestClient
 
@@ -154,7 +155,7 @@ def test_over_budget_live_call_does_not_touch_the_network(session_factory, monke
         price_in_per_mtok=Decimal("9"),
         price_out_per_mtok=Decimal("0"),
         llm_api_key="super-secret-key",
-        llm_provider="example",
+        llm_provider="openai",
         llm_model="cheap",
     )
     ledger = BudgetLedger(
@@ -169,20 +170,34 @@ def test_over_budget_live_call_does_not_touch_the_network(session_factory, monke
         client.structured_call(_request(input_tokens=1000, max_output_tokens=0))
 
 
-def test_under_budget_live_call_stops_before_transport(session_factory) -> None:
+def test_under_budget_live_call_uses_mock_transport(session_factory) -> None:
     settings = Settings(
         _env_file=None,
         live_enabled=True,
         price_in_per_mtok=Decimal("1"),
         price_out_per_mtok=Decimal("1"),
         llm_api_key="super-secret-key",
+        llm_provider="openai",
+        llm_model="mock-model",
     )
     ledger = _ledger(session_factory)
-    client = LiveLLMClient(settings, ledger)
-    with pytest.raises(LiveTransportNotReady) as exc:
-        client.structured_call(_request(input_tokens=1, max_output_tokens=1))
-    assert "super-secret-key" not in str(exc.value)
-    assert ledger.spent() == Decimal("0.000000")
+
+    def respond(request):
+        assert request.url.path == "/v1/responses"
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": "{}"}]}],
+            },
+        )
+
+    client = LiveLLMClient(settings, ledger, transport=httpx.MockTransport(respond))
+    result = client.structured_call(_request())
+    assert result.usage.mode == "LIVE"
+    assert "super-secret-key" not in result.model_dump_json()
+    assert ledger.spent() == Decimal("0.000003")
 
 
 def test_fixture_call_does_not_touch_the_network(monkeypatch) -> None:

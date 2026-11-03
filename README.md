@@ -70,9 +70,13 @@ make seed
 
 默认 `FIXTURE`。`/health` 和任务卡都会标出模式。
 
-Live 需要同时具备 `OOS_LIVE_ENABLED=true`、输入/输出单价和 `OOS_LLM_API_KEY`。单价缺失时不猜测，进程保持 FIXTURE。有效预算是配置值与 **5.00 美元** 里较小的那个。账本在 `model_usage` 表，重启不清零。Stage 0 没有 live HTTP 传输：守卫通过后会明确失败，不会访问网络。
+Stage 4 已实现 OpenAI Responses API 的严格 JSON 解析，默认关闭。Live 需要操作者显式启用 `OOS_LIVE_ENABLED`，配置输入/输出单价、环境密钥 `OOS_LLM_API_KEY`、`OOS_LLM_PROVIDER`（openai）和 `OOS_LLM_MODEL`。缺单价或密钥时保持 FIXTURE。任务卡按实际账本标注模式，fixture 成功不算 live。
 
-配置键见 `.env.example`。不要提交 `.env`，不要把密钥写进仓库或提示词。
+预算是配置值与 **5.00 美元** 的较小值；每次调用前用 `max(request.input_tokens, UTF-8字节数(system+user+schema JSON)+256)` 估算输入上界（覆盖中文），加上最大输出费用后熔断。`model_usage` 持久记账，超时/连接失败按授权输入估计和最大输出记账；返回的输出 token 已含推理用量。推理强度 `OOS_MODEL_REASONING_EFFORT` 默认 none；`OOS_LLM_BASE_URL` 只允许官方 OpenAI 地址。解析器只能提议，批准、库存、版本和 fencing 检查仍由内核负责。
+
+手动 smoke：在操作者配置环境后运行 `.venv/bin/python scripts/live_smoke.py --out /tmp/oos_live_smoke.json`。脚本建立临时合成数据库，将本次预算限制为配置与 **1.00 美元** 的较小值，跑 14 个样本，黄金样本通过正常批准/提交 API；鉴权、限流或预算错误时提前停止。它不属于 CI，也没有在实现阶段执行真实调用。CI 只使用 fixture / MockTransport，零网络。
+
+配置键及参考价格见 `.env.example`；密钥只在运行时经进程环境注入，不写进 `.env`。不要把密钥写进仓库或提示词。真实模型的理解质量需由操作者手动评估。
 
 ## 禁区
 
