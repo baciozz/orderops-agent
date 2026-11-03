@@ -1014,3 +1014,14 @@ def test_incomplete_pipeline_step_preserves_billed_usage(session_factory, databa
         step = session.scalar(select(DispatchStep).where(DispatchStep.task_id == task_id))
         assert step.tokens == 1200 and step.cost_usd == Decimal("0.000200")
         assert session.scalar(select(func.count()).select_from(Approval)) == 0
+
+
+@pytest.mark.parametrize("model", [None, "", "   ", "\t\n"])
+def test_missing_model_refused_before_http(session_factory, model):
+    with pytest.raises(LiveStartRefused) as caught:
+        LiveLLMClient(
+            settings(llm_model=model),
+            ledger(session_factory),
+            transport=httpx.MockTransport(lambda req: pytest.fail("Must never reach HTTP")),
+        )
+    assert caught.value.reason == "MODEL_NOT_CONFIGURED"

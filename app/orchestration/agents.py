@@ -1,6 +1,7 @@
 """The three P0 sub-agents. They propose. They do not approve or commit."""
 
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 from pydantic import ValidationError
 from schemas.business import ExtractionResult
@@ -47,6 +48,12 @@ class AgentRun:
     tokens: int = 0
 
 
+class ParserPromptOptions(TypedDict, total=False):
+    system_prompt: str
+    user_prompt: str
+    response_schema: dict[str, object]
+
+
 def run_parser(ctx: StepContext) -> AgentRun:
     ctx.call_tool("source.read", source_id=ctx.source_id)
     call_limit = ctx.spec.budget.max_calls_per_task
@@ -62,7 +69,7 @@ def run_parser(ctx: StepContext) -> AgentRun:
         for source_id in dict.fromkeys(ctx.source_ids)
         for span in task_spans(ctx.session, ctx.task.id, source_id)
     ]
-    prompt_options = {}
+    prompt_options: ParserPromptOptions = {}
     if ctx.llm.mode == "LIVE":
         catalog = catalog_context(ctx.session, ctx.task.order_id)
         system, user = build_prompts(ctx.text, catalog, spans)

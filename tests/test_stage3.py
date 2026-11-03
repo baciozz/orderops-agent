@@ -23,6 +23,7 @@ from app.db.models import (
     SalesOrder,
     SourceSpan,
     Task,
+    TaskSource,
 )
 from app.db.session import begin_immediate
 from app.errors import ToolNotAllowed
@@ -661,3 +662,35 @@ def test_R15_fixture_mode_visible_in_real_view_html_and_download(stage3):
     assert (
         client.get(f"/tasks/{outcome.task_id}/view").json()["result"]["verification"] == "pending"
     )
+
+
+@pytest.mark.parametrize("filename", [None, "", "   "], ids=["missing", "empty", "blank"])
+def test_upload_missing_filename_rejected_without_side_effects(stage3, filename):
+    client, factory, _, app = stage3
+    task_id = new_task(factory)
+    models = (InputSource, TaskSource, SourceSpan)
+    with factory() as session:
+        before = [session.scalar(select(func.count()).select_from(model)) for model in models]
+    files_before = set(app.state.source_storage_dir.iterdir())
+    disposition = 'form-data; name="file"'
+    if filename is not None:
+        disposition += f'; filename="{filename}"'
+    body = (
+        '--upload-boundary\r\nContent-Disposition: form-data; name="task_id"\r\n\r\n'
+        f"{task_id}\r\n--upload-boundary\r\nContent-Disposition: {disposition}\r\n"
+        "Content-Type: text/plain\r\n\r\nstatic\r\n--upload-boundary--\r\n"
+    ).encode()
+    response = client.post(
+        "/sources",
+        content=body,
+        headers={"Content-Type": "multipart/form-data; boundary=upload-boundary"},
+    )
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "UPLOAD_REJECTED"
+    assert error["message"] == "上传文件必须带文件名"
+    with factory() as session:
+        assert [
+            session.scalar(select(func.count()).select_from(model)) for model in models
+        ] == before
+    assert set(app.state.source_storage_dir.iterdir()) == files_before

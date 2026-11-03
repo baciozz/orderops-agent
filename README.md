@@ -53,7 +53,13 @@ make run
 ```bash
 make lint
 make test
+make typecheck   # mypy，配置在 pyproject.toml [tool.mypy]
+make cov         # pytest + 覆盖率，低于 fail_under（90%）即失败
+make check       # lint + typecheck + cov，一次跑完
 ```
+
+当前 GitHub Actions 只跑 `make lint` 和 `make test`。类型检查、覆盖率和离线评测这几步写在
+`ci/pending-workflow-changes.yml` 里，等仓库补上 workflow 权限后整份替换 `.github/workflows/ci.yml`。
 
 56 个 B/R 用例均已接入真实测试，当前没有占位跳过。清单在 `tests/acceptance_cases.py`。
 
@@ -74,11 +80,17 @@ make seed
 
 Stage 4 已实现 OpenAI Responses API 的严格 JSON 解析，默认关闭。Live 需要操作者显式启用 `OOS_LIVE_ENABLED`，配置输入/输出单价、环境密钥 `OOS_LLM_API_KEY`、`OOS_LLM_PROVIDER`（openai）和 `OOS_LLM_MODEL`。缺单价或密钥时保持 FIXTURE。任务卡按实际账本标注模式，fixture 成功不算 live。
 
-预算是配置值与 **5.00 美元** 的较小值；每次调用前用 `max(request.input_tokens, UTF-8字节数(system+user+schema JSON)+256)` 估算输入上界（覆盖中文），加上最大输出费用后熔断。`model_usage` 持久记账，超时/连接失败按授权输入估计和最大输出记账；返回的输出 token 已含推理用量。推理强度 `OOS_MODEL_REASONING_EFFORT` 默认 none；`OOS_LLM_BASE_URL` 只允许官方 OpenAI 地址。解析器只能提议，批准、库存、版本和 fencing 检查仍由内核负责。
+预算是配置值与 **5.00 美元** 的较小值；每次调用前用 `max(request.input_tokens, UTF-8字节数(system+user+schema JSON)+256)` 估算输入上界（覆盖中文），加上最大输出费用后熔断。`model_usage` 持久记账，超时/连接失败按授权输入估计和最大输出记账；返回的输出 token 已含推理用量。推理强度 `OOS_MODEL_REASONING_EFFORT` 默认 none；`openai` 提供方的 `OOS_LLM_BASE_URL` 只允许官方 OpenAI 地址。解析器只能提议，批准、库存、版本和 fencing 检查仍由内核负责。
 
 手动 smoke：在操作者配置环境后运行 `.venv/bin/python scripts/live_smoke.py --out /tmp/oos_live_smoke.json`。脚本建立临时合成数据库，将本次预算限制为配置与 **1.00 美元** 的较小值，跑 14 个样本，黄金样本通过正常批准/提交 API；鉴权、限流或预算错误时提前停止。它不属于 CI，也没有在实现阶段执行真实调用。CI 只使用 fixture / MockTransport，零网络。
 
-配置键及参考价格见 `.env.example`；密钥只在运行时经进程环境注入，不写进 `.env`。不要把密钥写进仓库或提示词。真实模型的理解质量需由操作者手动评估。
+配置键及价格占位符见 `.env.example`；密钥只在运行时经进程环境注入，不写进 `.env`。不要把密钥写进仓库或提示词。真实模型的理解质量需由操作者手动评估。
+
+## 替换模型
+
+启用 Live 后，兼容 Chat（DeepSeek / vLLM / Ollama）需配置 `OOS_LLM_PROVIDER=openai_compatible`、必填的 `OOS_LLM_BASE_URL` 和 `OOS_LLM_MODEL`，并在运行时环境注入 `OOS_LLM_API_KEY`。URL 必须 HTTPS；仅主机名为 `localhost`、`127.0.0.1`、`::1` 时允许 HTTP 和免密钥，按主机名字符串判定、不做 DNS 解析。输入/输出单价 `OOS_PRICE_IN_PER_MTOK` / `OOS_PRICE_OUT_PER_MTOK` 必须明确配置，本地模型无需计费时也须显式设为 `0`。
+
+`OOS_LLM_JSON_SCHEMA_SUPPORTED` 默认 `false`（使用 `json_object`），确认服务支持严格 `json_schema` 后才设为 `true`。启动 INFO 日志只记录 provider 和 URL 主机名。兼容 provider 不发送 `store`，是否留存数据取决于提供方政策；操作者配置的任何 HTTPS 地址都会收到 key。目前仅 mock 测试，未实测各家 `json_object` / `json_schema` 支持、usage 字段与错误体格式。详见[模型提供方](docs/MODEL_PROVIDERS.md)。
 
 ## 禁区
 

@@ -1,6 +1,7 @@
 """Local, task-scoped source ingestion. Uploads only store evidence."""
 
 from email import policy
+from email.message import Message
 from email.parser import BytesParser
 from hashlib import sha256
 from pathlib import Path, PureWindowsPath
@@ -14,11 +15,22 @@ from schemas.common import SourceRef
 from sqlalchemy import func, select
 
 from app.adapters.parser import split_source
-from app.adapters.uploads import MAX_FILE_BYTES, MAX_FILES, MAX_NONEMPTY_ROWS, MAX_SHEETS
+from app.adapters.uploads import (
+    MAX_FILE_BYTES,
+    MAX_FILES,
+    MAX_NONEMPTY_ROWS,
+    MAX_REQUEST_BYTES,
+    MAX_SHEETS,
+    UploadValidationError,
+)
+from app.api.errors import error_payload
 from app.db.models import InputSource, SourceSpan, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
+from app.observability import enrich, get_logger, observed
 from app.services.source_spans import task_spans
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 LIMITS = {
@@ -27,6 +39,15 @@ LIMITS = {
     "max_sheets": MAX_SHEETS,
     "max_nonempty_rows": MAX_NONEMPTY_ROWS,
 }
+
+
+def _payload_bytes(part: Message) -> bytes:
+    payload = part.get_payload(decode=True)
+    if payload is None:
+        return b""
+    if not isinstance(payload, bytes):
+        raise ValueError("multipart 字段内容格式不正确，必须为字节数据")
+    return payload
 
 
 async def _upload_form(request: Request) -> tuple[str, str, bytes]:
@@ -39,8 +60,8 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
         raise ValueError("需要 multipart/form-data 上传")
     body = bytearray()
     async for chunk in request.stream():
-        if len(body) + len(chunk) > MAX_FILE_BYTES + 64 * 1024:
-            raise ValueError("上传请求超过大小上限")
+        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+            raise UploadValidationError("上传请求超过大小上限", "UPLOAD_TOO_LARGE")
         body.extend(chunk)
     message = BytesParser(policy=policy.HTTP).parsebytes(
         f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body
@@ -53,12 +74,15 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
         name = part.get_param("name", header="content-disposition")
         if part.defects or part.get_content_disposition() != "form-data":
             raise ValueError("multipart 字段格式不正确")
-        if part.get_filename() is not None:
+        filename = part.get_filename()
+        if name == "file" and (filename is None or not filename.strip()):
+            raise ValueError("上传文件必须带文件名")
+        if filename is not None:
             file_parts.append(part)
         elif name == "task_id":
             if name in fields:
                 raise ValueError("task_id 不能重复")
-            fields[name] = (part.get_payload(decode=True) or b"").decode("utf-8")
+            fields[name] = _payload_bytes(part).decode("utf-8")
     if (
         len(file_parts) != 1
         or file_parts[0].get_param("name", header="content-disposition") != "file"
@@ -67,10 +91,14 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
     if not fields.get("task_id"):
         raise ValueError("上传必须提供 task_id")
     file = file_parts[0]
-    return fields["task_id"], file.get_filename(), file.get_payload(decode=True) or b""
+    filename = file.get_filename()
+    if filename is None or not filename.strip():
+        raise ValueError("上传文件必须带文件名")
+    return fields["task_id"], filename, _payload_bytes(file)
 
 
 @router.post("/sources", response_model=SourceUploadResponse)
+@observed(logger, "upload.received")
 async def upload_source(request: Request):
     source_id = f"SRC-{uuid4().hex}"
     response = SourceUploadResponse(
@@ -82,14 +110,30 @@ async def upload_source(request: Request):
     )
     try:
         task_id, filename, content = await _upload_form(request)
+        enrich(
+            task_id=task_id,
+            source_id=source_id,
+            file_size=len(content),
+            file_sha256=sha256(content).hexdigest()[:12],
+        )
         spans = split_source(source_id, filename, content)
     except ValueError as exc:
+        enrich(outcome="failed", error_code="UPLOAD_REJECTED")
+        request.state.error_code = "UPLOAD_REJECTED"
         response.parser_status = "rejected"
+        code = getattr(exc, "code", "UPLOAD_REJECTED")
+        error = AppError(
+            str(exc), code=code, http_status=400, details=getattr(exc, "details", None)
+        )
         return JSONResponse(
-            status_code=400,
+            status_code=error.http_status,
             content={
                 **response.model_dump(),
-                "error": {"code": "UPLOAD_REJECTED", "message": str(exc)},
+                **error_payload(
+                    error,
+                    request_id=request.state.request_id,
+                    correlation_id=request.state.correlation_id,
+                ),
             },
         )
     storage_path = None
