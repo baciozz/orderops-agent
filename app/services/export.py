@@ -1,6 +1,7 @@
 """Safe CSV/XLSX downloads of change-list rows."""
 
 import csv
+import math
 from io import BytesIO, StringIO
 from numbers import Real
 
@@ -9,8 +10,14 @@ import openpyxl
 
 def sanitize_export_text(value: str) -> str:
     # Spreadsheet importers can ignore leading whitespace/control characters.
-    if value.lstrip(" \t\r\n\ufeff").startswith(("=", "+", "-", "@")):
+    if value.startswith(("\t", "\r")):
         return "'" + value
+    for char in value:
+        if char.isspace() or char in "\u200b\ufeff":
+            continue
+        if char in "=+-@":
+            return "'" + value
+        break
     return value
 
 
@@ -20,6 +27,8 @@ def _export_value(column: str, value: object) -> object:
     if column in {"qty", "quantity", "delta", "reservation_delta"} or column.endswith("_qty"):
         if isinstance(value, bool) or not isinstance(value, Real):
             raise ValueError(f"数量列 {column} 必须是已校验数值")
+        if not math.isfinite(value):
+            raise ValueError(f"数量列 {column} 必须是有限数值")
         return value
     return sanitize_export_text(str(value))
 

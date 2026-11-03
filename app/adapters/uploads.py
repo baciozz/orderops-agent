@@ -6,6 +6,7 @@ from pathlib import PurePath
 from zipfile import BadZipFile, ZipFile
 
 import openpyxl
+from defusedxml import DefusedXmlException
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_FILES = 3
@@ -42,9 +43,13 @@ def _check_archive(content: bytes) -> None:
             raise ValueError("XLSX 压缩比超过上限")
         if any("vba" in item.filename.lower() for item in members):
             raise ValueError("不接受含 VBA 宏的文件")
+        if any("xl/externallinks/" in item.filename.lower() for item in members):
+            raise ValueError("不接受含外部链接的 XLSX 文件，请提供静态工作簿")
         content_types = archive.read("[Content_Types].xml").lower()
         if b"macroenabled" in content_types or b"vba" in content_types:
             raise ValueError("不接受含宏的文件类型")
+        if b"externallink" in content_types:
+            raise ValueError("不接受含外部链接的 XLSX 文件，请提供静态工作簿")
 
 
 @contextmanager
@@ -54,9 +59,13 @@ def static_workbook(content: bytes):
     workbook = None
     try:
         _check_archive(content)
-        workbook = openpyxl.load_workbook(
-            BytesIO(content), data_only=False, read_only=True, keep_links=False
-        )
+        try:
+            workbook = openpyxl.load_workbook(
+                BytesIO(content), data_only=False, read_only=True, keep_links=False
+            )
+        except ValueError as exc:
+            # openpyxl can wrap defusedxml's security exceptions in ValueError.
+            raise ValueError("无法读取 XLSX，请提供有效的静态工作簿") from exc
         if len(workbook.worksheets) > MAX_SHEETS:
             raise ValueError("工作表超过 5 张上限")
         nonempty_rows = 0
@@ -81,7 +90,7 @@ def static_workbook(content: bytes):
                         raise ValueError(
                             f"{sheet.title}!{cell.coordinate} 含公式，请改为明确静态值"
                         )
-    except (BadZipFile, KeyError, OSError, SyntaxError) as exc:
+    except (BadZipFile, KeyError, OSError, SyntaxError, DefusedXmlException) as exc:
         if workbook is not None:
             workbook.close()
         raise ValueError("无法读取 XLSX，请提供有效的静态工作簿") from exc
