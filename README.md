@@ -4,7 +4,7 @@ OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分�
 
 OrderOps SuperAgent: a multi-agent coordination layer for garment-wholesale order changes.
 
-**状态：Stage 4 已实现。** 已接通持久 inbox、worker、子 Agent 调度、预检、人工批准、原子提交和回读核验，并支持静态文件上传、数据库任务视图及导出。默认 FIXTURE，可显式启用受预算限制的 OpenAI 解析；完整聊天与审批交互界面尚未实现。
+**状态：Stage 4 已实现，Stage 5（冻结和交接）尚未开始。** 已接通持久 inbox、worker、子 Agent 调度、预检、人工批准、原子提交和回读核验，并支持静态文件上传、数据库任务视图及导出。默认 FIXTURE，可显式启用受预算限制的 OpenAI 解析；完整聊天与审批交互界面尚未实现。
 
 ## 架构
 

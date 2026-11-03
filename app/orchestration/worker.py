@@ -1,5 +1,6 @@
 """Short claims and fenced fixture execution. Clock and crash boundaries are injectable."""
 
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import uuid4
@@ -11,6 +12,15 @@ from app.db.session import begin_immediate
 from app.errors import AppError
 from app.orchestration.dispatch import dispatch_text
 from app.orchestration.state import check_fence, guard, transition, utcnow
+
+logger = logging.getLogger("oos.worker")
+MAX_ACTIVE = 2
+
+
+def effective_active(configured: int) -> int:
+    if configured > MAX_ACTIVE:
+        logger.warning("worker_max_active=%d 超过硬上限，实际按 %d 生效", configured, MAX_ACTIVE)
+    return min(configured, MAX_ACTIVE)
 
 
 @dataclass(frozen=True)
@@ -30,7 +40,7 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
         # Keep the hard ceiling of two RUNNING tasks, even when limits.active is higher.
         if session.scalar(
             select(func.count()).select_from(Task).where(Task.status == "RUNNING")
-        ) >= min(2, limits.active):
+        ) >= min(MAX_ACTIVE, limits.active):
             return None
         for task in session.scalars(select(Task).where(Task.status == "QUEUED").order_by(Task.id)):
             previous = session.scalar(

@@ -10,11 +10,12 @@
 | `app/db/` | SQLite 表、WAL、外键、`begin_immediate` |
 | `app/domain/` | 可用量、未执行量、流水重建。状态推导未实现 |
 | `app/services/seed.py` | 载入黄金演示合成快照 |
-| `app/services/kernel.py` | 业务内核：预检、批准、提交、下游重链、核验与巡检（已实现） |
-| `app/services/source_spans.py`、`task_view.py`、`export.py` | 任务来源读取、数据库任务视图与导出（已实现） |
+| `app/services/` 其余 | 预检、批准、提交、核验、巡检、导出：`TODO(stage-*)` |
 | `app/orchestration/` | 注册表与按能力路由。Worker、inbox、outbox、watchdog 未实现 |
 | `app/adapters/` | Fixture 客户端、live 守卫、预算账本。文件解析未实现 |
 | `app/api/` | `/health`、`/tasks/{id}/view`、`/ui/tasks/{id}` |
+
+> 2026-11-03 注：上表 `app/services/` 中的占位文件（approval、commit、inspection、precheck、verification）已在 #15 删除，业务逻辑在 `app/services/kernel.py`。
 
 业务校验不写在提示词里。模型调用不放进持有写锁的事务里。Stage 0 的 live 客户端在记账检查之后、打开网络之前失败。
 

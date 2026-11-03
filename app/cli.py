@@ -27,11 +27,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "worker-once":
             from app.orchestration.outbox import publish_pending
             from app.orchestration.watchdog import scan
-            from app.orchestration.worker import DEFAULT_LIMITS, Limits, run_once
+            from app.orchestration.worker import DEFAULT_LIMITS, Limits, effective_active, run_once
 
             factory = make_session_factory(engine)
             scan(factory)
-            limits: Limits = replace(DEFAULT_LIMITS, active=settings.worker_max_active)
+            limits: Limits = replace(
+                DEFAULT_LIMITS, active=effective_active(settings.worker_max_active)
+            )
             run_once(factory, limits=limits)
             publish_pending(factory)
             return 0

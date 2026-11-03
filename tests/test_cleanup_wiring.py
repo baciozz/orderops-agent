@@ -1,5 +1,6 @@
 """Worker configuration reaches the CLI and preserves the claim concurrency bound."""
 
+import logging
 from dataclasses import replace
 
 import pytest
@@ -33,6 +34,38 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
 
     assert main(["worker-once"]) == 0
     assert calls == ["scan", "run_once", "publish_pending"]
+
+
+@pytest.mark.parametrize("configured", [3, 2])
+def test_worker_once_clamps_active_limit(monkeypatch, database_url, caplog, configured):
+    monkeypatch.setenv("OOS_WORKER_MAX_ACTIVE", str(configured))
+    monkeypatch.setenv("OOS_DATABASE_URL", database_url)
+    reset_settings_cache()
+    caplog.set_level(logging.WARNING, logger="oos.worker")
+    calls = []
+
+    def run_once(factory, *, limits):
+        assert limits.active == 2
+        assert limits == replace(DEFAULT_LIMITS, active=2)
+        calls.append("run_once")
+
+    monkeypatch.setattr(watchdog, "scan", lambda factory: calls.append("scan"))
+    monkeypatch.setattr(worker, "run_once", run_once)
+    monkeypatch.setattr(outbox, "publish_pending", lambda factory: calls.append("publish_pending"))
+
+    assert main(["worker-once"]) == 0
+    assert calls == ["scan", "run_once", "publish_pending"]
+    warnings = [
+        record
+        for record in caplog.records
+        if record.name == "oos.worker" and record.levelno == logging.WARNING
+    ]
+    if configured == 3:
+        assert len(warnings) == 1
+        assert "3" in warnings[0].getMessage()
+        assert "2" in warnings[0].getMessage()
+    else:
+        assert warnings == []
 
 
 def test_claim_with_active_one_leaves_second_task_queued(session_factory):
