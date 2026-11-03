@@ -1,14 +1,19 @@
-"""Task view stub. T-STUB shows the information structure and is not a business result."""
+"""Read-only task views, local exports, and the T-STUB information demo."""
 
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from schemas.enums import RuntimeMode
 from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
+from sqlalchemy import inspect
 
+from app.db.models import Task
 from app.errors import AppError
+from app.orchestration.state import utcnow
+from app.services.export import export_change_list
+from app.services.task_view import build_task_view
 
 router = APIRouter()
 STUB_TASK_ID = "T-STUB"
@@ -54,36 +59,59 @@ def build_stub_task_view(
     )
 
 
-def _require_stub(task_id: str) -> None:
-    if task_id != STUB_TASK_ID:
-        raise AppError(
-            "任务不存在。Stage 0 只有信息结构桩 T-STUB，没有真实任务。",
-            code="TASK_NOT_FOUND",
-            http_status=404,
-            details={"task_id": task_id, "stub_id": STUB_TASK_ID},
+def _view(task_id: str, request: Request) -> TaskView:
+    engine = request.app.state.engine
+    database = engine.url.database
+    present = database == ":memory:" or (database and Path(database).is_file())
+    if present and inspect(engine).has_table("task"):
+        with request.app.state.session_factory() as session:
+            if session.get(Task, task_id) is not None:
+                return build_task_view(
+                    session,
+                    task_id,
+                    request_id=request.state.request_id,
+                    correlation_id=request.state.correlation_id,
+                    mode=request.app.state.mode_resolution.mode,
+                    now=utcnow(),
+                )
+    if task_id == STUB_TASK_ID:
+        return build_stub_task_view(
+            request_id=request.state.request_id,
+            correlation_id=request.state.correlation_id,
+            mode=request.app.state.mode_resolution.mode,
         )
+    raise AppError("任务不存在", code="TASK_NOT_FOUND", http_status=404)
 
 
 @router.get("/tasks/{task_id}/view", response_model=TaskView)
 def task_view(task_id: str, request: Request) -> TaskView:
-    _require_stub(task_id)
-    return build_stub_task_view(
-        request_id=request.state.request_id,
-        correlation_id=request.state.correlation_id,
-        mode=request.app.state.mode_resolution.mode,
-    )
+    return _view(task_id, request)
 
 
 @router.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
 def task_view_page(task_id: str, request: Request) -> HTMLResponse:
-    _require_stub(task_id)
-    view = build_stub_task_view(
-        request_id=request.state.request_id,
-        correlation_id=request.state.correlation_id,
-        mode=request.app.state.mode_resolution.mode,
-    )
+    view = _view(task_id, request)
     return _TEMPLATES.TemplateResponse(
         request,
         "task_view.html",
         {"view": view.model_dump(mode="json")},
+    )
+
+
+@router.get("/tasks/{task_id}/download")
+def download(task_id: str, request: Request, fmt: str = "csv") -> Response:
+    view = _view(task_id, request)
+    if not view.result.download_url:
+        raise AppError("尚无可下载的变更清单", code="EXPORT_NOT_FOUND", http_status=404)
+    rows = [{"mode": view.card.mode.value, **row.model_dump()} for row in view.line_diffs]
+    try:
+        content = export_change_list(rows, fmt=fmt)
+    except ValueError as exc:
+        raise AppError(str(exc), code="EXPORT_REJECTED", http_status=400) from exc
+    return Response(
+        content=content,
+        media_type="text/csv"
+        if fmt == "csv"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="changes.{fmt}"'},
     )

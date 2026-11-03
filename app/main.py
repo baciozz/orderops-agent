@@ -19,6 +19,7 @@ from app.api.errors import json_error
 from app.api.health import router as health_router
 from app.api.inputs import router as inputs_router
 from app.api.orders import router as orders_router
+from app.api.sources import router as sources_router
 from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
 from app.db.session import make_engine, make_session_factory
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.engine = engine
     application.state.session_factory = make_session_factory(engine)
     application.state.settings = settings
+    application.state.source_storage_dir = None
     application.state.registry = registry
     application.state.mode_resolution = resolution
 
@@ -81,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(orders_router)
     application.include_router(dispatch_router)
     application.include_router(inputs_router)
+    application.include_router(sources_router)
     return application
 
 

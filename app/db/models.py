@@ -363,6 +363,13 @@ class Task(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class TaskSource(Base):
+    __tablename__ = "task_source"
+
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("input_source.id"), primary_key=True)
+
+
 class JobAttempt(Base):
     __tablename__ = "job_attempt"
     __table_args__ = (
