@@ -1,4 +1,4 @@
-"""Stage 1A kernel cases. 1B and 1C stay in the skip list."""
+"""Stage 1A kernel cases."""
 
 import threading
 from datetime import UTC, datetime, timedelta

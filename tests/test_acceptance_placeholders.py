@@ -10,12 +10,17 @@ def test_acceptance_checklist_covers_every_case() -> None:
     assert ids[32:] == [f"R{index:02d}" for index in range(1, 25)]
     assert {case.case_id for case in IMPLEMENTED} == {
         "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
         "R22",
         "R23",
         *[f"B{index:02d}" for index in range(1, 33)],
     }
-    assert len(PENDING) == 21
-    assert "R18" in {case.case_id for case in PENDING}
+    assert len(PENDING) == 17
+    assert "R18" not in {case.case_id for case in PENDING}
+    assert "R01" in {case.case_id for case in PENDING}
     assert "B19" not in {case.case_id for case in PENDING}
 
 

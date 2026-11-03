@@ -31,4 +31,5 @@ def test_openapi_lists_mounted_routes() -> None:
     assert "/health" in schema["paths"]
     assert "/tasks/{task_id}/view" in schema["paths"]
     assert "/plans" in schema["paths"]
+    assert "/dispatch" in schema["paths"]
     assert "/orders/{order_id}" in schema["paths"]

@@ -1,8 +1,7 @@
 """Checklist of B01–B32 and R01–R24.
 
-A skipped case is not a pass. R17, R22, and R23 are implemented in Stage 0
-because this run's scope includes the registry and the budget guard. The
-plan schedules those cases later; the mechanisms they need are already here.
+A skipped case is not a pass. R17–R21 have real tests. R22 and R23 were
+implemented with the budget guard. The rest stay skipped until their stage.
 """
 
 from dataclasses import dataclass
@@ -66,10 +65,10 @@ CASES: tuple[Case, ...] = (
     Case("R15", "3", "界面和报告区分 FIXTURE 与 LIVE"),
     Case("R16", "2", "重启后预占总和与余额一致，流水可解释"),
     Case("R17", "0", "注册表重复或 schema 缺失则启动失败；缺能力则 CAPABILITY_MISSING", True),
-    Case("R18", "1C", "子 Agent 调用白名单外工具被拒绝并审计"),
-    Case("R19", "1C", "子 Agent 输出不合 schema，重试后失败且不进预检"),
-    Case("R20", "1C", "子 Agent 超时后晚到结果因 fencing 丢弃"),
-    Case("R21", "1C", "改单轨迹含三个子 Agent，新建单跳过 doc-check"),
+    Case("R18", "1C", "子 Agent 调用白名单外工具被拒绝并审计", True),
+    Case("R19", "1C", "子 Agent 输出不合 schema，重试后失败且不进预检", True),
+    Case("R20", "1C", "子 Agent 超时后晚到结果因 fencing 丢弃", True),
+    Case("R21", "1C", "改单轨迹含三个子 Agent，新建单跳过 doc-check", True),
     Case("R22", "0", "预算熔断在调用前拒绝，重启后账本仍在", True),
     Case("R23", "0", "单价或密钥缺失时 live 拒绝启动并保持 FIXTURE", True),
     Case("R24", "3", "任务视图过期时 approvable 为 false 且 disabled_reason 为 EXPIRED"),

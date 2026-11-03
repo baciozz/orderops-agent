@@ -4,7 +4,7 @@ OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分�
 
 OrderOps SuperAgent: a multi-agent coordination layer for garment-wholesale order changes.
 
-**状态：Stage 1B（跨单据核对）在当前分支。** 现货改单、新建订单，以及生产单/采购单的影响核对可以预检、批准、原子提交。子 Agent 执行、持久任务和完整界面还没做。
+**状态：Stage 1C（子 Agent 接口）在当前分支。** `POST /dispatch` 用 Fixture 跑 parser、inventory-check、doc-check，再进入已有的预检、批准、提交和回读核验。不调用 live 模型。持久任务和完整界面还没做。
 
 ## 架构
 
@@ -24,7 +24,7 @@ flowchart LR
   Commit --> Verify["回读核验"]
 ```
 
-Stage 0 里真正接上的是契约、SQLite、注册表、预算账本和两个 HTTP 入口。上图其余方块是后续阶段的目标，不是已经能跑的链路。子 Agent 只出提案，不能批准或提交。
+子 Agent 只出提案，不能批准或提交。内核在批准后的提交里重算库存和下游单据。inbox、租约和完整任务页还没接上。
 
 ## 如何运行
 
@@ -76,7 +76,7 @@ Live 需要同时具备 `OOS_LIVE_ENABLED=true`、输入/输出单价和 `OOS_LL
 
 ## 禁区
 
-不连接真实 ERP、客户、支付、合同或发货接口。不公开部署。仓库保持私有，直到方案修订第 6 条的公开条件满足。批准只作用于以后的自有沙箱，当前还没有提交实现。
+不连接真实 ERP、客户、支付、合同或发货接口。不公开部署。仓库保持私有，直到方案修订第 6 条的公开条件满足。批准和提交只作用于本机沙箱。
 
 ## 文档
 

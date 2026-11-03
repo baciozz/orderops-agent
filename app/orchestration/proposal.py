@@ -1,7 +1,7 @@
 """Accept or drop a sub-agent envelope.
 
-TODO(stage-1C): validate payload against the agent's output schema, retry on
-schema failure (R19), and persist a DispatchStep.
+Schema retries and DispatchStep rows live in the dispatcher. A proposal is
+accepted only when both the fencing token and the intent revision still match.
 """
 
 from schemas.subagent import AgentProposal
