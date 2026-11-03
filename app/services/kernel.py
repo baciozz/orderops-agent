@@ -1639,7 +1639,7 @@ def _load_lines(session: Session, order_id: str) -> dict[str, SnapLine]:
     if revision is None:
         return {}
     shipped = _shipped_map(session, order_id)
-    cuts = _cut_by_sku(session, order_id)
+    cuts = cut_by_sku(session, order_id)
     lines: dict[str, SnapLine] = {}
     rows = session.scalars(select(OrderLine).where(OrderLine.revision_id == revision.id)).all()
     for row in rows:
@@ -2010,7 +2010,8 @@ def _current_links(session: Session, order_id: str | None = None) -> list[Downst
     return list(best.values())
 
 
-def _cut_by_sku(session: Session, order_id: str) -> dict[str, int]:
+def cut_by_sku(session: Session, order_id: str) -> dict[str, int]:
+    """Sum non-cancelled production cuts linked to this order, once per document."""
     totals: dict[str, int] = {}
     for row in _load_documents(session, order_id)["production"]:
         if row["status"] == "CANCELLED":
