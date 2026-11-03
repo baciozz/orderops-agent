@@ -214,7 +214,13 @@ def test_demand_cannot_drop_below_cut_work_order_quantity(cut, message):
 
 @pytest.mark.parametrize(
     "demand,target,qty",
-    [({"B": 10}, "B", 10), ({"A": 4, "B": 6}, None, None), ({"A": 4}, "A", 4), ({"B": 4}, "B", 4)],
+    [
+        ({"B": 10}, "B", 10),
+        ({"A": 11}, "A", 11),
+        ({"A": 4, "B": 6}, None, None),
+        ({"A": 4}, "A", 4),
+        ({"B": 4}, "B", 4),
+    ],
 )
 def test_uncut_work_order_moves_or_shrinks_to_cover_new_demand(demand, target, qty):
     verdicts, error = assess(demand, [mo()])
@@ -227,6 +233,7 @@ def test_uncut_work_order_moves_or_shrinks_to_cover_new_demand(demand, target, q
             sku_id=target, planned_qty=qty, cut_qty=0, status="NOT_STARTED"
         )
         assert verdicts[0]["order_line_sku"] == target
+        assert verdicts[0]["verdict"] == "CHANGE_DRAFT"
 
 
 def test_cancelling_unstarted_production_also_cancels_unreceived_purchase():
@@ -251,7 +258,6 @@ def test_cancelling_unstarted_production_also_cancels_unreceived_purchase():
         ({"A": 3}, [mo()], [po(received=8)], None, "PO 已到料部分不能改面料或减量"),
         ({"A": 10}, [mo()], [po()], {}, "A 没有面料单耗"),
         ({}, [], [po()], None, "采购单 PO 没有对应的生产单"),
-        ({"A": 11}, [mo()], [], None, "P0 不支持为剩余数量追加生产单"),
     ],
 )
 def test_downstream_refuses_changes_that_cannot_preserve_execution(

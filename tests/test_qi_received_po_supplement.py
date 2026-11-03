@@ -98,7 +98,7 @@ def _without_reason(verdict) -> dict[str, Any]:
 
 @pytest.mark.parametrize("cut", [0, 3])
 def test_received_po_is_relinked_and_shortfall_gets_its_own_draft(cut):
-    # Demand fits the existing MO; P0 must not grow its planned quantity.
+    # Demand fits the existing MO, so its planned quantity stays unchanged.
     production = _production(cut=cut)
     purchase = _purchase()
     verdicts, error = assess_downstream(
@@ -163,13 +163,23 @@ def test_reassigned_mo_with_higher_usage_of_same_fabric_gets_supplement():
 
 
 @pytest.mark.parametrize("cut", [0, 3])
-def test_demand_beyond_mo_planned_qty_still_refuses_additional_production(cut):
-    assert assess_downstream(
+def test_demand_beyond_mo_planned_qty_expands_only_uncut_production(cut):
+    verdicts, error = assess_downstream(
         new_lines={SKU: SnapLine(SKU, 16, "MTO", cut_qty=cut)},
         production=[_production(cut=cut)],
         purchase=[_purchase()],
         usage={SKU: (MATERIAL, 2)},
-    ) == ([], "P0 不支持为剩余数量追加生产单")
+    )
+    if cut:
+        assert (verdicts, error) == ([], "P0 不支持为剩余数量追加生产单")
+    else:
+        assert error is None, error
+        by_id = {v["doc_id"]: v for v in verdicts}
+        assert by_id[MO_ID]["verdict"] == "CHANGE_DRAFT"
+        assert by_id[MO_ID]["after"] == _mo_body(_production(planned=16))
+        assert by_id[PO_ID]["verdict"] == "UNAFFECTED_RELINK"
+        assert by_id[PO_ID]["before"] == by_id[PO_ID]["after"] == _po_body(_purchase())
+        assert _without_reason(by_id[f"{PO_ID}-S1"]) == _supplement_verdict(qty=12)
 
 
 @pytest.mark.parametrize("cancelled_suffix", [None, 2, 3])
