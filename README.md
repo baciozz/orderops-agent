@@ -152,6 +152,20 @@ python scripts/eval_offline.py
 
 当前 `.github/workflows/ci.yml` 定义在 Python 3.12 上先安装 `requirements-dev.lock`、再以 `--no-deps -e .` 安装本项目，依次执行 `make check`（ruff 格式/规则、mypy、覆盖率门槛 90%）和 `make eval-offline`。仅在 push / pull request 触发，权限为 `contents: read`，全程设置 `OOS_LIVE_ENABLED=false`；不含 live 调用、浏览器任务或部署。是否已在远端启用，须核对相应提交的 GitHub Actions 结果，不能由本地验证推断。
 
+### FIXTURE 新建 STOCK 的持久入口回归
+
+默认 FIXTURE 支持精确文本 `新建订单 华东服饰 A 款白 M 30`：
+`/inputs` 持久收件 → `worker.run_once` 解析/规划 → 单独 approve → durable commit，
+创建华东服饰 `A-WHITE-M ×30` 并预留 W1 库存。收件、规划及批准均不修改业务表；
+同 key 收件与提交重放不重复建单或预留。原始输入 event、文本和收件身份保持不变，
+响应的 status/chain_id 则可能随任务进展变化。
+
+`tests/test_durable_new_order.py` 用临时合成数据库回归上述链路，并对比全部表的重放快照、
+既有订单/下游单据和库存变化。将精确文本的数量改为 `31` 会得到
+`FAILED / FIXTURE_NOT_FOUND`，不生成计划、不偷偷使用 30、不回退 live。
+测试直接调用同步 endpoint helper，不验证 HTTP transport、中间件或浏览器，
+也不代表通用自然语言理解；未新增公开新建订单 API。
+
 ## 已知限制
 
 - pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅显式 `worker-loop` / `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
