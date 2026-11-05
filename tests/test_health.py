@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.config import Settings
 from app.db.schema import init_db
 from app.db.session import make_engine
@@ -59,9 +60,10 @@ def test_startup_requires_explicit_migration(tmp_path, revision):
             TestClient(base_url="http://127.0.0.1", app=create_app(settings)),
         ):
             pytest.fail("An outdated schema must refuse startup")
+        head = ScriptDirectory.from_config(cfg).get_current_head()
         assert str(error.value).startswith(
-            f"数据库 schema 未迁移到最新版本（当前 {revision}，需要 upload_idempotency），"
-            "请先运行 python -m app.cli init-db"
+            f"数据库 schema 未迁移到最新版本（需要 {head}），"
+            "请先检查数据库结构与迁移历史，再显式运行 python -m app.cli init-db"
         )
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == revision
