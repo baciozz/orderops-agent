@@ -51,6 +51,8 @@ SO-1001 把未发的 40 件黑色 M 改成白色 M
 
 ### 离线演示（FIXTURE）
 
+推荐先运行 [两条合成验收](docs/FIXTURE_ACCEPTANCE.md)：`python scripts/accept_fixture.py --output ./fixture-acceptance-01`。它使用独立新临时库，模拟批准/提交并保存业务结果、CSV/XLSX 和审计，不启动服务。需完整源码或 editable 安装及已装依赖；现有非 editable wheel 缺迁移资源。下面保留手动 API 演示。
+
 保持默认 `OOS_LIVE_ENABLED=false`（已有环境若启用过 live，请先关闭并重启 API）。在另一个已激活虚拟环境的终端中：
 
 ```bash
@@ -166,14 +168,7 @@ Stage 5 后跟进有限核验重试之外的常驻调度、外部告警及历史
 
 ## 数据
 
-全部是合成数据。默认库文件是 `./data/oos.db`（WAL，另有 `oos.db-wal` / `oos.db-shm`）。清掉演示数据：
-
-```bash
-rm -f data/oos.db data/oos.db-wal data/oos.db-shm
-make seed
-```
-
-`make seed` 再次执行不会复制订单。库里已经有 `SO-1001` 时会直接返回。
+全部是合成数据。默认库文件是 `./data/oos.db`（WAL，另有 `oos.db-wal` / `oos.db-shm`）。不要删除默认库来重演；保留旧证据，使用上述验收脚本的全新 output。每次运行使用新临时库，已有 output 会被拒绝。`make seed` 不重置已有 SO-1001。
 
 ## 替换模型
 
