@@ -35,6 +35,8 @@ pip install -r requirements-dev.lock && pip install --no-deps -e .
 make init-db && make seed && make run
 ```
 
+启动会在预算预留对账前检查迁移版本、必需表和 ORM 映射列名；缺列的库即使版本标记最新也会拒绝启动，不自动修复。请检查损坏原因并从有效备份恢复，迁移仍需显式执行 `python -m app.cli init-db`；最新版本标记下重跑迁移不会补回丢失列。此检查不验证列类型、约束、索引或数据，也不代表生产就绪；空库或尚未创建的库仍可仅提供健康检查。
+
 打开 <http://127.0.0.1:8000/ui>。进入「提交改单」，选 `SO-1001`，粘贴黄金文案（表单已预填）：
 
 ```text

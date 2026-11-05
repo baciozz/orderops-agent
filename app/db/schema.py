@@ -25,11 +25,13 @@ def schema_ready(engine: Engine) -> bool:
     """Reject outdated/partial schemas; a completely empty health server is allowed.
 
     The caller must avoid opening a connection to an absent SQLite file. This
-    function only inspects existing tables and never runs migrations.
+    function only inspects existing tables and required mapped column names; it
+    never runs migrations. Types, constraints, indexes, and data are not validated.
     """
     head = ScriptDirectory.from_config(_migration_config()).get_current_head()
     with engine.connect() as connection:
-        tables = set(inspect(connection).get_table_names())
+        inspector = inspect(connection)
+        tables = set(inspector.get_table_names())
         if not tables:
             return False
         current = MigrationContext.configure(connection).get_current_heads()
@@ -43,6 +45,16 @@ def schema_ready(engine: Engine) -> bool:
             if missing:
                 message += f"（缺少表：{', '.join(sorted(missing))}）"
             raise RuntimeError(message)
+        for table in Base.metadata.tables.values():
+            required_columns = {column.name for column in table.columns}
+            actual_columns = {column["name"] for column in inspector.get_columns(table.name)}
+            if not required_columns <= actual_columns:
+                # Do not echo reflected database identifiers or values. A current
+                # migration stamp cannot repair a damaged schema automatically.
+                raise RuntimeError(
+                    "数据库 schema 缺少必需列，请检查数据库结构并从有效备份恢复；"
+                    "迁移仍须显式运行 python -m app.cli init-db，版本标记不会修复缺失列"
+                )
     return True
 
 
