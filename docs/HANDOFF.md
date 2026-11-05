@@ -52,7 +52,7 @@ python -m app.cli worker-once
 python -m app.cli reconcile-budget
 ```
 
-worker-once 调用 watchdog、处理一条规划任务并投递 outbox；pending 核验可在扫描中重试，仍不自动批准或再次提交业务。
+worker-once 调用 watchdog、处理一条规划任务并投递 outbox；pending 核验可在扫描中重试，仍不自动批准或再次提交业务。需要连续检查可由操作者显式运行有界 FIXTURE `worker-loop`，默认 5 秒间隔、最多 60 轮；不安装服务或自动重启，详见 [WORKER_LOOP](WORKER_LOOP.md)。
 reconcile-budget 只将超时的预算预留标记为 ORPHANED，不释放可能已计费的预算。
 pending 核验已持久化自动重试计数、下次时间和有期限的唯一租约 token。首次提交读回另计，默认最多 5 次自动重试；首次可立即运行，失败后指数退避，耗尽后保留 COMMITTED 和 pending 并转人工。查看任务视图的 `verification_manual_required` 与日志 `verification.manual_required`，调查后运行：
 
@@ -62,7 +62,7 @@ python -m app.cli verify-operation OPERATION_ID
 
 仅已转人工且没有有效租约的 pending 操作可发起人工核验；已通过则直接成功返回，不重复读回。退出码 0 表示已通过，1 表示仍未通过，2 表示不存在或尚不可执行。命令不重置自动预算、不修复数据、不再次提交业务，也不能强制通过。配置与迁移边界见 [API](API.md#提交后的有限只读核验)。
 
-没有常驻调度器；无人调用 watchdog / `worker-once` 或原提交重放时，到期核验不会自己执行。仍无外部推送告警，且核验当前事实而非历史快照，见 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+没有常驻调度器；无人显式运行 `worker-loop`、调用 watchdog / `worker-once` 或原提交重放时，到期核验不会自己执行。仍无外部推送告警，且核验当前事实而非历史快照，见 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
 
 ## 后续接手顺序
 

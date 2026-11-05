@@ -25,7 +25,7 @@ make run
 pip install -r requirements-dev.lock && pip install --no-deps -e .
 ```
 
-根目录 `requirements.lock` 是运行时依赖，`requirements-dev.lock` 是运行时与开发依赖；由 `uv pip compile pyproject.toml --universal --python-version 3.11`（开发版另加 `--extra dev`）生成，`pyproject.toml` 保留顶层依赖精确版本。
+根目录 `requirements.lock` 是运行时依赖，`requirements-dev.lock` 是运行时与开发依赖；由 `uv pip compile pyproject.toml --universal --python-version 3.11`（开发版另加 `--extra dev`）生成，`pyproject.toml` 保留顶层依赖精确版本。 锁文件不包含构建后端；editable 安装仍使用 `pyproject.toml` 中未完全锁定的 `setuptools>=68` / `wheel` 构建隔离依赖，因此不是完全封闭构建。
 
 ### 演示网页
 
@@ -74,7 +74,7 @@ python -m app.cli worker-once
 python scripts/eval_offline.py
 ```
 
-`worker-once` 每次扫描恢复、处理一条任务并投递 outbox，可按需重复运行；没有常驻调度器。停止 API：在 `make run` 终端按 Ctrl+C。
+`worker-once` 每次扫描恢复、处理一条任务并投递 outbox，可按需重复运行。需要连续检查时，由操作者显式运行 `python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60`：有界、始终 FIXTURE、逐轮等待、不自动批准或提交，Ctrl+C / SIGTERM 在当前轮结束后停止。默认最多 60 轮，不是常驻服务；长期托管仍由操作者负责。参数、退出码和限制见 [有界 worker 循环](docs/WORKER_LOOP.md)。停止 API：在 `make run` 终端按 Ctrl+C。
 
 ### Fixture 与 Live（可选）
 
@@ -145,11 +145,11 @@ python scripts/eval_offline.py
 
 当前有限核验重试与本机浏览器防护的功能说明不代表新的全量测试结果；上述数字仅属于固定基线，后续候选须独立复验。
 
-当前 `.github/workflows/ci.yml` 只跑 lint + test；typecheck、覆盖率、离线评测已暂存于 [待启用 CI](ci/pending-workflow-changes.yml)，等待 workflow 权限后启用。PR #9 已合入，离线脚本已在 main。
+当前 `.github/workflows/ci.yml` 定义在 Python 3.12 上先安装 `requirements-dev.lock`、再以 `--no-deps -e .` 安装本项目，依次执行 `make check`（ruff 格式/规则、mypy、覆盖率门槛 90%）和 `make eval-offline`。仅在 push / pull request 触发，权限为 `contents: read`，全程设置 `OOS_LIVE_ENABLED=false`；不含 live 调用、浏览器任务或部署。是否已在远端启用，须核对相应提交的 GitHub Actions 结果，不能由本地验证推断。
 
 ## 已知限制
 
-- pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅 `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+- pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅显式 `worker-loop` / `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
 - SQLite 单写者、规划任务最多两条 RUNNING；网页已接通证据上传、回答/澄清、取消、批准与提交，完整聊天、独立审计报告、生产认证和持久上传存储尚未完成。真实浏览器交互尚未验证。
 - 回答网页发送意图版本和最新输入事件两个可选 fence，服务端在同一事务核对后才追加事件；旧 API 客户端不传 fence 时保留旧并发限制。无持久输入记录的历史任务不提供网页回答/上传，须从新任务开始。详见 [API](docs/API.md#answer-concurrency-extension-compatible-with-v10-clients)。
 - 未开裁同 SKU 生产单可扩量；已开裁单仍不能扩量，不自动新建生产单。补购只生成待供应商确认的草稿。
@@ -159,7 +159,7 @@ python scripts/eval_offline.py
 
 ## 后续路线
 
-Stage 5 后跟进有限核验重试之外的常驻调度、外部告警及历史核验边界（[issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)），启用待授权 CI，拆分 `app/services/kernel.py` 并解开 inbox/kernel 循环依赖；补全聊天与审批 UI、扩大 live 质量评测，再推进生产认证与存储。正式 v1.0.0 tag 须等 Qi 批准。
+Stage 5 后跟进有限核验重试之外的常驻调度、外部告警及历史核验边界（[issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)），核对相应提交的远端 CI 完整门禁，拆分 `app/services/kernel.py` 并解开 inbox/kernel 循环依赖；补全聊天与审批 UI、扩大 live 质量评测，再推进生产认证与存储。正式 v1.0.0 tag 须等 Qi 批准。
 
 ## 数据
 
@@ -209,16 +209,16 @@ selections. Filenames and error text are rendered as text.
 
 Submit a clarification or revised intent, then explicitly run the FIXTURE
 worker. Approval and commit remain separate human actions. The answer delivery
-key covers the task, displayed revision, answer text, and selected source IDs;
+key covers the task, displayed revision, latest input event, answer text, and selected source IDs;
 identical retries reuse it and edited payloads do not. Cancellation asks for
 confirmation and submits the displayed intent revision. Terminal tasks have no
 answer/upload/cancel controls.
 
-The browser checks current task status/revision before each new action. These
-checks are advisory, not an atomic answer fence: the existing answers endpoint
-has no expected-revision field. Existing server state, approval, and commit
-guards remain authoritative. A concurrent change can still happen after the
-check. Uploads have no idempotency key: after a network failure, refresh and
+The browser checks current task status/revision before each new action. Answers
+also carry revision and latest-input-event fences, checked atomically by the
+server before appending a new answer. Exact delivery retries reuse their receipt;
+legacy clients omitting the optional fences retain their prior concurrency limits.
+A raced page can require a safe refresh. Uploads have no idempotency key: after a network failure, refresh and
 inspect the persisted file list before retrying to avoid using another upload
 slot. No automatic upload, answer, approval, commit, or cancellation occurs on
 refresh or history navigation. JavaScript is required for these controls.

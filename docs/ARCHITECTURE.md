@@ -107,6 +107,6 @@ Qi 已确认：未取消且未开裁（`cut_qty == 0`，由生产单 CHECK 约�
 这是 at-least-once，不宣称 exactly-once。
 
 `python -m app.cli worker-once` 执行恢复扫描、一条任务及 outbox 投递，可由本地
-调度器重复运行；没有常驻调度器，watchdog 仅在被调用时扫描和重试。回读核验当前
+调度器重复运行，或显式使用 [有界 FIXTURE worker-loop](WORKER_LOOP.md)。没有常驻托管调度器，watchdog 仅在被调用时扫描和重试。回读核验当前
 库存流水及下游一致性，不修复数据，也不重建历史快照。API 只负责入库，不在 HTTP 请求中执行 worker。新迁移保存
 InputPayload 与 ConsumerReceipt，`init-db` 继续执行 Alembic upgrade head。

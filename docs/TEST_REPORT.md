@@ -49,4 +49,4 @@ pytest 报告一个 Starlette TestClient 关于 httpx/httpx2 的弃用警告；�
 
 本次未执行真实 live 评测、真实浏览器点击、移动端/跨浏览器验收、生产认证、多用户授权、真实 ERP 联调、生产负载或备份恢复演练。
 历史小样本真实模型结果仅见 [LIVE_EVAL](LIVE_EVAL.md)，不属于本次复验。
-待授权 CI 定义仍在 `ci/pending-workflow-changes.yml`；远端 CI 绿不等于完整 `make check` 和离线评测都在 CI 执行。
+该固定基线的远端 CI 只含 lint/test。后续 CI 定义以 `.github/workflows/ci.yml` 为准；完整门禁是否在远端执行，须核对对应提交的运行结果，不能复用此处的基线 CI 结论。

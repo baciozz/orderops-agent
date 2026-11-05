@@ -64,6 +64,7 @@
 
 - `POST /inputs` 使用 `InputSubmitRequest`，在一个事务保存 Event、Task、InputPayload 和 InboxDelivery，返回 **202** 的 `InputSubmitResponse`。`client_event_key` 是来源投递 ID / 客户端事件 ID，在 thread 内去重；相同文字的新 key 是新事件。选择订单时，接收事务就递增意图并使旧批准失效，重复投递不递增。
 - `python -m app.cli worker-once` 执行恢复扫描、一条任务和 outbox 投递。202 不是业务完成回执；API 入队不自动运行 worker。
+- `python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60` 是操作者显式启动的有界 FIXTURE 循环，不自动批准/提交，也不随 API 启动。参数、停止语义和退出码见 [WORKER_LOOP](WORKER_LOOP.md)。
 - 回答使用同一输入模型和新 key。默认 fixture 回答使用完整的已登记语句；可选 live 按预算调用模型。worker 在写入结果前检查租约与 fencing。
 - `source_ids` 持久保存，仅允许读取当前任务关联的静态 spans。上传本身只保存证据，不触发调度或批准；回答可显式选择上传来源参与核对。
 - 取消先完成则 commit 返回 `CANCELLED`；commit 先完成则取消返回 `ALREADY_COMMITTED`，不撤销业务历史。

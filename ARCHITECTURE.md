@@ -237,6 +237,8 @@ RUNNING 租约过期、无进展或到期时可重新排队；截止或尝试/�
 包括任务已经 SUCCEEDED 的操作；返回值仍只包含本次恢复的任务 ID。
 `app/orchestration/recovery.py` 的 `durable_commit` 处理提交成功但确认丢失的边界。
 当前不是常驻 worker；`python -m app.cli worker-once` 依次执行迁移、scan、run_once、publish_pending。
+操作者可显式运行有界 FIXTURE `worker-loop`（默认 5 秒间隔、最多 60 轮），复用同一单轮函数，
+逐轮等待，不自动批准/提交或随 API 启动；完整停止语义和限制见 [WORKER_LOOP](docs/WORKER_LOOP.md)。
 没有常驻调度器，watchdog 仅在被调用时扫描和重试；pending 不会自行触发后台核验。
 
 下面精确列出 `app/orchestration/state.py` 的 `ALLOWED` 全部转换。
@@ -422,7 +424,7 @@ PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED、BASE_URL_IN
 ## 8. 已知限制
 
 - 单机 SQLite 演示，无生产认证、会话权限或多用户授权；已有本机 Host 白名单、浏览器同源检查及防嵌套响应头，但没有 CSRF token，也不能区分剥离全部浏览器来源头的请求与 CLI。不要对外暴露，完整边界见[本机浏览器防护](docs/browser-security.md)。没有真实 ERP/采购/发货接入。
-- worker-once 需外部驱动，未提供常驻调度或浏览器实时事件推送。
+- worker-once / 有界 worker-loop 需操作者显式启动，未提供常驻托管调度或浏览器实时事件推送。
 - 上传原件在临时目录，缺少生产存储、生命周期和清理方案。
 - fixture 精确匹配，静态表格仅支持明确列名布局；live 上下文仅包含限定合成主数据。
 - 最小网页已有改单表单、最近任务列表、订单查看、手动 FIXTURE worker、批准与提交按钮。完整聊天、上传/澄清/取消的网页操作仍未接齐；TestClient 验证不能替代真实浏览器执行 JavaScript。

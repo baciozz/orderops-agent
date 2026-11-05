@@ -142,7 +142,7 @@ fixture 每个测试前后清零。所有计数经 `log_event()` 的事件入口
 这些指标是尽力而为的进程观测，不是可用于结算的持久账本；进程在数据库提交与事件输出
 之间退出可能漏计。commit.applied 在回读/ack 返回后发出，后续异常可能已提交业务但没有
 成功事件，须结合 operation、task.finished 和 recovery 日志判断。
-已提供持久化核验重试上限/退避和转人工日志；没有常驻调度器、外部推送告警、OTel、Prometheus exporter 或分布式 tracing。
+已提供持久化核验重试上限/退避和转人工日志；操作者显式启动的有界循环另有 `worker_loop.started/cycle/wait/stopped/failed` 和 CLI 边界 `worker_loop.cli_failed` 事件，字段与限制见 [WORKER_LOOP](WORKER_LOOP.md)。没有常驻托管调度器、外部推送告警、OTel、Prometheus exporter 或分布式 tracing。
 
 ## 示例
 
