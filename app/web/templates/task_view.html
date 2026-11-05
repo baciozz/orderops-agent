@@ -17,6 +17,9 @@
   {% include "task_input_forms.html" %}
   {% include "worker_form.html" %}
   <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a></p>
+  {% if audit_url %}
+  <p><a href="{{ audit_url }}">下载任务审计摘要（JSON）</a>：仅含已记录的回执、状态和来源元数据，不含原文或完整历史快照。</p>
+  {% endif %}
   {% if view.conflicts or view.questions %}
   <h1>待确认</h1>
   <ul>

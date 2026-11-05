@@ -64,6 +64,7 @@ python -m app.cli worker-once
 - 进程内指标：`GET /metrics` 返回 JSON counter（非 Prometheus 格式；独立 CLI worker 与 API 进程各自计数），详见 [可观测性](docs/OBSERVABILITY.md)。
 - 状态：`http://127.0.0.1:8000/tasks/{task_id}`
 - JSON 任务视图：`http://127.0.0.1:8000/tasks/{task_id}/view`
+- 只读 JSON 审计摘要：`http://127.0.0.1:8000/tasks/{task_id}/audit`，不含原文，不是完整历史快照，见 [契约与限制](docs/TASK_AUDIT.md)
 - HTML 任务页：`http://127.0.0.1:8000/ui/tasks/{task_id}`
 
 用实际 ID 替换 `{task_id}`。任务页可查调度、来源、差量和批准状态，并通过按钮调用现有 [API](docs/API.md) 的 `POST /plans/{plan_id}/approve`、`POST /plans/{plan_id}/commit`。`T-STUB` 只是演示桩，批准按钮不可用。
@@ -150,7 +151,7 @@ python scripts/eval_offline.py
 ## 已知限制
 
 - pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅显式 `worker-loop` / `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
-- SQLite 单写者、规划任务最多两条 RUNNING；网页已接通证据上传、回答/澄清、取消、批准与提交，完整聊天、独立审计报告、生产认证和持久上传存储尚未完成。真实浏览器交互尚未验证。
+- SQLite 单写者、规划任务最多两条 RUNNING；网页已接通证据上传、回答/澄清、取消、批准与提交，完整聊天、完整历史审计快照、生产认证和持久上传存储尚未完成。真实浏览器交互尚未验证。
 - 回答网页发送意图版本和最新输入事件两个可选 fence，服务端在同一事务核对后才追加事件；旧 API 客户端不传 fence 时保留旧并发限制。无持久输入记录的历史任务不提供网页回答/上传，须从新任务开始。详见 [API](docs/API.md#answer-concurrency-extension-compatible-with-v10-clients)。
 - 未开裁同 SKU 生产单可扩量；已开裁单仍不能扩量，不自动新建生产单。补购只生成待供应商确认的草稿。
 - FIXTURE 精确匹配；live 历史样本量小，兼容 provider 仅 mock 验证，通用表格布局尚未支持。

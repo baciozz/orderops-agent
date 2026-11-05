@@ -1,6 +1,7 @@
 """Read-only task views, local exports, and the T-STUB information demo."""
 
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
@@ -8,11 +9,13 @@ from schemas.enums import RuntimeMode, TaskStatus, WaitingOn
 from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
 from sqlalchemy import inspect, select
 
+from app.api.errors import json_error
 from app.db.models import Approval, Event, InputSource, Plan, Task, TaskSource
 from app.errors import AppError
 from app.orchestration.inbox import latest_input
 from app.orchestration.state import utcnow
 from app.services.export import export_change_list
+from app.services.task_audit import export_task_audit
 from app.services.task_view import build_task_view
 from app.web import templates
 
@@ -147,6 +150,9 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "renewable": renewable,
             "uploaded_sources": uploaded_sources,
             "input_event_id": input_event_id,
+            "audit_url": f"/tasks/{quote(task_id, safe='')}/audit"
+            if task_id != STUB_TASK_ID
+            else None,
             "can_answer": input_event_id is not None
             and view.card.status.value in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
             "can_cancel": task_id != STUB_TASK_ID
@@ -154,6 +160,22 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             in {"RECEIVED", "QUEUED", "RUNNING", "NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
         },
     )
+
+
+@router.get("/tasks/{task_id}/audit")
+def task_audit(task_id: str, request: Request) -> Response:
+    try:
+        response = Response(
+            content=export_task_audit(request.app.state.engine, task_id),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="task-audit-v1.json"'},
+        )
+    except AppError as exc:
+        request.state.error_code = exc.code
+        response = json_error(exc, request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.get("/tasks/{task_id}/download")

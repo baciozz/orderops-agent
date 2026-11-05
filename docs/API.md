@@ -34,6 +34,7 @@
 | GET / POST | `/ui/demo/submit` | 改单表单；POST 复用 inbox，303 跳转任务页 |
 | GET | `/ui/demo/tasks`、`/ui/demo/orders/{order_id}` | 最近任务列表、订单只读页 |
 | POST | `/ui/demo/worker-once` | 本机 FIXTURE 扫描恢复、处理一条任务、投递 outbox；返回 mode / recovered_task_ids / result（含 task_id、status，空闲为 null）/ published |
+| GET | `/tasks/{task_id}/audit` | 独立、只读、无原文的 JSON 审计摘要，见 [v1 契约与限制](TASK_AUDIT.md) |
 | GET | `/tasks/{task_id}/download` | 已有变更清单的 CSV/XLSX 下载，`fmt` 默认为 `csv` |
 | POST | `/sources` | multipart `task_id` + `file`，可选 `client_upload_key` 幂等重试；每次一个文件、每任务最多三个，静态切分 TXT/MD/XLSX |
 | GET | `/sources/{source_id}/spans` | 必填查询参数 `task_id`，只读取属于该任务的来源 |
