@@ -1,7 +1,12 @@
 """Durable inbox, polling, cancellation and human answer events."""
 
 from fastapi import APIRouter, Request
-from schemas.api import InputSubmitRequest, InputSubmitResponse, TaskCancelRequest
+from schemas.api import (
+    AnswerSubmitRequest,
+    InputSubmitRequest,
+    InputSubmitResponse,
+    TaskCancelRequest,
+)
 from sqlalchemy import select
 
 from app.db.models import JobAttempt, Plan, Task
@@ -37,7 +42,7 @@ def submit(body: InputSubmitRequest, request: Request):
 
 
 @router.post("/tasks/{task_id}/answers", status_code=202, response_model=InputSubmitResponse)
-def answer(task_id: str, body: InputSubmitRequest, request: Request):
+def answer(task_id: str, body: AnswerSubmitRequest, request: Request):
     return receipt(body, request, task_id)
 
 

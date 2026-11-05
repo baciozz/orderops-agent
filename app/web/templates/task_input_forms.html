@@ -1,4 +1,5 @@
 <section id="task-inputs" data-task-id="{{ view.card.task_id }}"
+  data-input-event-id="{{ input_event_id or '' }}"
   data-intent-revision="{{ view.card.intent_revision }}" data-status="{{ view.card.status }}">
   <h2>补充证据与澄清</h2>
   <p>只使用合成数据。上传仅保存证据，不会修改订单；每次回答须重新勾选需要的文件，未勾选的历史证据不会发送。</p>
@@ -24,6 +25,8 @@
     <button type="submit">提交回答并入队</button>
     <p id="answer-message" role="status" aria-live="polite"></p>
   </form>
+  {% elif not input_event_id %}
+  <p>该历史任务无可核对的输入记录，请从新任务开始。</p>
   {% else %}
   <p>当前状态不可回答或上传。排队任务请先运行 worker；已结束的任务不能在此恢复。</p>
   {% endif %}

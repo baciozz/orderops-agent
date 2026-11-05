@@ -43,6 +43,8 @@ def accept_input(
     source_ids=None,
     selected_order_id=None,
     task_id=None,
+    expected_intent_revision=None,
+    expected_input_event_id=None,
     clock=utcnow,
     fault=lambda _: None,
 ):
@@ -62,6 +64,18 @@ def accept_input(
             raise AppError("订单不存在", code="NOT_FOUND", http_status=404)
         if task_id:
             task = session.get(Task, task_id)
+            # Receipt replay above deliberately precedes this fence: a lost ACK
+            # must not append again or fail merely because the task has advanced.
+            if (
+                task is not None
+                and expected_intent_revision is not None
+                and task.intent_revision != expected_intent_revision
+            ):
+                raise AppError("意图已更新", code="STALE_INTENT", http_status=409)
+            if task is not None and expected_input_event_id is not None:
+                current_input = latest_input(session, task)
+                if current_input is None or current_input.event_id != expected_input_event_id:
+                    raise AppError("输入已更新", code="STALE_INTENT", http_status=409)
             if task is None or task.status not in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"}:
                 raise AppError("任务不能恢复", code="ILLEGAL_TRANSITION", http_status=409)
         else:

@@ -103,3 +103,31 @@ XLSX 每张表的实际行位置不得超过 10,000，列位置不得超过 256�
 ### 本机浏览器请求边界
 
 所有 HTTP 路由要求单个受信任 Host（`localhost`、`127.0.0.1` 或 `[::1]`，可带有效端口）；否则返回 `UNTRUSTED_HOST`（400）。GET/HEAD/OPTIONS 之外的方法还检查 Origin、Referer 和 fetch metadata，拒绝非同源或冲突证据，返回 `CROSS_ORIGIN_REQUEST`（403）。拒绝发生在读取请求体和路由分派之前，使用统一错误信封。无浏览器来源头的 CLI/API 请求保持兼容，不等于认证成功；不要对外开放。防嵌套响应头及完整例外见 [browser-security](browser-security.md)。
+
+### Answer concurrency extension (compatible with v1.0 clients)
+
+`POST /tasks/{task_id}/answers` accepts `AnswerSubmitRequest`, an answer-only
+extension of the unchanged `InputSubmitRequest`. Both new fields are optional:
+`expected_intent_revision` (non-negative strict integer) and
+`expected_input_event_id` (non-empty string). Missing/null fields preserve legacy
+behavior. Existing response contracts, `POST /inputs`, and frozen `TaskView`
+remain unchanged; no database migration is required.
+
+For new deliveries, supplied fences are checked inside the same SQLite
+`BEGIN IMMEDIATE` transaction as event append and approval invalidation.
+A mismatch returns HTTP 409 `STALE_INTENT` with no writes. Exact delivery replays
+(thread + client event key) return their original receipt before checking fences,
+including after revisions or task status advance. Existing identity semantics
+are unchanged: changing content requires a new client event key.
+
+Use both fences for a page-based client. Intent revision alone is insufficient
+for unbound clarification tasks and may repeat when an order becomes known.
+The input fence is the latest durable `InputPayload.event_id`, not the task's
+`last_event_id` (which planning can overwrite). The HTML task page exposes it as
+`data-input-event-id`; it is captured before view projection so a racing answer
+can only leave a conservatively stale page, never an old view with a newer input
+fence. The demo sends both fences and includes both in its delivery-key digest.
+Tasks without any durable input payload expose no answer/upload controls in the
+HTML UI and direct the operator to start a new task. Legacy API clients can still
+omit the input fence; they retain revision/status guards only. No unbound-task revision
+semantics were changed. Clients omitting fences retain legacy concurrency limits.

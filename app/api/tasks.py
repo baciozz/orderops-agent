@@ -10,6 +10,7 @@ from sqlalchemy import inspect, select
 
 from app.db.models import Approval, Event, InputSource, Plan, Task, TaskSource
 from app.errors import AppError
+from app.orchestration.inbox import latest_input
 from app.orchestration.state import utcnow
 from app.services.export import export_change_list
 from app.services.task_view import build_task_view
@@ -56,11 +57,15 @@ def build_stub_task_view(
     )
 
 
-def _view(task_id: str, request: Request) -> TaskView:
+def _task_table_present(request: Request) -> bool:
     engine = request.app.state.engine
     database = engine.url.database
     present = database == ":memory:" or (database and Path(database).is_file())
-    if present and inspect(engine).has_table("task"):
+    return bool(present and inspect(engine).has_table("task"))
+
+
+def _view(task_id: str, request: Request) -> TaskView:
+    if _task_table_present(request):
         with request.app.state.session_factory() as session:
             if session.get(Task, task_id) is not None:
                 return build_task_view(
@@ -86,6 +91,14 @@ def task_view(task_id: str, request: Request) -> TaskView:
 
 @router.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
 def task_view_page(task_id: str, request: Request) -> HTMLResponse:
+    # Capture the input fence before projecting the view: a concurrent answer
+    # may make this page stale, but must never pair an old view with a new fence.
+    input_event_id = None
+    if task_id != STUB_TASK_ID and _task_table_present(request):
+        with request.app.state.session_factory() as session:
+            task = session.get(Task, task_id)
+            payload = latest_input(session, task) if task else None
+            input_event_id = payload.event_id if payload else None
     view = _view(task_id, request)
     plan_id = approval_id = None
     renewable = False
@@ -133,7 +146,9 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "approval_id": approval_id,
             "renewable": renewable,
             "uploaded_sources": uploaded_sources,
-            "can_answer": view.card.status.value in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
+            "input_event_id": input_event_id,
+            "can_answer": input_event_id is not None
+            and view.card.status.value in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
             "can_cancel": task_id != STUB_TASK_ID
             and view.card.status.value
             in {"RECEIVED", "QUEUED", "RUNNING", "NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},

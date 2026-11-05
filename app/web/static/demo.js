@@ -217,7 +217,7 @@ if (taskInputs) {
       // Same revision and exact payload have the same receipt key across retries/reloads.
       // Changing either text or evidence creates a distinct delivery identity.
       const bytes = new TextEncoder().encode(JSON.stringify([
-        taskId, taskInputs.dataset.intentRevision, text, sourceIds,
+        taskId, taskInputs.dataset.intentRevision, taskInputs.dataset.inputEventId, text, sourceIds,
       ]));
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       const key = [...new Uint8Array(digest)].map((n) => n.toString(16).padStart(2, "0")).join("");
@@ -225,6 +225,8 @@ if (taskInputs) {
       await postJSON(`${taskURL}/answers`, {
         thread_id: `demo-answer-${taskId}`,
         client_event_key: key,
+        expected_intent_revision: Number(taskInputs.dataset.intentRevision),
+        expected_input_event_id: taskInputs.dataset.inputEventId || null,
         text,
         source_ids: sourceIds,
       });
