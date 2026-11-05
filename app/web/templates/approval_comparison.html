@@ -1,0 +1,55 @@
+{# Display only named scalar fields. Never serialize snapshot objects or metadata. #}
+{% macro value(item, unit='') -%}
+  {%- if item is undefined or item is none -%}未提供
+  {%- elif item is sameas true -%}是（true）
+  {%- elif item is sameas false -%}否（false）
+  {%- elif item is string or item is number -%}{{ item }}{% if unit %} {{ unit }}{% endif %}
+  {%- else -%}未提供（非标量）
+  {%- endif -%}
+{%- endmacro %}
+{% macro status(item) -%}
+  {%- set labels = {'NOT_STARTED': '未开裁', 'CUT': '已开裁', 'PARTIALLY_CUT': '部分开裁', 'CANCELLED': '已取消', 'PLACED': '采购记录已建立', 'PARTIALLY_RECEIVED': '部分收货', 'RECEIVED': '已收货', 'NONE': '无变更待确认', 'PENDING_SUPPLIER': '待供应商确认', 'UNKNOWN': '未知'} -%}
+  {%- if item is string and item in labels -%}{{ labels[item] }}（{{ item }}）
+  {%- else -%}{{ value(item) }}
+  {%- endif -%}
+{%- endmacro %}
+{% macro field(snapshot, key, unit='') -%}
+  {%- if snapshot is mapping -%}
+    {%- if key in ['status', 'change_state'] -%}{{ status(snapshot.get(key)) }}
+    {%- else -%}{{ value(snapshot.get(key), unit) }}{% endif -%}
+  {%- else -%}未提供
+  {%- endif -%}
+{%- endmacro %}
+<h1>旧新版对照</h1>
+<p class="hint">数量单位：件。旧量、目标量与预占变化用于核对本计划；锁定量、锁定类型和可用库存为当前读取。未执行量为目标量减当前锁定量，不表示已经执行。库存未冻结，可用库存未提供不代表零库存；MTO 不产生库存预占。</p>
+{% if view.line_diffs %}
+<div class="table-scroll" role="region" aria-label="订单行与库存对照" tabindex="0"><table>
+  <caption>订单行与库存约束（件）</caption>
+  <thead><tr><th scope="col">SKU</th><th scope="col">旧量</th><th scope="col">目标量</th><th scope="col">差量</th><th scope="col">预占变化</th><th scope="col">当前锁定量</th><th scope="col">当前锁定类型</th><th scope="col">目标未执行量</th><th scope="col">当前可用库存</th></tr></thead>
+  <tbody>{% for line in view.line_diffs %}
+    <tr><th scope="row">{{ line.sku_id }}</th><td>{{ value(line.old_qty) }}</td><td>{{ value(line.new_qty) }}</td><td>{{ value(line.delta) }}</td><td>{{ value(line.reservation_delta) }}</td><td>{{ value(line.locked_qty) }}</td><td>{{ {'shipped': '已发货', 'cut': '已开裁', 'none': '无锁定'}.get(line.locked_kind, '未知') }}</td><td>{{ value(line.unexecuted_qty) }}</td><td>{{ value(line.available_qty) }}</td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% else %}<p>无</p>{% endif %}
+<h1>下游影响清单</h1>
+<p class="hint">变更前 → 计划目标均为本计划生成时的历史快照，不表示计划已生效。当前状态与关联订单版本另列，可能已变化。可执行性仅为当前批准条件的投影，不表示已执行，也不能单独执行单据。采购数量按当前 P0 合成业务的面料单位米（m）展示；待供应商确认的变更仅为沙箱草稿，未实际下单或外发。</p>
+{% for doc in view.downstream %}
+<section aria-labelledby="downstream-title-{{ loop.index }}">
+  <h2 id="downstream-title-{{ loop.index }}">{{ doc.doc_id }} · {{ {'production_order': '生产单', 'purchase_order': '采购单'}.get(doc.doc_type, '未知单据类型') }}</h2>
+  <p>计划判定：{{ {'UNAFFECTED_RELINK': '内容不变，仅重新关联', 'CHANGE_DRAFT': '变更草稿', 'EXECUTED_LOCKED': '已执行部分受保护', 'CANCEL_DRAFT': '取消草稿'}.get(doc.verdict, '未提供或未知') }}（{{ value(doc.verdict) }}）。原因：{{ value(doc.reason) }}</p>
+  {% if doc.before is none and doc.doc_type == 'purchase_order' and doc.verdict == 'CHANGE_DRAFT' and doc.after is mapping and doc.after.get('change_state') == 'PENDING_SUPPLIER' %}
+  <p>计划生成时为新建采购草稿：无变更前快照，当时尚无原单；计划目标待供应商确认。</p>
+  {% elif doc.before is none %}<p>变更前快照未提供，不据此判断原单是否存在。</p>{% endif %}
+  {% if doc.after is none %}<p>计划目标快照未提供，不据此判断已取消。</p>{% endif %}
+  {% if doc.verdict == 'CANCEL_DRAFT' %}<p>本计划拟取消，以目标快照为准；不代表当前单据已取消。</p>{% endif %}
+  {% set fields = [('sku_id', 'SKU', ''), ('planned_qty', '计划生产量', '件'), ('cut_qty', '已开裁量', '件'), ('status', '状态', '')] if doc.doc_type == 'production_order' else [('material_id', '面料', ''), ('ordered_qty', '采购记录量', '米（m）'), ('received_qty', '已收货量', '米（m）'), ('status', '状态', ''), ('change_state', '变更确认状态', '')] if doc.doc_type == 'purchase_order' else [] %}
+  {% if fields %}
+  <div class="table-scroll" role="region" aria-label="{{ doc.doc_id }} 历史计划对照" tabindex="0"><table>
+    <caption>{{ doc.doc_id }} · 历史计划快照</caption>
+    <thead><tr><th scope="col">字段</th><th scope="col">变更前（计划生成时）</th><th scope="col">计划目标（尚非生效凭据）</th></tr></thead>
+    <tbody>{% for key, label, unit in fields %}<tr><th scope="row">{{ label }}</th><td>{{ field(doc.before, key, unit) }}</td><td>{{ field(doc.after, key, unit) }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p>未知单据类型，未展示快照字段。</p>{% endif %}
+  <p>当前读取：状态 {{ status(doc.status) }}；关联订单版本 {{ value(doc.linked_revision) }}；当前批准条件下可执行：{{ value(doc.executable) }}。</p>
+</section>
+{% else %}<p>无</p>{% endfor %}

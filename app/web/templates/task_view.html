@@ -37,32 +37,7 @@
   {% else %}
   <p>无</p>
   {% endif %}
-  <h1>旧新版对照</h1>
-  {% if view.line_diffs %}
-  <div class="table-scroll"><table>
-    <thead><tr><th scope="col">SKU</th><th scope="col">旧</th><th scope="col">新</th><th scope="col">差量</th><th scope="col">锁定</th><th scope="col">未执行</th></tr></thead>
-    <tbody>
-    {% for line in view.line_diffs %}
-    <tr><td>{{ line.sku_id }}</td><td>{{ line.old_qty }}</td><td>{{ line.new_qty }}</td><td>{{ line.delta }}</td><td>{{ line.locked_qty }}</td><td>{{ line.unexecuted_qty }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}
-  <p>无</p>
-  {% endif %}
-  <h1>下游影响清单</h1>
-  {% if view.downstream %}
-  <div class="table-scroll"><table>
-    <thead><tr><th scope="col">单据</th><th scope="col">类型</th><th scope="col">影响判定</th><th scope="col">原因</th></tr></thead>
-    <tbody>
-    {% for doc in view.downstream %}
-    <tr><td>{{ doc.doc_id }}</td><td>{{ doc.doc_type }}</td><td>{{ doc.verdict }}</td><td>{{ doc.reason or "" }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}
-  <p>无</p>
-  {% endif %}
+  {% include "approval_comparison.html" %}
   <h1>来源定位</h1>
   <p>{{ view.sources | length }} 条</p>
   {% for source in view.sources %}
