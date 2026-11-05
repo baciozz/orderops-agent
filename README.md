@@ -27,6 +27,26 @@ pip install -r requirements-dev.lock && pip install --no-deps -e .
 
 根目录 `requirements.lock` 是运行时依赖，`requirements-dev.lock` 是运行时与开发依赖；由 `uv pip compile pyproject.toml --universal --python-version 3.11`（开发版另加 `--extra dev`）生成，`pyproject.toml` 保留顶层依赖精确版本。
 
+### 演示网页
+
+激活虚拟环境、安装依赖后，运行：
+
+```bash
+make init-db && make seed && make run
+```
+
+打开 <http://127.0.0.1:8000/ui>。进入「提交改单」，选 `SO-1001`，粘贴黄金文案（表单已预填）：
+
+```text
+SO-1001 把未发的 40 件黑色 M 改成白色 M
+```
+
+点击「提交并查看任务」→「触发 worker 一次」→ 查看任务差量与下游影响 →「批准当前计划」→「提交生效」→ 查看 `operation_id`、`revision` 和核验结果。新初始化的合成库应得到 `SUCCEEDED`、revision `2`、核验 `passed`；点击订单号可查看当前行明细。首页也提供最近任务、示例订单和 `T-STUB` 桩任务入口。
+
+默认 **FIXTURE**；网页 worker 端点强制使用 FIXTURE，未知文本不会触发 live。批准身份固定为服务端 `DEMO_ACTOR_ID`（`demo-user`），客户端不能指定 actor。仅用于 `127.0.0.1` 本机合成数据演示，非生产、不接真实 ERP。提交表单使用服务端渲染；批准、提交与 worker 交互需要浏览器启用 JavaScript。worker 每次只处理一条任务，不会自动批准或提交；已有其他任务时可重复点击。
+
+已用 TestClient 验证表单、worker、批准/提交与结果回读。尚未在真实浏览器完成点选或截图，也未做完整无障碍、移动端及跨浏览器验证。
+
 ### 离线演示（FIXTURE）
 
 保持默认 `OOS_LIVE_ENABLED=false`（已有环境若启用过 live，请先关闭并重启 API）。在另一个已激活虚拟环境的终端中：
@@ -45,7 +65,7 @@ python -m app.cli worker-once
 - JSON 任务视图：`http://127.0.0.1:8000/tasks/{task_id}/view`
 - HTML 任务页：`http://127.0.0.1:8000/ui/tasks/{task_id}`
 
-用实际 ID 替换 `{task_id}`。任务页可查调度、来源、差量和批准状态；批准/提交仍通过 [API](docs/API.md) 的 `POST /plans/{plan_id}/approve`、`POST /plans/{plan_id}/commit` 完成，完整浏览器交互尚未实现。`T-STUB` 只是演示桩。
+用实际 ID 替换 `{task_id}`。任务页可查调度、来源、差量和批准状态，并通过按钮调用现有 [API](docs/API.md) 的 `POST /plans/{plan_id}/approve`、`POST /plans/{plan_id}/commit`。`T-STUB` 只是演示桩，批准按钮不可用。
 
 独立运行完整的离线管道评测（含黄金链批准/提交）：
 

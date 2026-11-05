@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>任务 {{ view.card.task_id }}</title>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}任务 {{ view.card.task_id }}{% endblock %}
+{% block content %}
   <p class="mode-badge" aria-label="运行模式">运行模式：<strong>{{ view.card.mode }}</strong></p>
   {% if view.card.task_id == "T-STUB" %}
   <p>Stage 0 桩页面。这不是「订单已修改」。</p>
@@ -12,12 +8,14 @@
   <h1>任务卡</h1>
   <dl>
     <dt>task_id</dt><dd>{{ view.card.task_id }}</dd>
-    <dt>order_id</dt><dd>{{ view.card.order_id }}</dd>
+    <dt>order_id</dt><dd>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">{{ view.card.order_id }}</a>{% else %}无{% endif %}</dd>
     <dt>状态</dt><dd>{{ view.card.status }}</dd>
     <dt>intent_revision</dt><dd>{{ view.card.intent_revision }}</dd>
     <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>
     <dt>模式</dt><dd>{{ view.card.mode }}</dd>
   </dl>
+  {% include "worker_form.html" %}
+  <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a></p>
   {% if view.conflicts or view.questions %}
   <h1>待确认</h1>
   <ul>
@@ -37,21 +35,27 @@
   {% endif %}
   <h1>旧新版对照</h1>
   {% if view.line_diffs %}
-  <ul>
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">SKU</th><th scope="col">旧</th><th scope="col">新</th><th scope="col">差量</th><th scope="col">锁定</th><th scope="col">未执行</th></tr></thead>
+    <tbody>
     {% for line in view.line_diffs %}
-    <li>{{ line.sku_id }} 旧 {{ line.old_qty }} 新 {{ line.new_qty }} 差 {{ line.delta }} 锁定 {{ line.locked_qty }} 未执行 {{ line.unexecuted_qty }}</li>
+    <tr><td>{{ line.sku_id }}</td><td>{{ line.old_qty }}</td><td>{{ line.new_qty }}</td><td>{{ line.delta }}</td><td>{{ line.locked_qty }}</td><td>{{ line.unexecuted_qty }}</td></tr>
     {% endfor %}
-  </ul>
+    </tbody>
+  </table></div>
   {% else %}
   <p>无</p>
   {% endif %}
   <h1>下游影响清单</h1>
   {% if view.downstream %}
-  <ul>
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">单据</th><th scope="col">类型</th><th scope="col">影响判定</th><th scope="col">原因</th></tr></thead>
+    <tbody>
     {% for doc in view.downstream %}
-    <li>{{ doc.doc_id }} {{ doc.doc_type }} {{ doc.verdict }} {{ doc.reason or "" }}</li>
+    <tr><td>{{ doc.doc_id }}</td><td>{{ doc.doc_type }}</td><td>{{ doc.verdict }}</td><td>{{ doc.reason or "" }}</td></tr>
     {% endfor %}
-  </ul>
+    </tbody>
+  </table></div>
   {% else %}
   <p>无</p>
   {% endif %}
@@ -71,9 +75,17 @@
     <dt>approvable</dt><dd>{{ view.approval.approvable }}</dd>
     <dt>disabled_reason</dt><dd>{{ view.approval.disabled_reason }}</dd>
   </dl>
+  <section id="plan-actions" data-plan-id="{{ plan_id or '' }}" data-task-id="{{ view.card.task_id }}"
+    data-plan-hash="{{ view.approval.plan_hash or '' }}" data-intent-revision="{{ view.card.intent_revision }}"
+    data-approval-id="{{ approval_id or '' }}">
+  <p>批准身份：服务端 demo-user。批准后请点击「提交生效」执行当前计划。</p>
   <button type="button" id="approve" {% if not view.approval.approvable %}disabled{% endif %}
     aria-describedby="approval-reason">批准当前计划</button>
+  <button type="button" id="commit" {% if not approval_id or not view.approval.approvable %}disabled{% endif %}>提交生效</button>
   <p id="approval-reason">{{ view.approval.disabled_reason or "" }}</p>
+  <p id="action-message" role="status" aria-live="polite">{% if approval_id %}已批准，可以提交生效。{% endif %}</p>
+  <noscript><p>批准、提交与 worker 按钮需要启用浏览器 JavaScript。</p></noscript>
+  </section>
   <h1>结果</h1>
   <dl>
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
@@ -83,5 +95,4 @@
       <a href="{{ view.result.download_url }}">下载变更清单（{{ view.card.mode }}）</a>
       {% else %}无{% endif %}</dd>
   </dl>
-</body>
-</html>
+{% endblock %}

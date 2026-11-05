@@ -30,6 +30,10 @@
 | POST | `/tasks/{task_id}/cancel` | 取消任务；已提交时返回 ALREADY_COMMITTED |
 | GET | `/tasks/{task_id}/view` | 数据库任务视图：调度、差量、下游、来源、批准区和结果 |
 | GET | `/ui/tasks/{task_id}` | 同一任务视图的 HTML 页面 |
+| GET | `/ui`、`/ui/demo` | 仅本机合成数据演示首页 |
+| GET / POST | `/ui/demo/submit` | 改单表单；POST 复用 inbox，303 跳转任务页 |
+| GET | `/ui/demo/tasks`、`/ui/demo/orders/{order_id}` | 最近任务列表、订单只读页 |
+| POST | `/ui/demo/worker-once` | 本机 FIXTURE 扫描恢复、处理一条任务、投递 outbox；返回 mode / recovered_task_ids / result（含 task_id、status，空闲为 null）/ published |
 | GET | `/tasks/{task_id}/download` | 已有变更清单的 CSV/XLSX 下载，`fmt` 默认为 `csv` |
 | POST | `/sources` | multipart `task_id` + `file`；每次一个文件、每任务最多三个，静态切分 TXT/MD/XLSX |
 | GET | `/sources/{source_id}/spans` | 必填查询参数 `task_id`，只读取属于该任务的来源 |

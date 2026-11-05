@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}最近任务 · 演示{% endblock %}
+{% block content %}
+  <h1>最近任务</h1>
+  <p>按最近事件时间排序，最多显示 50 条。<a href="/ui/demo/tasks">刷新列表</a></p>
+  {% if tasks %}
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">任务 ID</th><th scope="col">订单</th><th scope="col">状态</th><th scope="col">intent_revision</th></tr></thead>
+    <tbody>{% for task in tasks %}
+      <tr><td><a href="/ui/tasks/{{ task.id }}">{{ task.id }}</a></td>
+        <td>{% if task.order_id %}<a href="/ui/demo/orders/{{ task.order_id }}">{{ task.order_id }}</a>{% else %}未选订单{% endif %}</td>
+        <td>{{ task.status }}</td><td>{{ task.intent_revision }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <p>暂无任务。若尚未初始化，请先执行 make init-db &amp;&amp; make seed，然后<a href="/ui/demo/submit">提交改单</a>。</p>
+  {% endif %}
+  {% include "worker_form.html" %}
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}提交改单 · 演示{% endblock %}
+{% block content %}
+  <h1>提交改单</h1>
+  <p>黄金文案已预填。提交只保存输入并入队，随后在任务页触发 worker。</p>
+  {% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+  <form action="/ui/demo/submit" method="post" class="input-form">
+    <label for="selected-order">订单号</label>
+    <input id="selected-order" name="selected_order_id" value="{{ values.selected_order_id }}" required list="demo-orders">
+    <datalist id="demo-orders"><option value="SO-1001"><option value="SO-1002"></datalist>
+    <label for="change-text">自然语言改单</label>
+    <textarea id="change-text" name="text" rows="4" required>{{ values.text }}</textarea>
+    <label for="event-key">提交标识（client_event_key）</label>
+    <input id="event-key" name="client_event_key" value="{{ values.client_event_key }}">
+    <p class="hint">自动生成；同一 thread 内相同标识返回原任务，避免重复入队。</p>
+    <label for="thread">会话（thread_id）</label>
+    <input id="thread" name="thread_id" value="{{ values.thread_id }}">
+    <button type="submit">提交并查看任务</button>
+  </form>
+{% endblock %}

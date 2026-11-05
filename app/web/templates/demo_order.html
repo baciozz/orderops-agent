@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}订单 {{ order.order_id }} · 演示{% endblock %}
+{% block content %}
+  <h1>订单 {{ order.order_id }}（只读）</h1>
+  <dl>
+    <dt>current_revision</dt><dd>{{ order.current_revision }}</dd>
+    <dt>intent_revision</dt><dd>{{ order.intent_revision }}</dd>
+    <dt>状态</dt><dd>{{ order.status }}</dd>
+  </dl>
+  <div class="table-scroll"><table>
+    <caption>当前版本行明细</caption>
+    <thead><tr><th scope="col">SKU</th><th scope="col">ordered（订购）</th><th scope="col">shipped（已发）</th><th scope="col">cut（已裁）</th><th scope="col">履约模式</th></tr></thead>
+    <tbody>{% for line in order.lines %}
+      <tr><td>{{ line.sku_id }}</td><td>{{ line.ordered_qty }}</td><td>{{ line.shipped_qty }}</td><td>{{ line.cut_qty }}</td><td>{{ line.fulfillment_mode }}</td></tr>
+    {% else %}<tr><td colspan="5">暂无订单行</td></tr>{% endfor %}</tbody>
+  </table></div>
+{% endblock %}

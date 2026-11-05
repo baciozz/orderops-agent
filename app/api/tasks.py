@@ -4,22 +4,19 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
-from fastapi.templating import Jinja2Templates
 from schemas.enums import RuntimeMode, TaskStatus, WaitingOn
 from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 
-from app.db.models import Task
+from app.db.models import Approval, Event, Plan, Task
 from app.errors import AppError
 from app.orchestration.state import utcnow
 from app.services.export import export_change_list
 from app.services.task_view import build_task_view
+from app.web import templates
 
 router = APIRouter()
 STUB_TASK_ID = "T-STUB"
-_TEMPLATES = Jinja2Templates(
-    directory=str(Path(__file__).resolve().parents[1] / "web" / "templates")
-)
 
 
 def build_stub_task_view(
@@ -90,10 +87,32 @@ def task_view(task_id: str, request: Request) -> TaskView:
 @router.get("/ui/tasks/{task_id}", response_class=HTMLResponse)
 def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     view = _view(task_id, request)
-    return _TEMPLATES.TemplateResponse(
+    plan_id = approval_id = None
+    if view.approval.plan_hash:
+        with request.app.state.session_factory() as session:
+            plan = session.scalar(
+                select(Plan)
+                .join(Event, Event.payload_ref == Plan.id)
+                .where(Plan.task_id == task_id, Plan.plan_hash == view.approval.plan_hash)
+                .order_by(Event.received_at.desc(), Event.id.desc())
+            )
+            if plan:
+                plan_id = plan.id
+                approval = session.scalar(
+                    select(Approval)
+                    .where(Approval.plan_id == plan.id)
+                    .order_by(Approval.expires_at.desc(), Approval.id.desc())
+                )
+                if approval and approval.status == "ACTIVE" and view.approval.approvable:
+                    approval_id = approval.id
+    return templates.TemplateResponse(
         request,
         "task_view.html",
-        {"view": view.model_dump(mode="json")},
+        {
+            "view": view.model_dump(mode="json"),
+            "plan_id": plan_id,
+            "approval_id": approval_id,
+        },
     )
 
 

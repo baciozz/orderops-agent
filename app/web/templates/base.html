@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}订单改单演示{% endblock %}</title>
+  <link rel="stylesheet" href="/ui/static/demo.css">
+  <script src="/ui/static/demo.js" defer></script>
+</head>
+<body>
+  <header>
+    <nav aria-label="演示导航">
+      <a href="/ui">演示首页</a>
+      <a href="/ui/demo/submit">提交改单</a>
+      <a href="/ui/demo/tasks">最近任务</a>
+      <a href="/ui/demo/orders/SO-1001">示例订单 SO-1001</a>
+      <a href="/ui/tasks/T-STUB">桩任务 T-STUB</a>
+    </nav>
+    <p class="notice">本机合成数据 / FIXTURE 演示 · 非生产 · 不接真实 ERP</p>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer>仅供 127.0.0.1 本机演示；批准身份由服务端固定为 demo-user。</footer>
+</body>
+</html>

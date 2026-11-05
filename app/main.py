@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from schemas import SCHEMA_VERSION
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -21,6 +22,7 @@ from app import __version__
 from app.adapters.budget import reconcile_reservations
 from app.adapters.llm import resolve_mode
 from app.adapters.uploads import MAX_REQUEST_BYTES
+from app.api.demo_ui import router as demo_ui_router
 from app.api.dispatch import router as dispatch_router
 from app.api.errors import json_error
 from app.api.health import router as health_router
@@ -175,6 +177,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(dispatch_router)
     application.include_router(inputs_router)
     application.include_router(sources_router)
+    application.include_router(demo_ui_router)
+    application.mount(
+        "/ui/static",
+        StaticFiles(directory=str(Path(__file__).parent / "web" / "static")),
+        name="ui-static",
+    )
     return application
 
 

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>订单改单演示</h1>
+  <p>从一句自然语言改单，到差量预检、人工批准、提交生效与回读核验。</p>
+  <ol>
+    <li>在终端执行 <code>make init-db &amp;&amp; make seed &amp;&amp; make run</code>。</li>
+    <li>打开本页，进入「提交改单」，选 SO-1001 并提交下方黄金文案。</li>
+    <li>点「触发 worker 一次」，到任务页查看旧新版对照与下游影响。</li>
+    <li>点「批准当前计划」，再点「提交生效」。</li>
+    <li>查看结果中的 operation_id、revision 与核验，以及订单行明细。</li>
+  </ol>
+  <section>
+    <h2>黄金示例：黑色 M → 白色 M</h2>
+    <pre>{{ example }}</pre>
+    <p>FIXTURE 精确匹配文本；未知文案不会转为 live 调用。每次 worker 最多处理一条排队任务。</p>
+    <a class="button" href="/ui/demo/submit">开始提交改单</a>
+  </section>
+  {% include "worker_form.html" %}
+{% endblock %}
