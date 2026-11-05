@@ -11,9 +11,11 @@ from zlib import error as ZlibError
 
 import openpyxl
 from defusedxml import DefusedXmlException
-from defusedxml.ElementTree import iterparse
+from defusedxml.ElementTree import fromstring, iterparse
+from openpyxl.packaging.manifest import Manifest
 from openpyxl.utils.cell import coordinate_to_tuple
 from openpyxl.utils.exceptions import InvalidFileException
+from openpyxl.xml.constants import SHARED_STRINGS
 
 from app.errors import AppError
 
@@ -31,6 +33,7 @@ MAX_WORKSHEET_ROWS = 10_000
 MAX_WORKSHEET_COLUMNS = 256
 ALLOWED_SUFFIXES = frozenset({".txt", ".md", ".xlsx"})
 logger = logging.getLogger(__name__)
+_MAIN_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 
 class UploadValidationError(ValueError):
@@ -87,11 +90,132 @@ def _check_archive(content: bytes) -> None:
             raise UploadValidationError("不接受含 VBA 宏的文件")
         if any("xl/externallinks/" in item.filename.lower() for item in members):
             raise UploadValidationError("不接受含外部链接的 XLSX 文件，请提供静态工作簿")
-        content_types = archive.read("[Content_Types].xml").lower()
+        raw_content_types = archive.read("[Content_Types].xml")
+        content_types = raw_content_types.lower()
         if b"macroenabled" in content_types or b"vba" in content_types:
             raise UploadValidationError("不接受含宏的文件类型")
         if b"externallink" in content_types:
             raise UploadValidationError("不接受含外部链接的 XLSX 文件，请提供静态工作簿")
+
+        # openpyxl eagerly reads shared strings at load time. Validate the exact
+        # manifest-selected part first, including nonstandard part filenames.
+        manifest = Manifest.from_tree(fromstring(raw_content_types))
+        shared_strings = manifest.find(SHARED_STRINGS)
+        if shared_strings is not None:
+            with archive.open(shared_strings.PartName[1:]) as source:
+                _check_shared_strings(source)
+
+
+def _invalid_value_structure() -> None:
+    raise UploadValidationError(
+        "XLSX 单元格值结构重复、冲突或嵌套无效，请重新导出静态工作簿", "UPLOAD_CORRUPT"
+    )
+
+
+def _check_container_text(element) -> None:
+    # Only XML formatting whitespace may occur outside a scalar t/v/f value.
+    if (element.text and element.text.strip(" \t\r\n")) or any(
+        child.tail and child.tail.strip(" \t\r\n") for child in element
+    ):
+        _invalid_value_structure()
+
+
+def _clear_preserving_tail(element) -> None:
+    # The parent owns this tail. It can finish parsing after the child's end
+    # event, so preserve it for the parent's eventual mixed-content check.
+    tail = element.tail
+    element.clear()
+    element.tail = tail
+
+
+def _check_rich_text(element) -> bool:
+    """Validate value-bearing children without rejecting legal rich-text runs.
+
+    CT_Rst permits plain text followed by multiple runs. Phonetic annotations
+    are metadata, not additional business values, and must remain accepted.
+    """
+    containers = {
+        f"{_MAIN_NS}is": {"t", "r", "rPh", "phoneticPr"},
+        f"{_MAIN_NS}si": {"t", "r", "rPh", "phoneticPr"},
+        f"{_MAIN_NS}r": {"rPr", "t"},
+        f"{_MAIN_NS}rPh": {"t"},
+        f"{_MAIN_NS}t": set(),
+        f"{_MAIN_NS}phoneticPr": set(),
+    }
+    for node in element.iter():
+        if node.tag != f"{_MAIN_NS}t":
+            _check_container_text(node)
+        allowed = containers.get(node.tag)
+        if allowed is None:
+            # Font properties are not cell values. Still reject value-bearing
+            # structures smuggled inside formatting or an unknown wrapper.
+            if node is not element and node.tag in {
+                f"{_MAIN_NS}{tag}" for tag in ("c", "v", "is", "si", "f")
+            }:
+                _invalid_value_structure()
+            if any(child.tag in containers for child in node):
+                _invalid_value_structure()
+            continue
+        seen: set[str] = set()
+        for child in node:
+            if child.tag not in {f"{_MAIN_NS}{tag}" for tag in allowed}:
+                _invalid_value_structure()
+            if child.tag in seen and child.tag not in {f"{_MAIN_NS}r", f"{_MAIN_NS}rPh"}:
+                _invalid_value_structure()
+            seen.add(child.tag)
+    # Do not count rPh text: openpyxl intentionally omits phonetic annotations.
+    return any(child.text for child in element if child.tag == f"{_MAIN_NS}t") or any(
+        child.findtext(f"{_MAIN_NS}t") for child in element if child.tag == f"{_MAIN_NS}r"
+    )
+
+
+def _check_cell_value(element) -> None:
+    _check_container_text(element)
+    values = element.findall(f"{_MAIN_NS}v")
+    inline = element.findall(f"{_MAIN_NS}is")
+    if len(values) > 1 or len(inline) > 1:
+        _invalid_value_structure()
+    for child in element:
+        if child.tag not in {f"{_MAIN_NS}f", f"{_MAIN_NS}v", f"{_MAIN_NS}is", f"{_MAIN_NS}extLst"}:
+            _invalid_value_structure()
+    if values and len(values[0]):
+        _invalid_value_structure()
+    has_inline_value = bool(inline and _check_rich_text(inline[0]))
+    has_scalar_value = bool(values and values[0].text)
+    # Empty placeholders carry no lost business value and remain compatible.
+    if (has_scalar_value and element.get("t") == "inlineStr") or (
+        has_inline_value and element.get("t") != "inlineStr"
+    ):
+        _invalid_value_structure()
+
+
+def _check_shared_strings(source) -> None:
+    stack: list[str] = []
+    in_string = extension_seen = False
+    for event, element in iterparse(source, events=("start", "end")):
+        if event == "start":
+            if not stack and element.tag != f"{_MAIN_NS}sst":
+                _invalid_value_structure()
+            if len(stack) == 1:
+                if extension_seen or element.tag not in {f"{_MAIN_NS}si", f"{_MAIN_NS}extLst"}:
+                    _invalid_value_structure()
+                extension_seen = element.tag == f"{_MAIN_NS}extLst"
+            if element.tag == f"{_MAIN_NS}si":
+                if stack != [f"{_MAIN_NS}sst"]:
+                    _invalid_value_structure()
+                in_string = True
+            elif element.tag in {f"{_MAIN_NS}c", f"{_MAIN_NS}f"}:
+                _invalid_value_structure()
+            stack.append(element.tag)
+        else:
+            if element.tag == f"{_MAIN_NS}si":
+                _check_rich_text(element)
+                in_string = False
+            if len(stack) == 1:
+                _check_container_text(element)
+            if not in_string:
+                _clear_preserving_tail(element)
+            stack.pop()
 
 
 def _check_sheet_layout(sheet) -> None:
@@ -102,23 +226,53 @@ def _check_sheet_layout(sheet) -> None:
     """
     row_index = column_index = row_count = cell_count = 0
     depth = 0
-    row_depth = None
-    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    sheet_data_depth = row_depth = cell_depth = None
+    sheet_data_seen = has_formula = row_extension_seen = False
+    namespace = _MAIN_NS
     with sheet._get_source() as source:
         for event, element in iterparse(source, events=("start", "end")):
             if event == "end":
+                if depth == cell_depth:
+                    _check_cell_value(element)
+                    cell_depth = None
                 if depth == row_depth:
+                    _check_container_text(element)
                     row_depth = None
+                if depth == sheet_data_depth:
+                    _check_container_text(element)
+                    sheet_data_depth = None
                 depth -= 1
-                element.clear()
+                if cell_depth is None:
+                    _clear_preserving_tail(element)
                 continue
             depth += 1
+            if depth == 1 and element.tag != f"{namespace}worksheet":
+                _invalid_value_structure()
+            if element.tag == f"{namespace}sheetData":
+                if depth != 2 or sheet_data_seen:
+                    _invalid_value_structure()
+                sheet_data_seen = True
+                sheet_data_depth = depth
+            elif depth == 2 and element.tag.rsplit("}", 1)[-1] == "sheetData":
+                _invalid_value_structure()
+            if sheet_data_depth is not None and depth == sheet_data_depth + 1:
+                if element.tag != f"{namespace}row":
+                    _invalid_value_structure()
+            if element.tag == f"{namespace}f":
+                has_formula = True
+            if element.tag == f"{namespace}c" and (
+                cell_depth is not None or row_depth is None or depth != row_depth + 1
+            ):
+                _invalid_value_structure()
             if element.tag == f"{namespace}row":
                 if row_depth is not None:
                     raise UploadValidationError(
                         "XLSX 行结构无效：工作表行不能嵌套，请重新导出静态工作簿", "UPLOAD_CORRUPT"
                     )
+                if sheet_data_depth is None or depth != sheet_data_depth + 1:
+                    _invalid_value_structure()
                 row_depth = depth
+                row_extension_seen = False
                 row_count += 1
                 next_row_index = int(element.get("r", row_index + 1))
                 if next_row_index <= row_index:
@@ -158,6 +312,22 @@ def _check_sheet_layout(sheet) -> None:
                         f"XLSX 实际列位置超过上限（每张表最多 {MAX_WORKSHEET_COLUMNS} 列），"
                         "请删除多余空列并将数据移至表格左侧"
                     )
+                if row_extension_seen:
+                    _invalid_value_structure()
+                if element.tag == f"{namespace}extLst":
+                    # Keep the reader's coordinate/count effects bounded above.
+                    # A single coordinate-free extension may follow the cells.
+                    if element.get("r") is not None:
+                        _invalid_value_structure()
+                    row_extension_seen = True
+                    continue
+                if element.tag != f"{namespace}c":
+                    _invalid_value_structure()
+                cell_depth = depth
+    if not sheet_data_seen:
+        _invalid_value_structure()
+    if has_formula:
+        raise UploadValidationError("XLSX 含公式，请改为明确静态值")
 
 
 @contextmanager
@@ -179,6 +349,7 @@ def static_workbook(content: bytes):
             cells = 0
             for sheet in workbook.worksheets:
                 _check_sheet_layout(sheet)
+            for sheet in workbook.worksheets:
                 # Ignore untrusted worksheet dimensions, which can claim millions of empty rows.
                 sheet.reset_dimensions()
                 for row in sheet.iter_rows():
