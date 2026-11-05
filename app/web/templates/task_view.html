@@ -81,6 +81,10 @@
   <p>批准身份：服务端 demo-user。批准后请点击「提交生效」执行当前计划。</p>
   <button type="button" id="approve" {% if not view.approval.approvable %}disabled{% endif %}
     aria-describedby="approval-reason">批准当前计划</button>
+  {% if renewable %}
+  <button type="button" id="renew" aria-describedby="approval-reason">重新批准当前计划</button>
+  <p>上次批准已过期。请重新核对差量与下游影响后批准；不会自动提交。</p>
+  {% endif %}
   <button type="button" id="commit" {% if not approval_id or not view.approval.approvable %}disabled{% endif %}>提交生效</button>
   <p id="approval-reason">{{ view.approval.disabled_reason or "" }}</p>
   <p id="action-message" role="status" aria-live="polite">{% if approval_id %}已批准，可以提交生效。{% endif %}</p>

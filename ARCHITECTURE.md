@@ -365,7 +365,8 @@ CSV 使用 UTF-8 BOM；XLSX 字符串强制文本类型，数量列只接受有�
 `tests/conftest.py` 在 pytest_configure 中禁用 dotenv，清理测试 OOS_ 环境和设置缓存。
 live 客户端不回显上游原始正文/请求头，过滤可能回显密钥的结构化输出和错误字段。
 
-`OOS_LLM_BASE_URL` 只允许去尾斜杠后等于 https://api.openai.com/v1，
+对 `openai` provider，`OOS_LLM_BASE_URL` 只允许去尾斜杠后等于 https://api.openai.com/v1；
+`openai_compatible` 的地址规则见第 10 节及[模型提供方](docs/MODEL_PROVIDERS.md)。
 HTTP 客户端 trust_env=False、follow_redirects=False，避免环境代理和重定向转送凭据。
 `OOS_LIVE_ENABLED` 默认 false；`resolve_mode` 要求开启开关、
 `OOS_PRICE_IN_PER_MTOK`、`OOS_PRICE_OUT_PER_MTOK` 和密钥，否则保持 FIXTURE。
@@ -420,7 +421,7 @@ PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED、BASE_URL_IN
 - worker-once 需外部驱动，未提供常驻调度或浏览器实时事件推送。
 - 上传原件在临时目录，缺少生产存储、生命周期和清理方案。
 - fixture 精确匹配，静态表格仅支持明确列名布局；live 上下文仅包含限定合成主数据。
-- 页面提供任务投影，完整聊天入口、任务列表和批准提交交互仍未接齐。
+- 最小网页已有改单表单、最近任务列表、订单查看、手动 FIXTURE worker、批准与提交按钮。完整聊天、上传/澄清/取消的网页操作仍未接齐；TestClient 验证不能替代真实浏览器执行 JavaScript。
 - 锁定量/可用量/下游状态读取当前事实，不是完整历史快照。
 - live 不自动重试，崩溃保留预算预留；小样本评测不代表通用理解能力。
 - 存在跨层 import 和旧占位入口，生产扩展前需明确拆分和复核事务边界。

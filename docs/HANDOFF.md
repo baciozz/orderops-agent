@@ -1,0 +1,65 @@
+# 操作与故障交接
+
+## 这是什么
+
+这是本机合成数据的服装订单变更沙箱。模型只能提出建议；订单、库存、生产单和采购单由确定性内核检查，在人批准后一起提交，并回读核验。它不是生产 ERP，也不会替用户向供应商下单。
+
+固定基线与复验结果见 [TEST_REPORT](TEST_REPORT.md)。正式版本 tag、公开仓库、部署、接真实业务和新 live 调用不由本文授权。
+
+## 第一次启动与演示
+
+按 [README](../README.md#快速上手) 创建虚拟环境并安装锁定依赖，随后：
+
+```bash
+make init-db
+make seed
+make run
+```
+
+1. 打开 `http://127.0.0.1:8000/ui`，进入「提交改单」。
+2. 保留 SO-1001 和预填文字「SO-1001 把未发的 40 件黑色 M 改成白色 M」。
+3. 提交后触发 worker 一次。任务到 `AWAITING_APPROVAL` 时只生成计划，没有改订单。
+4. 检查黑色减 40、白色加 40、已发部分不动，以及下游单据的影响。
+5. 点击「批准当前计划」，再点「提交生效」。在全新 seed 中应看到 revision 2、核验 passed。
+6. 打开订单查看和下载结果，核对 Operation ID。不要把 T-STUB 当成执行结果。
+
+网页 worker 强制 FIXTURE；自由改写可能得到 FIXTURE_NOT_FOUND，不会悄悄调用付费模型。worker 一次处理全局队列中的一条任务，可能不是当前页面的任务；查看返回的任务 ID。
+重复 seed 不重置已有 SO-1001，演示后再次执行同一文字未必得到同样结果。需要重演时使用新副本/新数据库，保留旧库作为证据，不直接删除正在使用的库。
+
+## 正常状态与故障处理
+
+| 看到的状态 | 意味着什么 | 下一步 |
+| --- | --- | --- |
+| QUEUED | 已入队，还没规划 | 手动运行 worker；已接收不等于已修改 |
+| NEEDS_CLARIFICATION | 缺信息或存在冲突 | 通过现有 answers API 补充，遵循 [API](API.md)；网页完整回答入口尚未完成 |
+| AWAITING_APPROVAL | 草案待人工检查 | 核对来源、差量和下游后批准 |
+| STALE_INTENT / STALE_DEPENDENCY | 意图、库存或单据事实已变化 | 按当前事实重新规划并批准，不强行复用旧批准 |
+| EXPIRED | 批准已过有效期 | 刷新查看当前状态，按当前版本的批准接口重新确认；不要改数据库延长期限 |
+| committed_verification_pending | 业务已提交，但核验未完成 | 记录 Operation ID；只重试核验，不再次创建业务操作 |
+| FIXTURE_NOT_FOUND | 输入不在固定演示字典 | 使用明确的演示输入；这不是模型理解失败的测量 |
+
+提交超时或页面显示网络错误时，先查任务/Operation。若重放原提交请求，保留原幂等 key，不能换 key 盲重发。
+
+## 重启和恢复
+
+默认文件为 `data/oos.db`，SQLite WAL 运行期间还可能有 `-wal` / `-shm`。不要仅复制运行中的 db 文件并声称完成备份；本项目尚无已验证的备份恢复流程。
+停止 API 可在运行终端按 Ctrl+C。重启前升级 schema 使用 `make init-db`，再启动 API。
+
+```bash
+python -m app.cli worker-once
+python -m app.cli reconcile-budget
+```
+
+worker-once 调用 watchdog、处理一条规划任务并投递 outbox；pending 核验可在扫描中重试，仍不自动批准或再次提交业务。
+reconcile-budget 只将超时的预算预留标记为 ORPHANED，不释放可能已计费的预算。
+没有常驻调度器；无人调用这些入口时，任务和 pending 不会自己恢复。持续核验失败仍缺重试退避、上限与告警，见 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+
+## 后续接手顺序
+
+1. 集成任何补丁后重跑 `make check` 和离线评测，报告候选 SHA 与原始结果，不复用基线数字。
+2. 完成上传、澄清、取消的浏览器闭环，实际验证 JavaScript、刷新、重复点击与网络中断。
+3. 补有限核验重试与人工处理入口；不让恢复逻辑自动批准或重复业务写入。
+4. 在预算和数据授权范围内做独立 holdout 模型评测，业务人士核对合成案例。
+5. 之后再做行为不变的 kernel 拆分，保留事务边界和竞争测试。
+
+故障报告应包含版本、模式、复现输入（仅合成/允许分享的数据）、任务和 Operation ID、错误码、预期/实际状态、已尝试操作。不得粘贴密钥或真实客户信息。

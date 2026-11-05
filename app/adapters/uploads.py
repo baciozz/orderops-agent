@@ -11,6 +11,8 @@ from zlib import error as ZlibError
 
 import openpyxl
 from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import iterparse
+from openpyxl.utils.cell import coordinate_to_tuple
 from openpyxl.utils.exceptions import InvalidFileException
 
 from app.errors import AppError
@@ -24,6 +26,9 @@ MAX_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200
 MAX_ZIP_MEMBERS = 1000
 MAX_CELLS = 100_000
+MAX_SOURCE_SPANS = 10_000
+MAX_WORKSHEET_ROWS = 10_000
+MAX_WORKSHEET_COLUMNS = 256
 ALLOWED_SUFFIXES = frozenset({".txt", ".md", ".xlsx"})
 logger = logging.getLogger(__name__)
 
@@ -89,6 +94,72 @@ def _check_archive(content: bytes) -> None:
             raise UploadValidationError("不接受含外部链接的 XLSX 文件，请提供静态工作簿")
 
 
+def _check_sheet_layout(sheet) -> None:
+    """Bound actual coordinates before openpyxl expands sparse rows/cells.
+
+    Dimensions are untrusted and deliberately ignored. Use the pinned openpyxl
+    read-only source accessor so relationship targets cannot bypass this check.
+    """
+    row_index = column_index = row_count = cell_count = 0
+    depth = 0
+    row_depth = None
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    with sheet._get_source() as source:
+        for event, element in iterparse(source, events=("start", "end")):
+            if event == "end":
+                if depth == row_depth:
+                    row_depth = None
+                depth -= 1
+                element.clear()
+                continue
+            depth += 1
+            if element.tag == f"{namespace}row":
+                if row_depth is not None:
+                    raise UploadValidationError(
+                        "XLSX 行结构无效：工作表行不能嵌套，请重新导出静态工作簿", "UPLOAD_CORRUPT"
+                    )
+                row_depth = depth
+                row_count += 1
+                next_row_index = int(element.get("r", row_index + 1))
+                if next_row_index <= row_index:
+                    raise UploadValidationError(
+                        "XLSX 行位置重复或逆序，请重新导出静态工作簿", "UPLOAD_CORRUPT"
+                    )
+                row_index = next_row_index
+                column_index = cell_count = 0
+                if not 1 <= row_index <= MAX_WORKSHEET_ROWS or row_count > MAX_WORKSHEET_ROWS:
+                    raise UploadValidationError(
+                        f"XLSX 实际行位置超过上限（每张表最多 {MAX_WORKSHEET_ROWS} 行），"
+                        "请删除多余空行并将数据移至表格顶部"
+                    )
+            elif row_depth is not None and depth == row_depth + 1:
+                # openpyxl treats every direct row child as a cell, regardless of tag.
+                cell_count += 1
+                coordinate = element.get("r")
+                cell_row = row_index
+                next_column_index = column_index + 1
+                if coordinate:
+                    cell_row, next_column_index = coordinate_to_tuple(coordinate)
+                if not 1 <= cell_row <= MAX_WORKSHEET_ROWS:
+                    raise UploadValidationError("XLSX 单元格行位置超过上限")
+                if cell_row != row_index:
+                    raise UploadValidationError(
+                        "XLSX 单元格与所属行位置不一致，请重新导出静态工作簿", "UPLOAD_CORRUPT"
+                    )
+                if next_column_index <= column_index:
+                    raise UploadValidationError(
+                        "XLSX 单元格列位置重复或逆序，请重新导出静态工作簿", "UPLOAD_CORRUPT"
+                    )
+                column_index = next_column_index
+                if not 1 <= column_index <= MAX_WORKSHEET_COLUMNS or (
+                    cell_count > MAX_WORKSHEET_COLUMNS
+                ):
+                    raise UploadValidationError(
+                        f"XLSX 实际列位置超过上限（每张表最多 {MAX_WORKSHEET_COLUMNS} 列），"
+                        "请删除多余空列并将数据移至表格左侧"
+                    )
+
+
 @contextmanager
 def static_workbook(content: bytes):
     """Validate every sheet before returning any business rows; never read cached formulas."""
@@ -107,6 +178,7 @@ def static_workbook(content: bytes):
             nonempty_rows = 0
             cells = 0
             for sheet in workbook.worksheets:
+                _check_sheet_layout(sheet)
                 # Ignore untrusted worksheet dimensions, which can claim millions of empty rows.
                 sheet.reset_dimensions()
                 for row in sheet.iter_rows():

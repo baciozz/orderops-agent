@@ -21,6 +21,9 @@ from app.adapters.uploads import (
     MAX_NONEMPTY_ROWS,
     MAX_REQUEST_BYTES,
     MAX_SHEETS,
+    MAX_SOURCE_SPANS,
+    MAX_WORKSHEET_COLUMNS,
+    MAX_WORKSHEET_ROWS,
     UploadValidationError,
 )
 from app.api.errors import error_payload
@@ -38,6 +41,9 @@ LIMITS = {
     "max_files": MAX_FILES,
     "max_sheets": MAX_SHEETS,
     "max_nonempty_rows": MAX_NONEMPTY_ROWS,
+    "max_source_spans": MAX_SOURCE_SPANS,
+    "max_worksheet_rows": MAX_WORKSHEET_ROWS,
+    "max_worksheet_columns": MAX_WORKSHEET_COLUMNS,
 }
 
 

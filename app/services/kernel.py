@@ -304,8 +304,12 @@ def approve_plan(
                 )
             ).first()
             if active is not None and active.plan_hash == plan_hash:
-                enrich(approval_id=active.id)
-                return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
+                if _aware(active.expires_at) > moment:
+                    enrich(approval_id=active.id)
+                    return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
+                # Renewal is an explicit approval action, not an extension of the
+                # old authorization. Preserve its history and issue a fresh ID.
+                active.status = ApprovalStatus.EXPIRED
             approval = Approval(
                 id=_id("AP"),
                 plan_id=plan.id,
@@ -862,13 +866,9 @@ def _commit_locked(
             return None, AppError("订单版本已变化", code="STALE_DEPENDENCY", http_status=409)
         base_lines = _load_lines(session, order.id)
         customer_id = order.customer_id
-        current_docs = _doc_fingerprint_loaded(_load_documents(session, order.id))
-        for doc_id, expected in (plan.expected_doc_revisions or {}).items():
-            if expected.get("exists") is False:
-                current_docs[doc_id] = {
-                    "doc_type": "purchase_order",
-                    "exists": session.get(PurchaseOrder, doc_id) is not None,
-                }
+        current_docs = current_doc_fingerprint(
+            session, order.id, dict(plan.expected_doc_revisions or {})
+        )
         if _stable(current_docs) != _stable(dict(plan.expected_doc_revisions or {})):
             _revoke_if_active(approval)
             return None, AppError(
@@ -2068,6 +2068,20 @@ def _doc_fingerprint(
         if verdict["before"] is None:
             found[str(verdict["doc_id"])] = {"doc_type": "purchase_order", "exists": False}
     return found
+
+
+def current_doc_fingerprint(
+    session: Session, order_id: str, expected_docs: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Include planned absent purchase IDs in both preview and commit checks."""
+    current = _doc_fingerprint_loaded(_load_documents(session, order_id))
+    for doc_id, expected in expected_docs.items():
+        if expected.get("exists") is False:
+            current[doc_id] = {
+                "doc_type": "purchase_order",
+                "exists": session.get(PurchaseOrder, doc_id) is not None,
+            }
+    return current
 
 
 def _doc_fingerprint_loaded(

@@ -2,7 +2,7 @@
 
 OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分派解析、库存、单据核对子 Agent，人工审批后执行并核验。
 
-**状态：v1.0.0 候选（1.0.0rc1）。Stage 1–4 已合入 main，Stage 5 冻结/交接 PR 已提出，等待 Qi 批准；尚未打正式 tag。**
+**状态：v1.0.0 候选（1.0.0rc1）。阶段交接与后续改进已合入 main；尚未正式发布或打正式 tag，发布须等 Qi 批准。**
 
 已接通持久 inbox、worker、子 Agent 调度、预检、人工批准、原子提交、回读核验与 pending 核验重试，并支持静态文件上传、数据库任务视图及导出。默认 FIXTURE，可显式启用受预算限制的模型解析。
 
@@ -139,7 +139,7 @@ make check       # lint + typecheck + cov；覆盖率门槛 90%
 python scripts/eval_offline.py
 ```
 
-2026-11-06 本分支已验证（FIXTURE，无 live）：`make check` 全绿，ruff clean，mypy **62** 个源文件无问题，pytest **912 passed**，覆盖率 **95.06%**（TOTAL **4777** stmts，**236** miss；`fail_under=90`）。
+2026-11-05 UTC 对固定 main `20836d7bcc90471bb2b3beb9057f11a1349f09e9` 完成独立复验（FIXTURE，无 live）：`make check` 全绿，ruff clean，mypy **64** 个源文件无问题，pytest **922 passed**，覆盖率 **95.13%**（TOTAL **4868** stmts，**237** miss；`fail_under=90`）。这是该 SHA 的结果，不自动覆盖后续补丁；环境、原始日志与未验证项见 [TEST_REPORT](docs/TEST_REPORT.md)。
 
 离线评测 **53/53**：兜底能力 safeguards **23/23**（invalid_qty 8、unknown_order 7、injection 8）；管道回归 pipeline regression **30/30**（alias 9、ambiguous_wording 9、multi_line_change 8、golden 4：含 pending 重试与幂等重放）。它测的是给定 fixture 答案后的管道与内核，不测模型理解，范围见 [OFFLINE_EVAL](docs/OFFLINE_EVAL.md)。56 个 B/R 用例均已接入真实测试，当前没有占位跳过。
 
@@ -182,6 +182,9 @@ make seed
 ## 文档
 
 - [CHANGELOG / 版本交接](CHANGELOG.md)
+- [固定基线测试报告](docs/TEST_REPORT.md)
+- [操作与故障交接](docs/HANDOFF.md)
+- [学习导读与练习](docs/LEARNING_GUIDE.md)
 - [方案 v1.0](docs/PLAN_v1.0_dot.md) 与 [修订 v1.1](docs/PLAN_REVISION.md)（原文）
 - [完整架构](ARCHITECTURE.md)与[架构决策记录](docs/ARCHITECTURE.md)
 - [接口契约](docs/API.md)

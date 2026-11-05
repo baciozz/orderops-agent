@@ -10,15 +10,15 @@ Stage 5 冻结交接（v1.0.0 候选，1.0.0rc1）：Stage 1–4 已合入 main�
 - R14 已接入 worker 的 `source_ids`：只读取当前任务关联的静态 spans，精确 fixture 聊天与匹配表格行数量不同时，保存 conflicts、questions 和聊天/单元格双来源，返回 NEEDS_CLARIFICATION，不创建计划、批准或提交。JSON 和 HTML 可展开来源并显示问题；抽取结果保存在当前事件的 InputPayload 中，原 text/source_ids 保留。
 - 数量比较只支持第 1 行为明确列名的 XLSX：改单为 `订单号 / 原SKU / 目标SKU / 数量`，新建为 `客户 / SKU / 数量`；数量为非负整数。不匹配行、不支持的布局或无效数量先澄清。FIXTURE 仍精确匹配；可选 live 可解析自然语言和中文颜色/尺码别名，但真实模型质量尚未验证。live 上下文只加载 allowlist 内合成 SKU、客户和范围内的开放订单；不支持真实业务主数据。上传内容视为数据，通用表格布局仍不支持；未显式选择的上传不参与比较。R10 仍验证上传无副作用及越权文本在 fixture worker 中被拒绝。
 - 最小黄金链由 `test_fixture_golden_chain_upload_chat_precheck_approve_commit_export` 覆盖：`POST /inputs` 发送 `先上传订单表，再核对聊天数量` → worker 等待上传 → `POST /sources` → 同任务 `POST /tasks/{id}/answers` 带完整 fixture 文本和 source_ids → worker 预检 → 批准/提交 → 带来源的任务视图和下载。它是受控 API/fixture 演示。
-- DB 任务视图已有调度、差量、下游、来源、批准过期置灰和 CSV/XLSX 下载，任务卡和下载清单按任务账本标注 FIXTURE/LIVE。完整聊天入口、任务列表、澄清/批准按钮的浏览器提交交互和独立审计报告留待下一波；当前批准按钮只展示可批准状态，操作仍用已有业务 API。T-STUB 保留为演示桩。
+- DB 任务视图已有调度、差量、下游、来源、批准过期置灰和 CSV/XLSX 下载，任务卡和下载清单按任务账本标注 FIXTURE/LIVE。最小网页已接通改单表单、最近任务列表、订单查看、手动 FIXTURE worker、批准与提交按钮；按钮调用已有业务 API。完整聊天、上传/澄清/取消的网页操作和独立审计报告仍待补齐，真实浏览器 JavaScript 交互尚未在固定基线复验中验证。T-STUB 保留为演示桩。
 - 对照的旧/新数量取计划基础版本和已提交版本；锁定量、可用量及下游状态来自当前业务事实，不是完整历史快照。计划因当前业务条件不可计算时不生成猜测差量。
-- live HTTP 传输已实现，仅支持官方 OpenAI Responses API，默认关闭；预算熔断和缺单价/密钥保持 FIXTURE 延续 R22/R23。`scripts/live_smoke.py` 是操作者手动运行的临时合成库评估，真实 live 结果见 `docs/LIVE_EVAL.md`（2026-11-03，gpt-6-luna，两次合计 $0.003645）。单次 smoke 上限 1 美元，普通 live 硬上限 5 美元。CI 永远只用 fixture / MockTransport。
+- live HTTP 传输已实现，支持官方 OpenAI Responses API 和兼容 Chat Completions 的 provider；兼容 provider 仅做 mock 测试，未真实联调。live 默认关闭；预算熔断和缺单价/密钥保持 FIXTURE 延续 R22/R23。`scripts/live_smoke.py` 是操作者手动运行的临时合成库评估，真实 live 结果见 `docs/LIVE_EVAL.md`（2026-11-03，gpt-6-luna，两次合计 $0.003645）。单次 smoke 上限 1 美元，普通 live 硬上限 5 美元。CI 永远只用 fixture / MockTransport。
 - live 预算和每任务调用次数在同一个 SQLite 写事务中预留，响应后在原用量行结算；进程崩溃、超时、连接失败或成功响应缺有效用量时保留悲观估算。提供方报告的实际用量即使超过估算也照实记录。HTTP 错误仍占调用次数，无用量时费用/token 为零，任务卡仍标注 LIVE。429/5xx/超时/连接错误不会自动重试，须重新提交新任务。测试从收集阶段起禁用 dotenv，生产 `.env` 加载不变。
 - LIVE 的 `replace_remaining` 若模型返回 `qty: null` 且没有明确的 `only_uncut` 选择，返回 NEEDS_CLARIFICATION，询问总件数或是否只改未开裁；不会把“全部”自行解释为未执行量。精确 FIXTURE `TEXT_ALL_NAVY` 提供 300 件，仍走已裁剪锁定的 B19 澄清。离线顺序回放确认：原 STALE_ATTEMPT 是缺数量导致内核先持久化 FAILED/BUSINESS_CONFLICT、清理阶段再次校验 RUNNING fence 后掩盖原错误；不是同链等待任务、超时或 usage 独立事务导致。清理对已结束任务只读返回，实际写入仍校验完整 fence。
 - 结构化日志（见 `docs/OBSERVABILITY.md`）中批准、提交、outbox 事件不带 `mode`，因为 Task 表未持久化 mode；需要时用 `task_id` 关联同任务的 dispatch 事件获取。lease、recovery、watchdog、pending 核验重试已接入结构化事件，并提供进程内 `/metrics` JSON counter；计数不持久化、不跨 API/CLI 进程聚合，重启归零。
 - ORM relationship、生产认证、CSRF、多用户。Alembic 初始迁移已经接入。
 - Qi 已确认支持按变更后 MO 计划量生成补购草稿：同一 MO、同一面料的有效 PO 全部 `RECEIVED` 且总采购量不足时，已收货 PO 只重链、永不重写数量或内容修订，缺口生成 `before=None` 的 `CHANGE_DRAFT`（`PLACED`、到料 0、`PENDING_SUPPLIER`），沿用供应商和 MO，服装 SKU 跟随新订单行。补单 ID 为按 ID 排序的首张有效已收货 PO 的 `{received_po_id}-S{n}`，从 1 起取最小空闲后缀，取消单和未链接现存单也占用 ID。已有补单计入覆盖，重复规划/提交不重复补购；批准后 ID 被占用则以现有单据过期错误拒绝，不覆盖。多个 PO 按 `(MO, 面料)` 汇总，减量优先调整未到料补单；低于已到料总量、取消已到料采购或更换已到料面料仍拒绝。草稿不代表已向供应商实际下单。未取消且未开裁（`cut_qty == 0` / `NOT_STARTED`）的 MO 可扩大 `planned_qty`，吸收同 SKU 的全部剩余订单需求；部分或全部开裁的 MO 仍不得超过原 `planned_qty`。分配后若仍有剩余需求、没有可扩容的同 SKU MO，保留「P0 不支持为剩余数量追加生产单」，不新建 MO。常见的未开裁 MO 计划量等于订单量时，同 SKU 订单增量会扩容 MO，并在同面料有效 PO 全部已收货且采购不足时生成补购草稿。
-- Stage 5 交接集中在 [README 快速上手](../README.md#快速上手)与 [CHANGELOG](../CHANGELOG.md)；本候选不产出 `docs/TEST_REPORT.md`、`HANDOFF.md`、`LEARNING_GUIDE.md`，三份独立文档延期。测试清单继续使用 `docs/TEST_CHECKLIST.md`。
+- 固定基线复验见 [TEST_REPORT](TEST_REPORT.md)，操作与故障交接见 [HANDOFF](HANDOFF.md)，项目导读和练习见 [LEARNING_GUIDE](LEARNING_GUIDE.md)。这些文档不代表新增功能、正式发布或真实业务验收。测试清单继续使用 `docs/TEST_CHECKLIST.md`。
 
 禁止用途：连接真实客户、ERP、支付、采购或发货；把 fixture 成功说成模型理解；在单价未知时打开 live；把 `T-STUB` 当成业务结果。
 

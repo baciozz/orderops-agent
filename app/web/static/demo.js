@@ -23,7 +23,7 @@ function showMessage(element, text, failed = false) {
 
 const actions = document.getElementById("plan-actions");
 if (actions) {
-  const approve = document.getElementById("approve");
+  const approve = document.getElementById("renew") || document.getElementById("approve");
   const commit = document.getElementById("commit");
   const message = document.getElementById("action-message");
   const data = actions.dataset;
@@ -31,6 +31,7 @@ if (actions) {
   const planURL = `/plans/${encodeURIComponent(data.planId)}`;
 
   approve.addEventListener("click", async () => {
+    const couldCommit = !commit.disabled;
     approve.disabled = true;
     commit.disabled = true;
     showMessage(message, "正在批准…");
@@ -45,7 +46,7 @@ if (actions) {
       window.location.reload();
     } catch (error) {
       approve.disabled = false;
-      commit.disabled = !approvalId;
+      commit.disabled = !couldCommit;
       showMessage(message, error.message, true);
     }
   });

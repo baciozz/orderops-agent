@@ -88,6 +88,7 @@ def task_view(task_id: str, request: Request) -> TaskView:
 def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     view = _view(task_id, request)
     plan_id = approval_id = None
+    renewable = False
     if view.approval.plan_hash:
         with request.app.state.session_factory() as session:
             plan = session.scalar(
@@ -98,6 +99,12 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             )
             if plan:
                 plan_id = plan.id
+                # EXPIRED is projected only after the ordinary task and
+                # dependency checks. A plan expiry itself cannot be renewed.
+                renewable = (
+                    plan.status in {"VALIDATED", "APPROVED"}
+                    and view.approval.disabled_reason == "EXPIRED"
+                )
                 approval = session.scalar(
                     select(Approval)
                     .where(Approval.plan_id == plan.id)
@@ -112,6 +119,7 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "view": view.model_dump(mode="json"),
             "plan_id": plan_id,
             "approval_id": approval_id,
+            "renewable": renewable,
         },
     )
 
