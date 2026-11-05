@@ -24,6 +24,40 @@ def assess_downstream(
     usage: dict[str, tuple[str, int]],
     reserved_purchase_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
+    """Prefer split preservation, falling back to supported legacy allocations.
+
+    Both attempts are pure previews. A failed preservation attempt must not
+    reject an existing safe partial-tail reduction or consume a recolor host.
+    """
+    result = _assess_downstream(
+        new_lines=new_lines,
+        production=production,
+        purchase=purchase,
+        usage=usage,
+        reserved_purchase_ids=reserved_purchase_ids,
+        preserve_reductions=True,
+    )
+    if result[1] is None:
+        return result
+    return _assess_downstream(
+        new_lines=new_lines,
+        production=production,
+        purchase=purchase,
+        usage=usage,
+        reserved_purchase_ids=reserved_purchase_ids,
+        preserve_reductions=False,
+    )
+
+
+def _assess_downstream(
+    *,
+    new_lines: dict[str, SnapLine],
+    production: list[dict[str, Any]],
+    purchase: list[dict[str, Any]],
+    usage: dict[str, tuple[str, int]],
+    reserved_purchase_ids: set[str] | None,
+    preserve_reductions: bool,
+) -> tuple[list[dict[str, Any]], str | None]:
     """Return verdicts, or an error message when the change cannot be covered."""
     demand = {
         sku: line.ordered_qty
@@ -48,6 +82,24 @@ def assess_downstream(
         for sku, qty in totals.items()
         if qty > 0 and (demand.get(sku) == qty or (demand.get(sku, 0) > qty and sku in hosts))
     }
+    reductions: dict[str, int] = {}
+    # Only net quantity reductions of split SKUs use allocation preservation.
+    # Pure recolors and legacy single/partial-only MO handling remain unchanged.
+    if preserve_reductions and sum(demand.values()) < sum(totals.values()):
+        for sku, total in sorted(totals.items()):
+            rows = [row for row in active if str(row["sku_id"]) == sku]
+            if not (len(rows) > 1 and sku in hosts and 0 < demand.get(sku, 0) < total):
+                continue
+            excess = total - demand[sku]
+            for row in sorted(rows, key=lambda item: str(item["doc_id"])):
+                planned = int(row["planned_qty"])
+                floor = _reduction_floor(row, purchase, usage.get(sku))
+                removed = min(excess, planned - floor)
+                reductions[str(row["doc_id"])] = planned - removed
+                excess -= removed
+            if excess:
+                return [], "未裁剪生产单的可减数量不足，不能改动已执行或已到料分配"
+            preserved.add(sku)
     verdicts: list[dict[str, Any]] = []
     assigned: dict[str, str] = {}
     for row in sorted(active, key=lambda item: str(item["doc_id"])):
@@ -55,7 +107,10 @@ def assess_downstream(
         if sku not in preserved:
             continue
         growth = demand[sku] - totals[sku]
-        if growth and doc_id == hosts[sku]:
+        if doc_id in reductions and reductions[doc_id] != int(row["planned_qty"]):
+            qty = reductions[doc_id]
+            verdicts.append(_change_mo(row, sku, qty, "NOT_STARTED") if qty else _cancel_mo(row))
+        elif growth > 0 and doc_id == hosts[sku]:
             verdicts.append(_change_mo(row, sku, int(row["planned_qty"]) + growth, "NOT_STARTED"))
         else:
             verdicts.append(_unchanged_mo(row))
@@ -154,11 +209,45 @@ def assess_downstream(
             return [], f"{new_sku} 没有面料单耗"
         material_id, per_piece = material
         new_qty = int(mo["after"]["planned_qty"]) * per_piece
-        po_verdicts, error = _assess_purchases(rows, mo, new_sku, material_id, new_qty, occupied)
+        po_verdicts, error = _assess_purchases(
+            rows,
+            mo,
+            new_sku,
+            material_id,
+            new_qty,
+            occupied,
+            preserve_unchanged=mo_id in reductions,
+        )
         if error:
             return [], error
         verdicts.extend(po_verdicts)
     return verdicts, None
+
+
+def _reduction_floor(
+    mo: dict[str, Any],
+    purchase: list[dict[str, Any]],
+    material: tuple[str, int] | None,
+) -> int:
+    """Whole-piece floor without changing executed work or adding supplier demand."""
+    planned = int(mo["planned_qty"])
+    if int(mo["cut_qty"]) or material is None or material[1] <= 0:
+        return planned
+    rows = [
+        row
+        for row in purchase
+        if row["status"] != "CANCELLED" and row["production_order_id"] == mo["doc_id"]
+    ]
+    if any(row["material_id"] != material[0] for row in rows):
+        return planned
+    # Incomplete material coverage must not turn a reduction into new purchasing.
+    if rows and sum(int(row["ordered_qty"]) for row in rows) < planned * material[1]:
+        return planned
+    locked = sum(
+        int(row["ordered_qty"]) if row["status"] == "RECEIVED" else int(row["received_qty"])
+        for row in rows
+    )
+    return min(planned, (locked + material[1] - 1) // material[1])
 
 
 def _assess_purchases(
@@ -168,6 +257,8 @@ def _assess_purchases(
     material_id: str,
     needed: int,
     occupied: set[str],
+    *,
+    preserve_unchanged: bool = False,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Allocate one MO's fabric need once, preserving every fully received PO."""
     for row in rows:
@@ -211,7 +302,7 @@ def _assess_purchases(
         elif (
             material_id == row["material_id"]
             and qty == int(row["ordered_qty"])
-            and mo["verdict"] == UNAFFECTED
+            and (mo["verdict"] == UNAFFECTED or preserve_unchanged)
         ):
             verdicts.append(_unchanged_po(row, sku))
         else:

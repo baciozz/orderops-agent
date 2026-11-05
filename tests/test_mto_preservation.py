@@ -399,3 +399,392 @@ def test_growth_allocation_is_deterministic_and_does_not_expand_cut_hosts():
         )
         assert verdicts == [] and error == "P0 不支持为剩余数量追加生产单"
     assert assess(rows, {"same": 271, "new": 1})[1] is not None
+
+
+@pytest.mark.parametrize("receipts", [(0, 0), (0, 180), (40, 180), (180, 40), (180, 180)])
+def test_split_growth_reversal_preserves_other_allocations(split, receipts):
+    factory, request = split
+    with factory.begin() as session:
+        for doc_id, received in zip(["PUR-3002", "PUR-3003"], receipts, strict=True):
+            po = session.get(PurchaseOrder, doc_id)
+            po.received_qty = received
+            po.status = (
+                "RECEIVED" if received == 180 else "PARTIALLY_RECEIVED" if received else "PLACED"
+            )
+            rev = session.scalar(select(DocRevision).where(DocRevision.doc_id == doc_id))
+            rev.snapshot_json = {**rev.snapshot_json, "received_qty": received, "status": po.status}
+    growth = plan(request, [{"mode": "increment", "sku_id": "C-BLACK-L", "qty": 1}])
+    assert growth.status == "VALIDATED"
+    execute(request, growth)
+    models = [ProductionOrder, PurchaseOrder, DocRevision, DownstreamLink]
+    before = snapshot(factory, models)
+    preview = create_plan(
+        PlanChangeRequest.model_validate(
+            dict(
+                order_id="SO-1001",
+                base_revision=2,
+                intent_revision=2,
+                client_event_key="split-reverse",
+                changes=[
+                    {"mode": "set_total", "sku_id": "C-BLACK-L", "qty": 300},
+                    {
+                        "mode": "replace_remaining",
+                        "from_sku": "A-BLACK-M",
+                        "to_sku": "A-WHITE-M",
+                        "qty": 1,
+                    },
+                ],
+            )
+        ),
+        request,
+    )
+    assert preview.status == "VALIDATED" and preview.requires_human_approval
+    assert snapshot(factory, models) == before
+    with factory() as session:
+        verdicts = session.get(Plan, preview.plan_id).normalized_changes["downstream"]
+    changed = {v["doc_id"] for v in verdicts if v["verdict"] != "UNAFFECTED_RELINK"}
+    assert changed == {"MO-2002", "PUR-3002-S1" if receipts[0] == 180 else "PUR-3002"}
+    approval = approve(
+        preview.plan_id,
+        ApproveRequest(
+            plan_hash=preview.plan_hash,
+            expected_intent_revision=preview.intent_revision,
+        ),
+        request,
+    )
+    assert snapshot(factory, models) == before
+    cr = CommitRequest(
+        plan_hash=preview.plan_hash,
+        approval_id=approval.approval_id,
+        idempotency_key="reverse-commit",
+    )
+    result = commit(preview.plan_id, cr, request)
+    assert result.revision == 3
+    after = snapshot(factory, models)
+    assert commit(preview.plan_id, cr, request).model_dump() == result.model_dump()
+    assert snapshot(factory, models) == after
+    for table in ["production_order", "purchase_order"]:
+        for row in before[table]:
+            if row.id not in changed:
+                assert row in after[table]
+    for row in before["doc_revision"]:
+        assert row in after["doc_revision"]
+    with factory() as session:
+        assert [
+            session.get(ProductionOrder, i).planned_qty for i in ["MO-2001", "MO-2002", "MO-2003"]
+        ] == [120, 90, 90]
+        assert consistency_problems(session) + downstream_problems(session) == []
+
+
+def reduction_po(doc_id, mo_id, ordered=180, received=0, material="fabric"):
+    return dict(
+        doc_id=doc_id,
+        production_order_id=mo_id,
+        supplier_id="supplier",
+        material_id=material,
+        ordered_qty=ordered,
+        received_qty=received,
+        status="RECEIVED"
+        if received == ordered
+        else "PARTIALLY_RECEIVED"
+        if received
+        else "PLACED",
+        change_state="NONE",
+    )
+
+
+def test_split_reduction_receipt_floors_skip_hosts_and_span_allocations():
+    rows = [mo("a", "same", 120, 20, "PARTIALLY_CUT"), mo("b", "same", 90), mo("c", "same", 90)]
+    purchase = [reduction_po("pb", "b", received=179), reduction_po("pc", "c", received=41)]
+    # b's 179 material units require all 90 whole pieces. c can fall to ceil(41/2)=21.
+    verdicts, error = assess(rows, {"same": 231}, purchase, {"same": ("fabric", 2)})
+    assert error is None
+    by = {v["doc_id"]: v for v in verdicts}
+    assert by["a"]["verdict"] == by["b"]["verdict"] == by["pb"]["verdict"] == "UNAFFECTED_RELINK"
+    assert by["c"]["after"]["planned_qty"] == 21
+    assert by["pc"]["after"]["ordered_qty"] == 42
+    assert assess(rows, {"same": 230}, purchase, {"same": ("fabric", 2)})[1]
+    purchase[0] = reduction_po("pb", "b", received=40)
+    verdicts, error = assess(rows, {"same": 161}, purchase, {"same": ("fabric", 2)})
+    assert error is None
+    assert [v["after"]["planned_qty"] for v in verdicts[:3]] == [120, 20, 21]
+
+
+def test_split_reduction_mixed_recolor_permutations_and_legacy_controls():
+    from itertools import permutations
+
+    rows = [mo("a", "same", 90, 20, "PARTIALLY_CUT"), mo("b", "same", 90), mo("c", "old", 40)]
+    purchase = [reduction_po("pa", "a"), reduction_po("pb", "b", received=40)]
+    usage = {"same": ("fabric", 2)}
+    expected = assess(rows, {"same": 179, "new": 40}, purchase, usage)
+    assert expected[1] is None
+    for perm in permutations(rows):
+        for po_perm in permutations(purchase):
+            assert assess(list(perm), {"same": 179, "new": 40}, list(po_perm), usage) == expected
+    by = {v["doc_id"]: v for v in expected[0]}
+    assert by["a"]["verdict"] == "UNAFFECTED_RELINK"
+    assert by["b"]["after"]["planned_qty"] == 89
+    assert by["c"]["after"]["sku_id"] == "new"
+    # Single-MO and partial-only reductions keep the existing supported semantics.
+    for control in [
+        [mo("a", "same", 90, 20, "PARTIALLY_CUT")],
+        [mo("a", "same", 45, 10, "PARTIALLY_CUT"), mo("b", "same", 45, 10, "PARTIALLY_CUT")],
+    ]:
+        verdicts, error = assess(control, {"same": 80})
+        assert error is None
+        assert sum(v["after"]["planned_qty"] for v in verdicts) == 80
+
+
+def test_split_reduction_supplement_and_unsafe_material_controls():
+    rows = [mo("a", "same", 91), mo("b", "same", 90)]
+    purchase = [
+        reduction_po("pa", "a", received=40),
+        reduction_po("pa-S1", "a", 2),
+        reduction_po("pb", "b", received=180),
+    ]
+    verdicts, error = assess(rows, {"same": 180}, purchase, {"same": ("fabric", 2)})
+    assert error is None
+    by = {v["doc_id"]: v for v in verdicts}
+    assert by["pa"]["verdict"] == "UNAFFECTED_RELINK"
+    assert by["pa-S1"]["verdict"] == "CANCEL_DRAFT"
+    assert all(v["before"] is not None for v in verdicts)
+    assert assess(rows, {"same": 180}, purchase)[1]
+    purchase[0]["material_id"] = "wrong"
+    assert assess(rows, {"same": 180}, purchase, {"same": ("fabric", 2)})[1]
+    purchase[0]["material_id"] = "fabric"
+    purchase[1]["received_qty"] = 2
+    purchase[1]["status"] = "RECEIVED"
+    assert assess(rows, {"same": 180}, purchase, {"same": ("fabric", 2)})[1] is None
+    purchase[0]["received_qty"] = 180
+    purchase[0]["status"] = "RECEIVED"
+    assert assess(rows, {"same": 180}, purchase, {"same": ("fabric", 2)})[1]
+
+
+@pytest.mark.parametrize("blocked", [False, True])
+def test_split_reduction_selects_feasible_host_or_requests_clarification(split, blocked):
+    factory, request = split
+    with factory.begin() as session:
+        for doc_id, received in [("PUR-3002", 180), ("PUR-3003", 180 if blocked else 41)]:
+            po = session.get(PurchaseOrder, doc_id)
+            po.received_qty = received
+            po.status = "RECEIVED" if received == 180 else "PARTIALLY_RECEIVED"
+            rev = session.scalar(select(DocRevision).where(DocRevision.doc_id == doc_id))
+            rev.snapshot_json = {**rev.snapshot_json, "received_qty": received, "status": po.status}
+    models = [ProductionOrder, PurchaseOrder, DocRevision, DownstreamLink]
+    before = snapshot(factory, models)
+    preview = plan(request, [{"mode": "set_total", "sku_id": "C-BLACK-L", "qty": 299}])
+    assert snapshot(factory, models) == before
+    if blocked:
+        assert preview.status == "NEEDS_CLARIFICATION"
+        return
+    assert preview.status == "VALIDATED"
+    with factory() as session:
+        verdicts = session.get(Plan, preview.plan_id).normalized_changes["downstream"]
+    assert {v["doc_id"] for v in verdicts if v["verdict"] != "UNAFFECTED_RELINK"} == {
+        "MO-2003",
+        "PUR-3003",
+    }
+    execute(request, preview)
+    with factory() as session:
+        assert session.get(ProductionOrder, "MO-2003").planned_qty == 89
+        assert session.get(PurchaseOrder, "PUR-3003").ordered_qty == 178
+        assert consistency_problems(session) + downstream_problems(session) == []
+
+
+def test_split_reduction_cancels_only_excess_zero_cut_allocations():
+    rows = [
+        mo("a", "same", 120, 20, "PARTIALLY_CUT"),
+        mo("b", "same", 90),
+        mo("c", "same", 90),
+        mo("0", "same", 90, status="CANCELLED"),
+    ]
+    purchase = [reduction_po("pb", "b"), reduction_po("pc", "c")]
+    verdicts, error = assess(rows, {"same": 120}, purchase, {"same": ("fabric", 2)})
+    assert error is None
+    assert verdicts[0]["verdict"] == "UNAFFECTED_RELINK"
+    assert {v["doc_id"] for v in verdicts if v["verdict"] == "CANCEL_DRAFT"} == {
+        "b",
+        "c",
+        "pb",
+        "pc",
+    }
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_split_reduction_falls_back_for_supported_partial_tail_and_recolor(split, partial):
+    factory, request = split
+    if partial:
+        with factory.begin() as session:
+            mo = session.get(ProductionOrder, "MO-2001")
+            mo.cut_qty, mo.status = 20, "PARTIALLY_CUT"
+            po = session.get(PurchaseOrder, "PUR-3001")
+            po.received_qty, po.status = 0, "PLACED"
+            for doc_id, updates in [
+                (mo.id, {"cut_qty": 20, "status": "PARTIALLY_CUT"}),
+                (po.id, {"received_qty": 0, "status": "PLACED"}),
+            ]:
+                rev = session.scalar(select(DocRevision).where(DocRevision.doc_id == doc_id))
+                rev.snapshot_json = {**rev.snapshot_json, **updates}
+    models = [ProductionOrder, PurchaseOrder, DocRevision, DownstreamLink]
+    before = snapshot(factory, models)
+    changes = [{"mode": "set_total", "sku_id": "C-BLACK-L", "qty": 100 if partial else 290}]
+    if not partial:
+        changes.append(
+            {"mode": "replace_remaining", "from_sku": "C-BLACK-L", "to_sku": "C-NAVY-L", "qty": 80}
+        )
+    preview = plan(request, changes)
+    assert preview.status == "VALIDATED" and preview.requires_human_approval
+    assert snapshot(factory, models) == before
+    approval = approve(
+        preview.plan_id,
+        ApproveRequest(
+            plan_hash=preview.plan_hash,
+            expected_intent_revision=preview.intent_revision,
+        ),
+        request,
+    )
+    assert snapshot(factory, models) == before
+    cr = CommitRequest(
+        plan_hash=preview.plan_hash,
+        approval_id=approval.approval_id,
+        idempotency_key="fallback-commit",
+    )
+    result = commit(preview.plan_id, cr, request)
+    assert result.revision == 2
+    after = snapshot(factory, models)
+    assert commit(preview.plan_id, cr, request).model_dump() == result.model_dump()
+    assert snapshot(factory, models) == after
+    assert all(row in after["doc_revision"] for row in before["doc_revision"])
+    with factory() as session:
+        rows = [session.get(ProductionOrder, i) for i in ["MO-2001", "MO-2002", "MO-2003"]]
+        if partial:
+            assert [(r.planned_qty, r.cut_qty, r.status) for r in rows] == [
+                (100, 20, "PARTIALLY_CUT"),
+                (0, 0, "CANCELLED"),
+                (0, 0, "CANCELLED"),
+            ]
+        else:
+            assert [(r.sku_id, r.planned_qty) for r in rows] == [
+                ("C-BLACK-L", 120),
+                ("C-BLACK-L", 90),
+                ("C-NAVY-L", 80),
+            ]
+        assert consistency_problems(session) + downstream_problems(session) == []
+
+
+def test_split_two_row_partial_tail_reduction_stays_supported():
+    verdicts, error = assess(
+        [mo("a", "same", 120, 20, "PARTIALLY_CUT"), mo("b", "same", 90)],
+        {"same": 100},
+        usage={"same": ("fabric", 2)},
+    )
+    assert error is None
+    assert [(v["after"]["planned_qty"], v["verdict"]) for v in verdicts] == [
+        (100, "CHANGE_DRAFT"),
+        (0, "CANCEL_DRAFT"),
+    ]
+
+
+def test_split_fallback_keeps_hash_and_stale_dependency_fences(split):
+    from app.errors import AppError
+
+    factory, request = split
+    preview = plan(
+        request,
+        [
+            {"mode": "set_total", "sku_id": "C-BLACK-L", "qty": 290},
+            {"mode": "replace_remaining", "from_sku": "C-BLACK-L", "to_sku": "C-NAVY-L", "qty": 80},
+        ],
+    )
+    assert preview.status == "VALIDATED"
+    models = [ProductionOrder, PurchaseOrder, DocRevision, DownstreamLink]
+    before = snapshot(factory, models)
+    with pytest.raises(AppError) as failure:
+        approve(
+            preview.plan_id,
+            ApproveRequest(plan_hash="0" * 64, expected_intent_revision=preview.intent_revision),
+            request,
+        )
+    assert failure.value.code == "HASH_MISMATCH"
+    with pytest.raises(AppError) as failure:
+        approve(
+            preview.plan_id,
+            ApproveRequest(
+                plan_hash=preview.plan_hash, expected_intent_revision=preview.intent_revision + 1
+            ),
+            request,
+        )
+    assert failure.value.code == "STALE_INTENT"
+    approval = approve(
+        preview.plan_id,
+        ApproveRequest(
+            plan_hash=preview.plan_hash, expected_intent_revision=preview.intent_revision
+        ),
+        request,
+    )
+    with pytest.raises(AppError) as failure:
+        commit(
+            preview.plan_id,
+            CommitRequest(
+                plan_hash="0" * 64,
+                approval_id=approval.approval_id,
+                idempotency_key="wrong-fallback-hash",
+            ),
+            request,
+        )
+    assert failure.value.code == "HASH_MISMATCH"
+    assert snapshot(factory, models) == before
+    # A real document revision change after approval invalidates the old plan.
+    with factory.begin() as session:
+        session.get(ProductionOrder, "MO-2003").doc_revision += 1
+    stale = snapshot(factory, models)
+    with pytest.raises(AppError) as failure:
+        commit(
+            preview.plan_id,
+            CommitRequest(
+                plan_hash=preview.plan_hash,
+                approval_id=approval.approval_id,
+                idempotency_key="stale-fallback",
+            ),
+            request,
+        )
+    assert failure.value.code == "STALE_DEPENDENCY"
+    assert snapshot(factory, models) == stale
+
+
+def test_split_fallback_is_bounded_and_does_not_mutate_inputs(monkeypatch):
+    from copy import deepcopy
+
+    import app.domain.downstream as downstream
+
+    original = downstream._assess_downstream
+    calls = []
+
+    def tracked(**kwargs):
+        calls.append(kwargs["preserve_reductions"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(downstream, "_assess_downstream", tracked)
+    kwargs = dict(
+        new_lines={"same": SnapLine("same", 100, "MTO")},
+        production=[mo("a", "same", 120, 20, "PARTIALLY_CUT"), mo("b", "same", 90)],
+        purchase=[],
+        usage={"same": ("fabric", 2)},
+        reserved_purchase_ids={"reserved-S1"},
+    )
+    before = deepcopy(kwargs)
+    assert downstream.assess_downstream(**kwargs) == original(**kwargs, preserve_reductions=False)
+    assert calls == [True, False]
+    assert kwargs == before
+    calls.clear()
+    # When neither approach is feasible, return the unchanged legacy error.
+    kwargs["new_lines"]["same"] = SnapLine("same", 19, "MTO")
+    before = deepcopy(kwargs)
+    result = downstream.assess_downstream(**kwargs)
+    assert result == original(**kwargs, preserve_reductions=False)
+    assert result[1] and calls == [True, False] and kwargs == before
+    calls.clear()
+    kwargs["new_lines"]["same"] = SnapLine("same", 209, "MTO")
+    before = deepcopy(kwargs)
+    assert downstream.assess_downstream(**kwargs)[1] is None
+    assert calls == [True] and kwargs == before
