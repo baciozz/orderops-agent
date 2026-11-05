@@ -196,3 +196,28 @@ make seed
 - [离线评测](docs/OFFLINE_EVAL.md)与[历史 Live 评测](docs/LIVE_EVAL.md)
 
 本机演示已加入 Host 白名单、浏览器同源校验与防嵌套响应头，仍无用户认证/会话权限；无浏览器来源头的 CLI/API 保持兼容，不防御本机恶意进程。不要暴露到局域网、公网或代理隧道。详细边界见 [browser-security](docs/browser-security.md)。
+
+### Browser evidence, answers, and cancellation
+
+On a task in `NEEDS_CLARIFICATION` or `AWAITING_APPROVAL`, the task page
+accepts one synthetic `.txt`, `.md`, or `.xlsx` file per upload (5 MiB/file,
+three files/task; existing parser limits also apply). Uploading only stores
+evidence. The attached-file list survives refresh, but every answer requires
+explicitly selecting its evidence again. Uploading another file clears previous
+selections. Filenames and error text are rendered as text.
+
+Submit a clarification or revised intent, then explicitly run the FIXTURE
+worker. Approval and commit remain separate human actions. The answer delivery
+key covers the task, displayed revision, answer text, and selected source IDs;
+identical retries reuse it and edited payloads do not. Cancellation asks for
+confirmation and submits the displayed intent revision. Terminal tasks have no
+answer/upload/cancel controls.
+
+The browser checks current task status/revision before each new action. These
+checks are advisory, not an atomic answer fence: the existing answers endpoint
+has no expected-revision field. Existing server state, approval, and commit
+guards remain authoritative. A concurrent change can still happen after the
+check. Uploads have no idempotency key: after a network failure, refresh and
+inspect the persisted file list before retrying to avoid using another upload
+slot. No automatic upload, answer, approval, commit, or cancellation occurs on
+refresh or history navigation. JavaScript is required for these controls.

@@ -30,3 +30,5 @@ input, textarea { box-sizing: border-box; width: 100%; border: 1px solid #aab7c7
 .hint, footer { color: #58677a; font-size: .9rem; }
 .error { color: #a12222; background: #fff0f0; border-left: 3px solid #a12222; padding: 10px; }
 @media (max-width: 600px) { body { padding: 12px; } main { padding: 16px; } dl { grid-template-columns: 1fr; } dd { margin-bottom: 8px; } }
+
+input[type="checkbox"] { width: auto; margin-right: 8px; }

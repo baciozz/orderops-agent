@@ -8,7 +8,7 @@ from schemas.enums import RuntimeMode, TaskStatus, WaitingOn
 from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
 from sqlalchemy import inspect, select
 
-from app.db.models import Approval, Event, Plan, Task
+from app.db.models import Approval, Event, InputSource, Plan, Task, TaskSource
 from app.errors import AppError
 from app.orchestration.state import utcnow
 from app.services.export import export_change_list
@@ -89,6 +89,18 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     view = _view(task_id, request)
     plan_id = approval_id = None
     renewable = False
+    uploaded_sources = []
+    if task_id != STUB_TASK_ID:
+        with request.app.state.session_factory() as session:
+            uploaded_sources = [
+                {"id": source.id, "name": source.original_name, "size": source.size}
+                for source in session.scalars(
+                    select(InputSource)
+                    .join(TaskSource, TaskSource.source_id == InputSource.id)
+                    .where(TaskSource.task_id == task_id)
+                    .order_by(InputSource.id)
+                )
+            ]
     if view.approval.plan_hash:
         with request.app.state.session_factory() as session:
             plan = session.scalar(
@@ -120,6 +132,11 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "plan_id": plan_id,
             "approval_id": approval_id,
             "renewable": renewable,
+            "uploaded_sources": uploaded_sources,
+            "can_answer": view.card.status.value in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
+            "can_cancel": task_id != STUB_TASK_ID
+            and view.card.status.value
+            in {"RECEIVED", "QUEUED", "RUNNING", "NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
         },
     )
 
