@@ -29,7 +29,7 @@ README 和部分模块注释也保留了早期阶段文字，判断已实现能�
 | app/domain | 订单数量规则、库存不变量、下游影响、规范哈希 | `app/domain/changes.py`、`app/domain/inventory.py`、`app/domain/orders.py`、`app/domain/downstream.py`、`app/domain/hashing.py` |
 | app/db | ORM 表、精确金额类型、会话、SQLite 事务和迁移入口 | `app/db/models.py`、`app/db/types.py`、`app/db/session.py`、`app/db/schema.py` |
 | schemas | Pydantic 请求、响应、业务事件、提案和任务视图契约 | `schemas/api.py`、`schemas/business.py`、`schemas/subagent.py`、`schemas/catalog.py`、`schemas/task_view.py` |
-| alembic | 初始结构与后续增量迁移 | `alembic/versions/3e057b273982_initial_schema.py`、`alembic/versions/durable_stage2.py`、`alembic/versions/source_stage3.py` |
+| order_ops_migrations | 初始结构与后续增量迁移 | `order_ops_migrations/versions/3e057b273982_initial_schema.py`、`order_ops_migrations/versions/durable_stage2.py`、`order_ops_migrations/versions/source_stage3.py` |
 
 `app/main.py` 的 `create_app` 装配路由、Settings、注册表和会话工厂。
 `app/config.py` 集中配置，`app/errors.py` 定义稳定业务异常，`app/cli.py` 提供本地命令。
@@ -78,7 +78,7 @@ flowchart TD
     Svc -.-> Orch
     Svc -.-> API
     Orch -.-> API
-    Mig["alembic"] --> DB
+    Mig["order_ops_migrations"] --> DB
 ```
 
 业务实现集中在 `app/services/kernel.py`。
@@ -304,7 +304,7 @@ fixture 只返回零费用 UsageReport，不写 model_usage，不消耗 live 预
 ### 预留状态与 ORPHANED
 
 `model_usage.status` 取值 RESERVED / SETTLED / ORPHANED，并记录 `reserved_at` / `settled_at`；
-迁移 `alembic/versions/budget_reservations.py` 把历史行标为 SETTLED。
+迁移 `order_ops_migrations/versions/budget_reservations.py` 把历史行标为 SETTLED。
 `reconcile_reservations` 只把 `reserved_at` 早于 now − TTL 的 RESERVED 行改为 ORPHANED，
 不释放费用、token 估算或调用次数，重复扫描无副作用。
 TTL 取 `OOS_BUDGET_RESERVATION_TTL_S` 与 `2 * model_timeout_s + 60` 秒的较大者；
@@ -314,7 +314,7 @@ ORPHANED 行允许迟到的 `settle()`：在原行写入实际用量并改为 SE
 
 ### 单价快照
 
-迁移 `alembic/versions/budget_price_snapshot.py`（前序 budget_reservations）给 model_usage 增加
+迁移 `order_ops_migrations/versions/budget_price_snapshot.py`（前序 budget_reservations）给 model_usage 增加
 可空 Money 列 `price_in_per_mtok` / `price_out_per_mtok`。`reserve()` 把当时的账本单价写入行，
 普通结算和 ORPHANED 迟到结算都按行内快照计价，跨重启改价不影响原调用。
 迁移只在历史 `price_version` 为 `in=X;out=Y` 且两值都是有限非负 Decimal 时回填，否则两列保持 NULL；

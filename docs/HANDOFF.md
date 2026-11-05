@@ -4,7 +4,7 @@
 
 这是本机合成数据的服装订单变更沙箱。模型只能提出建议；订单、库存、生产单和采购单由确定性内核检查，在人批准后一起提交，并回读核验。它不是生产 ERP，也不会替用户向供应商下单。
 
-候选分支不等于已合并 main，验收时记录实际 checkout SHA，不把旧 main 结果套到新改动。源码/editable 安装须保留迁移资源；现有非 editable wheel 缺资源，尚不支持。
+候选分支不等于已合并 main，验收时记录实际 checkout SHA，不把旧 main 结果套到新改动。源码、editable 和普通解包 wheel 的运行时迁移统一读取 order_ops_migrations/；源码验收仍需完整源码及已装依赖。
 
 固定基线与复验结果见 [TEST_REPORT](TEST_REPORT.md)。正式版本 tag、公开仓库、部署、接真实业务和新 live 调用不由本文授权。
 

@@ -35,10 +35,11 @@ dev = [
 oos = "app.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["app*", "schemas*", "seeds*"]
+include = ["app*", "schemas*", "seeds*", "order_ops_migrations*"]
 
 [tool.setuptools.package-data]
 app = ["web/templates/*.html", "web/static/*"]
+order_ops_migrations = ["env.py", "script.py.mako", "versions/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -55,7 +56,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
-"alembic/versions/*" = ["E501"]
+"order_ops_migrations/versions/*" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

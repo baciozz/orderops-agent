@@ -2,16 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from app.adapters.budget import BudgetLedger, reconcile_reservations
 from app.cli import main
 from app.config import Settings
 from app.db.models import ModelUsage
-from app.db.schema import init_db
+from app.db.schema import _migration_config, init_db
 from app.db.session import make_engine
 from app.errors import BudgetExceeded, CallLimitExceeded
 from app.main import create_app
@@ -202,10 +200,8 @@ def test_reconciliation_rejects_nonpositive_ttl(session_factory):
 
 
 def test_migration_backfills_historical_usage_as_settled(tmp_path):
-    root = Path(__file__).resolve().parents[1]
     engine = make_engine(f"sqlite:///{tmp_path / 'historical.db'}")
-    cfg = Config(str(root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg = _migration_config()
     try:
         with engine.connect() as connection:
             cfg.attributes["connection"] = connection
@@ -236,10 +232,8 @@ def test_migration_backfills_historical_usage_as_settled(tmp_path):
 
 
 def test_price_snapshot_migration_backfills_versions_and_downgrades(tmp_path):
-    root = Path(__file__).resolve().parents[1]
     engine = make_engine(f"sqlite:///{tmp_path / 'historical-prices.db'}")
-    cfg = Config(str(root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg = _migration_config()
     versions = [
         "in=1.25;out=10.5",
         "in=0;out=2e-2",

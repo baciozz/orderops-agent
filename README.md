@@ -51,7 +51,7 @@ SO-1001 把未发的 40 件黑色 M 改成白色 M
 
 ### 离线演示（FIXTURE）
 
-推荐先运行 [两条合成验收](docs/FIXTURE_ACCEPTANCE.md)：`python scripts/accept_fixture.py --output ./fixture-acceptance-01`。它使用独立新临时库，模拟批准/提交并保存业务结果、CSV/XLSX 和审计，不启动服务。需完整源码或 editable 安装及已装依赖；现有非 editable wheel 缺迁移资源。下面保留手动 API 演示。
+推荐先运行 [两条合成验收](docs/FIXTURE_ACCEPTANCE.md)：`python scripts/accept_fixture.py --output ./fixture-acceptance-01`。它使用独立新临时库，模拟批准/提交并保存业务结果、CSV/XLSX 和审计，不启动服务。此验收脚本需完整源码及已装依赖；普通解包 wheel 支持运行时迁移，但不包含该源码验收工具链。下面保留手动 API 演示。
 
 保持默认 `OOS_LIVE_ENABLED=false`（已有环境若启用过 live，请先关闭并重启 API）。在另一个已激活虚拟环境的终端中：
 
@@ -225,3 +225,16 @@ Receipts do not recreate missing temporary originals or recover uncommitted cras
 orphans; original-file persistence remains a separate limitation. No automatic
 upload, answer, approval, commit, or cancellation occurs on refresh or history
 navigation. JavaScript is required for these controls.
+
+### 迁移资源与分发校验
+
+迁移只有一份，位于 `order_ops_migrations/`。运行时使用包内绝对路径和显式传入的数据库连接，不依赖当前目录的 alembic.ini。支持源码、editable 和普通解包 wheel，不承诺 zipimport/zipapp。开发 CLI 保持原有的源码根目录调用约定：先切换到 checkout 根目录，再运行 `python -m alembic history`。根目录 alembic.ini 中的迁移路径、Python 路径和开发数据库 URL 都相对此调用目录；仅传绝对 `-c` 路径不支持从其他目录调用。编写 revision 仅在可写源码 checkout 中进行，不在安装目录中生成。
+
+已具备 setuptools/wheel 构建工具时，可离线构建并检查实际 wheel 的迁移及 UI 资源（在干净的源码副本执行）：
+
+```bash
+PIP_NO_INDEX=1 python -m pip wheel --no-deps --no-build-isolation --no-cache-dir --wheel-dir /tmp/oos-wheel .
+python scripts/check_distribution.py /tmp/oos-wheel/order_ops_superagent-1.0.0rc1-py3-none-any.whl
+```
+
+该显式检查不安装或下载依赖，也不代替安装后数据库迁移测试。锁文件不包含构建工具，CI 的 make check 不自动运行此构建检查。sdist 包含迁移与上述检查/合成验收脚本，但不是完整测试/eval 开发工具链；完整验收推荐源码 archive。安装资源升级只读，revision 编写需要可写源码。模拟禁止写入的验证不等于实际 OS 只读文件系统验证。

@@ -1,12 +1,12 @@
 """Apply Alembic migrations. Request handlers do not create tables."""
 
-from pathlib import Path
 from sqlite3 import Error as SQLiteError
 
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from order_ops_migrations import MIGRATIONS_DIR
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,12 +14,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db import models as _models  # noqa: F401
 from app.db.base import Base
 
-_ROOT = Path(__file__).resolve().parents[2]
-
 
 def _migration_config() -> Config:
-    cfg = Config(str(_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(_ROOT / "alembic"))
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS_DIR).replace("%", "%%"))
     return cfg
 
 

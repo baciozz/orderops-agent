@@ -175,7 +175,7 @@ def source_fixture(tmp_path, monkeypatch):
         (root / directory / "module.py").write_text("# synthetic code\n")
     for relative in runner.SOURCE_FILES:
         path = root / relative
-        path.parent.mkdir(exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# synthetic input\n")
     monkeypatch.setattr(runner, "ROOT", root)
     return root
@@ -194,7 +194,17 @@ def test_fingerprint_excludes_arbitrary_docs_outputs_and_real_dotenv(tmp_path, m
     assert not any(name.startswith("docs/") for name in before)
 
 
-@pytest.mark.parametrize("relative", ["app/module.py", "requirements.lock", "scripts", "app"])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "app/module.py",
+        "requirements.lock",
+        "scripts",
+        "app",
+        "order_ops_migrations",
+        "order_ops_migrations/script.py.mako",
+    ],
+)
 def test_fingerprint_rejects_symlink_files_and_ancestors(tmp_path, monkeypatch, relative):
     root = source_fixture(tmp_path, monkeypatch)
     path = root / relative

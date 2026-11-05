@@ -1,14 +1,12 @@
 """The process starts, reports FIXTURE, and only binds the Stage 0 routes."""
 
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from alembic.script import ScriptDirectory
 from app.config import Settings
-from app.db.schema import init_db
+from app.db.schema import _migration_config, init_db
 from app.db.session import make_engine
 from app.main import create_app
 from fastapi.testclient import TestClient
@@ -47,9 +45,7 @@ def test_openapi_lists_mounted_routes() -> None:
 def test_startup_requires_explicit_migration(tmp_path, revision):
     url = f"sqlite:///{tmp_path / 'old.db'}"
     engine = make_engine(url)
-    root = Path(__file__).resolve().parents[1]
-    cfg = Config(str(root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg = _migration_config()
     settings = Settings(_env_file=None, database_url=url)
     try:
         with engine.connect() as connection:

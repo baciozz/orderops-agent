@@ -13,10 +13,10 @@ from types import SimpleNamespace
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from app.api import sources
 from app.config import Settings
 from app.db.models import InputSource, SourceSpan, SourceUploadReceipt, Task, TaskSource
+from app.db.schema import _migration_config
 from app.db.session import begin_immediate
 from app.main import create_app
 from app.orchestration.inbox import accept_input
@@ -437,8 +437,7 @@ def test_restart_replay_does_not_allocate_storage(upload_env, database_url, monk
 def test_migration_upgrade_downgrade_preserves_original_evidence(upload_env, engine):
     client, _, task_id = upload_env
     original = send(client, task_id).json()["source_id"]
-    cfg = Config(str(ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    cfg = _migration_config()
     with engine.connect() as connection:
         before = {
             table: connection.execute(text(f'SELECT * FROM "{table}"')).fetchall()

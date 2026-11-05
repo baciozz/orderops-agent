@@ -1,5 +1,7 @@
 # Changelog
 
+- 将既有迁移资源原样移入 order_ops_migrations 包，修复普通 wheel 安装后的迁移定位；保留源码 CLI 与合成验收指纹。
+
 按 Keep a Changelog 风格记录面向使用者的变更，PR 标题保留原文。
 
 ## [Unreleased]

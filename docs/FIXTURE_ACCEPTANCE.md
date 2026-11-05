@@ -4,13 +4,13 @@
 
 ## 一条命令，两个独立新库
 
-需要 POSIX 系统（Linux/macOS）、Python 3.11+、完整源码及已安装的项目依赖（含 httpx/openpyxl）。从仓库根目录运行；使用当前源码或 editable 安装，保留 alembic.ini 和 alembic/。现有非 editable wheel 缺迁移资源，不支持这个分发方式。脚本不安装、下载或重建依赖。
+需要 POSIX 系统（Linux/macOS）、Python 3.11+、完整源码及已安装的项目依赖（含 httpx/openpyxl）。从仓库根目录运行；使用当前完整源码（可 editable 安装），保留 alembic.ini 和 order_ops_migrations/。普通解包 wheel 支持运行时迁移，但不包含本源码验收工具链。脚本不安装、下载或重建依赖。
 
 ```bash
 python scripts/accept_fixture.py --output ./fixture-acceptance-01
 ```
 
-output 必须不存在，父目录必须存在，且不能位于 app/、schemas/、seeds/、alembic/ 运行源码目录内。第二次运行改用新名称，例如 fixture-acceptance-02；已有目录、文件或同名符号链接一律拒绝，不覆盖证据，不删除或重置默认数据库。不接受数据库 URL 或已有库。输出目录所在位置应由你控制，不支持敌对进程同时替换路径。
+output 必须不存在，父目录必须存在，且不能位于 app/、schemas/、seeds/、order_ops_migrations/ 运行源码目录内。第二次运行改用新名称，例如 fixture-acceptance-02；已有目录、文件或同名符号链接一律拒绝，不覆盖证据，不删除或重置默认数据库。不接受数据库 URL 或已有库。输出目录所在位置应由你控制，不支持敌对进程同时替换路径。
 
 脚本以干净环境启动隔离的 Python 控制进程，每条旅程创建自己的临时 SQLite 库。父启动器不导入应用；控制进程和 CLI 子进程在导入 app.main/app.cli 前禁用 dotenv、清除继承配置、固定 FIXTURE 和新库。不会读取你的 OOS 参数、密钥、代理或用户 HOME。已安装的 Python/依赖必须可信；这不是抵御解释器启动钩子、恶意依赖或所有操作系统文件写入的沙箱。应用阶段有 socket 网络/监听拦截，不启动服务。
 

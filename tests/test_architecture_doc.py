@@ -8,7 +8,7 @@ from app.orchestration.state import ALLOWED
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENT = ROOT / "ARCHITECTURE.md"
-PREFIXES = ("app/", "docs/", "scripts/", "tests/", "schemas/", "alembic/")
+PREFIXES = ("app/", "docs/", "scripts/", "tests/", "schemas/", "order_ops_migrations/")
 
 
 def _document() -> str:

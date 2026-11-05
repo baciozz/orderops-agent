@@ -335,10 +335,11 @@ def journey(output, name, database):
         return result
 
 
-RUNTIME_DIRS = ("app", "schemas", "seeds", "alembic")
+RUNTIME_DIRS = ("app", "schemas", "seeds", "order_ops_migrations")
 SOURCE_FILES = (
     "pyproject.toml",
     "alembic.ini",
+    "order_ops_migrations/script.py.mako",
     "Makefile",
     "requirements.lock",
     "requirements-dev.lock",
