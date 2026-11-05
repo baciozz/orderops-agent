@@ -2,16 +2,31 @@
 
 from app.db.models import Task
 from app.db.session import begin_immediate
+from app.observability import enrich, get_logger, observed, task_fields_from_factory
 from app.orchestration.state import transition
 from app.services.kernel import acknowledge_commit, commit_plan
+
+logger = get_logger(__name__)
 
 
 class ResponseLost(Exception):
     pass
 
 
+@observed(
+    logger,
+    "recovery.durable_commit",
+    start_event="recovery.durable_commit",
+    exclude=("mode",),
+    fields=lambda request, **_: {
+        "plan_id": request.get("plan_id"),
+        "approval_id": request.get("approval_id"),
+        "replayed": None,
+    },
+)
 def durable_commit(factory, *, fault=lambda _: None, **request):
     outcome = commit_plan(factory, acknowledge=False, **request)
+    enrich(**task_fields_from_factory(factory, outcome.task_id), replayed=outcome.replayed)
     try:
         fault("after_commit")
     except ResponseLost:

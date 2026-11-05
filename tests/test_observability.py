@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from inspect import signature
@@ -16,9 +17,11 @@ from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
 from app.config import Settings
-from app.db.models import ModelUsage, OutboxDelivery
+from app.db.models import ModelUsage, Operation, OutboxDelivery, Task
+from app.db.session import begin_immediate
 from app.errors import AppError, BudgetExceeded, FixtureNotFound
 from app.main import create_app
+from app.metrics import reset_for_tests, snapshot
 from app.observability import (
     JSONFormatter,
     RedactionFilter,
@@ -35,9 +38,13 @@ from app.orchestration.dispatch import dispatch_text
 from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE, golden_fixtures
 from app.orchestration.inbox import accept_input
 from app.orchestration.outbox import consume, publish_pending
+from app.orchestration.recovery import ResponseLost, durable_commit
 from app.orchestration.registry import Registry
-from app.orchestration.worker import run_once
-from app.services.kernel import approve_plan, commit_plan
+from app.orchestration.state import check_fence, transition
+from app.orchestration.watchdog import scan
+from app.orchestration.worker import claim, run_once
+from app.services import kernel as kernel_service
+from app.services.kernel import approve_plan, commit_plan, retry_pending_verification
 from app.services.seed import load_seed
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -227,6 +234,7 @@ def test_inbox_duplicate_logged(web, caplog):
     )
     assert duplicate.json()["event_id"] == receipt.json()["event_id"]
     assert [record.duplicate for record in events(caplog, "inbox.received")] == [False, True]
+    assert snapshot()["tasks_enqueued"] == 1
 
 
 @pytest.mark.parametrize(
@@ -307,6 +315,9 @@ def test_dispatch_and_fixture_model_failure(web, caplog):
         assert record.error_code == "FIXTURE_NOT_FOUND" and record.outcome == "failed"
         assert record.task_id == result.task_id and record.duration_ms >= 0
     assert "PRIVATE_UNKNOWN_TEXT" not in captured(caplog)
+    assert snapshot()["tasks_failed"] == 1
+    assert snapshot()["worker_claims"] == 1
+    assert snapshot()["model_calls"] == 1
 
 
 def test_outbox_failure_and_duplicate(web, caplog):
@@ -384,6 +395,7 @@ def test_budget_refused_before_transport(session_factory, caplog):
     assert refusal.error_code == "BUDGET_EXCEEDED" and refusal.cap_usd == "0"
     assert Decimal(refusal.reserved_usd) > 0 and refusal.task_id == "task-refused"
     assert events(caplog, "model.call")[-1].error_code == "BUDGET_EXCEEDED"
+    assert snapshot()["budget_refused"] == snapshot()["model_calls"] == 1
 
 
 def test_configure_idempotent_and_leaves_root_untouched():
@@ -655,3 +667,230 @@ def test_task_lifecycle_events_omit_inherited_mode(
         record = events(caplog, name)[-1]
         assert record.task_id == plan.task_id and "mode" not in vars(record)
     assert events(caplog, "test.after_lifecycle")[-1].mode == "LIVE"
+
+
+def durable_request(web):
+    _, plan = fixture_plan(web)
+    approval = approve_plan(
+        web[1],
+        plan_id=plan.plan_id,
+        plan_hash=plan.plan_hash,
+        expected_intent_revision=plan.intent_revision,
+        now=NOW,
+    )
+    return dict(
+        plan_id=plan.plan_id,
+        approval_id=approval.approval_id,
+        plan_hash=plan.plan_hash,
+        idempotency_key="durable-observability",
+        now=NOW,
+    )
+
+
+def test_metrics_endpoint_after_worker_round_and_commit_replay(web, caplog):
+    client = web[0]
+    initial = client.get("/metrics")
+    assert initial.status_code == 200
+    assert initial.headers["content-type"] == "application/json"
+    assert len(initial.json()) == 12 and set(initial.json().values()) == {0}
+    _, plan, _ = committed(web)
+    counters = client.get("/metrics").json()
+    assert counters == {
+        **initial.json(),
+        "tasks_enqueued": 1,
+        "tasks_succeeded": 1,
+        "approvals_granted": 1,
+        "commits_applied": 1,
+        "worker_claims": 1,
+        "model_calls": 1,
+    }
+    approval_id = events(caplog, "approval.granted")[-1].approval_id
+    replay = client.post(
+        f"/plans/{plan.plan_id}/commit",
+        json={
+            "approval_id": approval_id,
+            "plan_hash": plan.plan_hash,
+            "idempotency_key": "observability-commit",
+        },
+    )
+    assert replay.status_code == 200
+    assert events(caplog, "commit.applied")[-1].replayed is True
+    assert client.get("/metrics").json() == {**counters, "commits_replayed": 1}
+    lease = json.loads(JSONFormatter().format(events(caplog, "lease.acquired")[0]))
+    assert lease["task_id"] == plan.task_id and lease["attempt_id"]
+    assert lease["outcome"] == "success" and lease["duration_ms"] >= 0
+    assert len(events(caplog, "task.finished")) == 1
+
+
+def test_durable_commit_success_replay_and_lost_ack(web, caplog):
+    request = durable_request(web)
+
+    def lose_response(_):
+        raise ResponseLost("PRIVATE_LOST_ACK")
+
+    with pytest.raises(ResponseLost, match="PRIVATE_LOST_ACK"):
+        durable_commit(web[1], fault=lose_response, **request)
+    failure = events(caplog, "recovery.durable_commit")[-1]
+    assert failure.outcome == "failed" and failure.replayed is False
+    assert failure.error_code == "INTERNAL_ERROR" and failure.task_id
+    assert snapshot()["tasks_succeeded"] == 0
+    original = durable_commit(web[1], **request)
+    assert original.replayed
+    success = json.loads(JSONFormatter().format(events(caplog, "recovery.durable_commit")[-1]))
+    assert success["outcome"] == "success" and success["replayed"] is True
+    assert success["task_id"] == original.task_id and success["attempt_id"]
+    assert success["order_id"] == original.order_id and success["duration_ms"] >= 0
+    assert [record.outcome for record in events(caplog, "recovery.durable_commit")] == [
+        "started",
+        "failed",
+        "started",
+        "success",
+    ]
+    assert snapshot()["tasks_succeeded"] == 1
+    assert snapshot()["commits_applied"] == snapshot()["commits_replayed"] == 1
+    assert "PRIVATE_LOST_ACK" not in captured(caplog)
+
+
+@pytest.mark.parametrize("retry_outcome", ["cleared", "still_pending", "error"])
+def test_verification_retry_event_and_watchdog_counts(web, caplog, monkeypatch, retry_outcome):
+    request = durable_request(web)
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        original = durable_commit(web[1], **request)
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    if retry_outcome == "still_pending":
+        monkeypatch.setattr(kernel_service, "consistency_problems", lambda _: ["PRIVATE_READBACK"])
+    elif retry_outcome == "error":
+
+        def fail(*_):
+            raise AppError("PRIVATE_READBACK", code="READBACK_TEST")
+
+        monkeypatch.setattr(kernel_service, "_post_verify", fail)
+    assert scan(web[1], clock=lambda: NOW) == []
+    record = json.loads(JSONFormatter().format(events(caplog, "verification.retry")[-1]))
+    assert record["outcome"] == retry_outcome and record["operation_id"] == original.operation_id
+    assert record["task_id"] == original.task_id and record["attempt_id"]
+    assert record["order_id"] == original.order_id and record["duration_ms"] >= 0
+    assert record["error_code"] == ("READBACK_TEST" if retry_outcome == "error" else None)
+    start, finish = events(caplog, "watchdog.scan")
+    assert start.outcome == "started" and finish.outcome == "success"
+    assert finish.scanned_tasks == finish.recovered_tasks == finish.outbox_created == 0
+    assert finish.pending_retries == 1 and finish.duration_ms >= 0
+    counters = snapshot()
+    assert counters["watchdog_scans"] == counters["verification_pending_retries"] == 1
+    assert counters["verification_pending_cleared"] == (retry_outcome == "cleared")
+    with web[1]() as session:
+        assert session.get(Operation, original.operation_id).committed_verification_pending is (
+            retry_outcome != "cleared"
+        )
+    if retry_outcome == "cleared":
+        assert retry_pending_verification(web[1]) == 0
+        assert len(events(caplog, "verification.retry")) == 1
+    assert "PRIVATE_READBACK" not in captured(caplog)
+    assert TEXT_BLACK_TO_WHITE not in captured(caplog)
+
+
+def test_lease_fence_rejection_watchdog_expiry_and_empty_scan(web, caplog):
+    factory = web[1]
+    _, task_id, _ = accept_input(
+        factory, thread_id="lease", client_event_key="lease", text="PRIVATE_LEASE_INPUT"
+    )
+    claimed_task, fence = claim(factory, "test-owner", clock=lambda: NOW)
+    assert claimed_task == task_id
+    with factory() as session, pytest.raises(AppError) as error:
+        check_fence(session, task_id, fence + 1, NOW)
+    assert error.value.code == "STALE_ATTEMPT"
+    rejection = events(caplog, "lease.expired_or_fenced")[-1]
+    assert rejection.outcome == "rejected" and rejection.error_code == "STALE_ATTEMPT"
+    assert rejection.task_id == task_id and rejection.attempt_id
+    assert scan(factory, clock=lambda: NOW + timedelta(seconds=61)) == [task_id]
+    expiry = json.loads(JSONFormatter().format(events(caplog, "lease.expired_or_fenced")[-1]))
+    assert expiry["outcome"] == "expired" and expiry["reason"] == "lease_expired"
+    finish = events(caplog, "watchdog.scan")[-1]
+    assert finish.scanned_tasks == finish.recovered_tasks == 1 and finish.pending_retries == 0
+    assert scan(factory, clock=lambda: NOW + timedelta(minutes=2)) == []
+    assert snapshot()["watchdog_scans"] == 2 and snapshot()["worker_claims"] == 1
+    assert "PRIVATE_LEASE_INPUT" not in captured(caplog)
+
+
+def test_terminal_task_events_follow_commit_and_skip_rollback(web, caplog):
+    factory = web[1]
+    _, task_id, _ = accept_input(
+        factory, thread_id="rollback", client_event_key="rollback", text="rollback"
+    )
+    with factory() as session:
+        with pytest.raises(RuntimeError, match="rollback"):
+            with begin_immediate(session):
+                task = session.get(Task, task_id)
+                transition(task, "FAILED")
+                session.flush()
+                assert not events(caplog, "task.finished")
+                raise RuntimeError("rollback")
+        assert snapshot()["tasks_failed"] == 0
+        with begin_immediate(session):
+            task = session.get(Task, task_id)
+            transition(task, "FAILED")
+            session.flush()
+            task.error_code = "TEST_FAILURE"
+    assert snapshot()["tasks_failed"] == 1
+    terminal = events(caplog, "task.finished")
+    assert len(terminal) == 1 and terminal[0].task_id == task_id
+    assert terminal[0].status == "FAILED" and terminal[0].error_code == "TEST_FAILURE"
+    # Updating an already terminal task must not count it a second time.
+    with factory() as session, begin_immediate(session):
+        session.get(Task, task_id).error_code = "TEST_UPDATED"
+    assert snapshot()["tasks_failed"] == 1
+
+
+def test_metrics_ignore_log_level_and_are_thread_safe(caplog):
+    configure_logging(Settings(_env_file=None, log_level="WARNING"))
+
+    def call(_):
+        log_event(logger, "model.call", outcome="success")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(call, range(400)))
+    assert not events(caplog, "model.call")
+    result = snapshot()
+    assert result["model_calls"] == 400
+    result["model_calls"] = -1
+    assert snapshot()["model_calls"] == 400
+    reset_for_tests()
+    assert set(snapshot().values()) == {0}
+
+
+def test_watchdog_recovers_lost_ack_and_clears_pending(web, caplog):
+    request = durable_request(web)
+
+    def lose_response(_):
+        raise ResponseLost("PRIVATE_LOST_RESPONSE")
+
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        with pytest.raises(ResponseLost):
+            durable_commit(web[1], fault=lose_response, **request)
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    assert snapshot()["tasks_succeeded"] == 0
+    changed = scan(web[1], clock=lambda: NOW)
+    assert len(changed) == 1
+    finish = events(caplog, "watchdog.scan")[-1]
+    assert finish.scanned_tasks == finish.recovered_tasks == finish.pending_retries == 1
+    assert events(caplog, "verification.retry")[-1].outcome == "cleared"
+    assert snapshot()["tasks_succeeded"] == snapshot()["verification_pending_cleared"] == 1
+    assert "PRIVATE_LOST_RESPONSE" not in captured(caplog)
+
+
+def test_watchdog_failure_is_observed_and_counted(caplog):
+    def unavailable():
+        raise AppError("PRIVATE_DATABASE_FAILURE", code="TEST_DATABASE")
+
+    with pytest.raises(AppError) as error:
+        scan(unavailable)
+    assert error.value.code == "TEST_DATABASE"
+    start, failure = events(caplog, "watchdog.scan")
+    assert start.outcome == "started" and failure.outcome == "failed"
+    assert failure.error_code == "TEST_DATABASE" and failure.duration_ms >= 0
+    assert snapshot()["watchdog_scans"] == 1
+    assert "PRIVATE_DATABASE_FAILURE" not in captured(caplog)

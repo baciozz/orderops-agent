@@ -34,6 +34,7 @@ from app.config import Settings, get_settings
 from app.db.schema import schema_ready
 from app.db.session import make_engine, make_session_factory
 from app.errors import AppError
+from app.metrics import snapshot
 from app.observability import configure_logging, exception_code, get_logger, log_context, log_event
 from app.orchestration.defaults import build_default_registry
 
@@ -170,6 +171,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             },
         )
+
+    @application.get("/metrics")
+    def metrics() -> dict[str, int]:
+        return snapshot()
 
     application.include_router(health_router)
     application.include_router(task_router)

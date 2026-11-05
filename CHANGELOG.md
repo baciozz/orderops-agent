@@ -2,6 +2,13 @@
 
 按 Keep a Changelog 风格记录面向使用者的变更，PR 标题保留原文。
 
+## [Unreleased]
+
+- 新增零依赖、线程安全的 12 个进程内 counter 和 `GET /metrics` JSON 快照；测试自动清零，不跨进程聚合。
+- lease 获取/到期/fencing、durable commit recovery、watchdog 扫描和逐操作 pending 核验重试接入结构化事件；任务终态在事务提交后记录，不记录客户原文。
+- 保留原 50 条离线评测，追加 watchdog / worker-once 清除 pending 与幂等 commit replay 不双写用例：**53/53**，兜底 **23/23**、管道 **30/30**。补充日志、指标和端点测试及文档。
+- 验证：`make check` 全绿（ruff clean、mypy 62 个源文件、912 tests passed），覆盖率 **95.06%**（4777 stmts / 236 miss；门槛 90%）。
+
 ## [1.0.0rc1] — 2026-11-06 (v1.0.0 候选，未发布，未打 tag)
 
 基于 main `515a97a`（PR #19 合入后）的冻结候选。**Qi 批准前不打正式 v1.0.0 tag，也不视为正式发布。**

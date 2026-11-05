@@ -9,6 +9,14 @@ import pytest
 from app.config import Settings, reset_settings_cache
 from app.db.schema import init_db
 from app.db.session import make_engine, make_session_factory
+from app.metrics import reset_for_tests
+
+
+@pytest.fixture(autouse=True)
+def _isolate_metrics():
+    reset_for_tests()
+    yield
+    reset_for_tests()
 
 
 def pytest_configure(config: pytest.Config) -> None:

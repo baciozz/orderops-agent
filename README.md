@@ -61,6 +61,7 @@ python -m app.cli worker-once
 
 记下入队回执的 `task_id`。在新初始化的合成库中，该任务处理后应到 `AWAITING_APPROVAL`；worker 不会自动批准或提交。FIXTURE 精确匹配上面的文本，未知文本不会自动转 live。同一 thread 内重复使用 `client_event_key` 会返回原任务。
 
+- 进程内指标：`GET /metrics` 返回 JSON counter（非 Prometheus 格式；独立 CLI worker 与 API 进程各自计数），详见 [可观测性](docs/OBSERVABILITY.md)。
 - 状态：`http://127.0.0.1:8000/tasks/{task_id}`
 - JSON 任务视图：`http://127.0.0.1:8000/tasks/{task_id}/view`
 - HTML 任务页：`http://127.0.0.1:8000/ui/tasks/{task_id}`
@@ -138,15 +139,15 @@ make check       # lint + typecheck + cov；覆盖率门槛 90%
 python scripts/eval_offline.py
 ```
 
-2026-11-06 本分支已验证（FIXTURE，无 live）：`make check` 全绿，ruff clean，mypy **61** 个源文件无问题，pytest **902 passed**，覆盖率 **95%**（TOTAL **4673** stmts，**233** miss；`fail_under=90`）。
+2026-11-06 本分支已验证（FIXTURE，无 live）：`make check` 全绿，ruff clean，mypy **62** 个源文件无问题，pytest **912 passed**，覆盖率 **95.06%**（TOTAL **4777** stmts，**236** miss；`fail_under=90`）。
 
-离线评测 **50/50**：兜底能力 safeguards **23/23**（invalid_qty 8、unknown_order 7、injection 8）；管道回归 pipeline regression **27/27**（alias 9、ambiguous_wording 9、multi_line_change 8、golden 1）。它测的是给定 fixture 答案后的管道与内核，不测模型理解，范围见 [OFFLINE_EVAL](docs/OFFLINE_EVAL.md)。56 个 B/R 用例均已接入真实测试，当前没有占位跳过。
+离线评测 **53/53**：兜底能力 safeguards **23/23**（invalid_qty 8、unknown_order 7、injection 8）；管道回归 pipeline regression **30/30**（alias 9、ambiguous_wording 9、multi_line_change 8、golden 4：含 pending 重试与幂等重放）。它测的是给定 fixture 答案后的管道与内核，不测模型理解，范围见 [OFFLINE_EVAL](docs/OFFLINE_EVAL.md)。56 个 B/R 用例均已接入真实测试，当前没有占位跳过。
 
 当前 `.github/workflows/ci.yml` 只跑 lint + test；typecheck、覆盖率、离线评测已暂存于 [待启用 CI](ci/pending-workflow-changes.yml)，等待 workflow 权限后启用。PR #9 已合入，离线脚本已在 main。
 
 ## 已知限制
 
-- PR #19 已修复 watchdog / 幂等提交重放不补做 pending 核验的缺口。剩余：无常驻调度器，仅 `worker-once` / watchdog 或提交重放触发；持续失败无重试上限、退避、告警；watchdog/recovery/retry 无结构化日志；核验当前事实而非历史快照。跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+- PR #19 已修复 watchdog / 幂等提交重放不补做 pending 核验的缺口，lease/recovery/watchdog/retry 已有结构化事件和进程内指标。剩余：无常驻调度器，仅 `worker-once` / watchdog 或提交重放触发；持续失败无重试上限、退避、告警；核验当前事实而非历史快照。跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
 - SQLite 单写者、规划任务最多两条 RUNNING；完整聊天/澄清/审批 UI、生产认证和持久上传存储尚未完成。
 - 未开裁同 SKU 生产单可扩量；已开裁单仍不能扩量，不自动新建生产单。补购只生成待供应商确认的草稿。
 - FIXTURE 精确匹配；live 历史样本量小，兼容 provider 仅 mock 验证，通用表格布局尚未支持。

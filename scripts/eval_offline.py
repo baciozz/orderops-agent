@@ -17,12 +17,17 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.adapters.llm import resolve_mode  # noqa: E402
+from app.cli import main as cli_main  # noqa: E402
 from app.config import Settings  # noqa: E402
-from app.db.models import Base, Plan, Task  # noqa: E402
+from app.db.models import Approval, Base, Operation, Plan, Task  # noqa: E402
 from app.db.schema import init_db  # noqa: E402
 from app.db.session import make_engine, make_session_factory  # noqa: E402
 from app.errors import AppError  # noqa: E402
+from app.metrics import snapshot  # noqa: E402
 from app.orchestration.dispatch import dispatch_text  # noqa: E402
+from app.orchestration.recovery import durable_commit  # noqa: E402
+from app.orchestration.watchdog import scan  # noqa: E402
+from app.services.kernel import verify_failpoint  # noqa: E402
 from app.services.seed import load_seed  # noqa: E402
 from scripts.live_smoke import _assert_safe, _commit_golden, _counts  # noqa: E402
 from sqlalchemy import select  # noqa: E402
@@ -135,6 +140,12 @@ def load_cases():
             raise ValueError(f"Unknown category: {case['category']}")
         if "product_question" in case and not isinstance(case["product_question"], str):
             raise ValueError("product_question must be a string")
+        if "scenario" in case and case["scenario"] not in {
+            "verification_watchdog",
+            "verification_worker_once",
+            "commit_replay",
+        }:
+            raise ValueError("Unknown commit scenario")
         ids.add(case["id"])
         expected = case["expected"]
         if expected["outcome"] in {"AWAITING_APPROVAL", "COMMITTED"}:
@@ -177,6 +188,77 @@ def _business_snapshot(session):
     }
 
 
+def _durable_snapshot(session, *, delivery_changes=False):
+    """Compare all values except readback flags and notification delivery state."""
+    return {
+        table.name: sorted(
+            (
+                tuple(row)
+                for row in session.execute(
+                    select(
+                        *(col for col in table.c if col.name != "committed_verification_pending")
+                    )
+                )
+            ),
+            key=repr,
+        )
+        for table in Base.metadata.sorted_tables
+        if not delivery_changes or table.name not in {"outbox_delivery", "consumer_receipt"}
+    }
+
+
+def _exercise_commit_scenario(factory, configured, outcome, scenario):
+    pending = scenario != "commit_replay"
+    delivery_changes = scenario == "verification_worker_once"
+    token = verify_failpoint.set(pending)
+    try:
+        _commit_golden(factory, outcome)
+    finally:
+        verify_failpoint.reset(token)
+    with factory() as session:
+        operation = session.scalars(select(Operation)).one()
+        approval = session.scalars(select(Approval)).one()
+        assert operation.committed_verification_pending is pending
+        operation_id = operation.id
+        operation_result = operation.result_json
+        request = dict(
+            plan_id=outcome.plan_id,
+            plan_hash=outcome.plan_hash,
+            approval_id=approval.id,
+            idempotency_key="smoke-golden-commit",
+        )
+        before = _durable_snapshot(session, delivery_changes=delivery_changes)
+    counters = snapshot()
+    for _ in range(2):
+        if scenario == "verification_watchdog":
+            assert scan(factory) == []
+        elif scenario == "verification_worker_once":
+            # Exercise the actual CLI entrypoint, with explicit offline settings.
+            settings = configured.model_copy(update={"database_url": str(factory.kw["bind"].url)})
+            with patch("app.cli.get_settings", return_value=settings):
+                assert cli_main(["worker-once"]) == 0
+        else:
+            replay = durable_commit(factory, **request)
+            assert replay.replayed and replay.operation_id == operation_id
+        with factory() as session:
+            operation = session.get(Operation, operation_id)
+            assert operation.committed_verification_pending is False
+            assert operation.result_json == operation_result
+            assert _durable_snapshot(session, delivery_changes=delivery_changes) == before, (
+                "Retry/replay changed durable rows"
+            )
+            assert len(session.scalars(select(Operation)).all()) == 1
+    after = snapshot()
+    assert after["commits_applied"] == counters["commits_applied"]
+    assert after["tasks_succeeded"] == counters["tasks_succeeded"]
+    if pending:
+        assert after["verification_pending_retries"] == counters["verification_pending_retries"] + 1
+        assert after["verification_pending_cleared"] == counters["verification_pending_cleared"] + 1
+        assert after["watchdog_scans"] == counters["watchdog_scans"] + 2
+    else:
+        assert after["commits_replayed"] == counters["commits_replayed"] + 2
+
+
 def _run_case(factory, configured, case):
     expected = case["expected"]
     failures = []
@@ -206,7 +288,10 @@ def _run_case(factory, configured, case):
                 plan = session.get(Plan, outcome.plan_id)
                 actual_diff = _diff(plan.normalized_changes.get("changes", []))
         if expected["outcome"] == "COMMITTED":
-            _commit_golden(factory, outcome)
+            if case.get("scenario"):
+                _exercise_commit_scenario(factory, configured, outcome, case["scenario"])
+            else:
+                _commit_golden(factory, outcome)
     except AppError as exc:
         error_code = exc.code
     except AssertionError as exc:
@@ -374,6 +459,7 @@ def main(argv=None):
         args = parser.parse_args(argv)
         report = evaluate()
         print("FIXTURE — " + NOTE)
+        print(f"Total: {report['case_count'] - report['failures']}/{report['case_count']}")
         print(format_table(report))
         if args.out:
             args.out.write_text(

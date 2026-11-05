@@ -7,13 +7,29 @@ from sqlalchemy import select
 
 from app.db.models import Event, JobAttempt, Operation, OutboxDelivery, Plan, Task
 from app.db.session import begin_immediate
+from app.observability import enrich, get_logger, log_event, observed
 from app.orchestration.state import aware, transition, utcnow
 from app.orchestration.worker import DEFAULT_LIMITS
 from app.services.kernel import retry_pending_verification
 
+logger = get_logger(__name__)
 
+
+@observed(
+    logger,
+    "watchdog.scan",
+    start_event="watchdog.scan",
+    exclude=("mode", "task_id", "attempt_id", "order_id"),
+    fields=lambda **_: {
+        "scanned_tasks": 0,
+        "recovered_tasks": 0,
+        "outbox_created": 0,
+        "pending_retries": 0,
+    },
+)
 def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
     changed = []
+    scanned = outbox_created = 0
     with factory() as session, begin_immediate(session):
         # Include terminal tasks: an acknowledgement can precede notification delivery.
         # Existing pending rows retain their retry schedule and consumer identity.
@@ -28,6 +44,7 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                 .exists(),
             )
         ):
+            outbox_created += 1
             session.add(
                 OutboxDelivery(
                     id=str(uuid4()),
@@ -41,6 +58,7 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
         for task in session.scalars(
             select(Task).where(Task.status.in_(["RUNNING", "COMMITTING", "RECONCILING"]))
         ):
+            scanned += 1
             operation = session.scalar(
                 select(Operation)
                 .join(Plan, Plan.id == Operation.plan_id)
@@ -71,6 +89,15 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                 not attempt or not attempt.lease_until or aware(attempt.lease_until) <= clock()
             )
             if deadline or stalled or expired:
+                log_event(
+                    logger,
+                    "lease.expired_or_fenced",
+                    task_id=task.id,
+                    attempt_id=attempt.id if attempt else None,
+                    order_id=task.order_id,
+                    outcome="expired",
+                    reason="deadline" if deadline else "stalled" if stalled else "lease_expired",
+                )
                 failed = deadline or (
                     attempt
                     and (
@@ -83,5 +110,11 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                     attempt.lease_until = None
                     attempt.lease_owner = None
                 changed.append(task.id)
-    retry_pending_verification(factory)
+    retries = retry_pending_verification(factory)
+    enrich(
+        scanned_tasks=scanned,
+        recovered_tasks=len(changed),
+        outbox_created=outbox_created,
+        pending_retries=retries,
+    )
     return changed

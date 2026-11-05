@@ -1,8 +1,8 @@
 """Short claims and fenced fixture execution. Clock and crash boundaries are injectable."""
 
-import logging
 from dataclasses import dataclass
 from datetime import timedelta
+from time import perf_counter
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -10,10 +10,11 @@ from sqlalchemy import func, select
 from app.db.models import InboxDelivery, InputPayload, JobAttempt, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
+from app.observability import get_logger, log_event
 from app.orchestration.dispatch import dispatch_text
 from app.orchestration.state import check_fence, guard, transition, utcnow
 
-logger = logging.getLogger("oos.worker")
+logger = get_logger("worker")
 MAX_ACTIVE = 2
 
 
@@ -36,6 +37,8 @@ DEFAULT_LIMITS = Limits()
 
 
 def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
+    started = perf_counter()
+    claimed = None
     with factory() as session, begin_immediate(session):
         # Keep the hard ceiling of two RUNNING tasks, even when limits.active is higher.
         if session.scalar(
@@ -66,8 +69,19 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
                 step_count=0,
             )
             session.add(attempt)
-            return task.id, attempt.fencing_token
-        return None
+            claimed = task.id, attempt.fencing_token
+            fields = {"task_id": task.id, "attempt_id": attempt.id, "order_id": task.order_id}
+            break
+    if claimed is not None:
+        log_event(
+            logger,
+            "lease.acquired",
+            **fields,
+            lease_owner=owner,
+            outcome="success",
+            duration_ms=round((perf_counter() - started) * 1000, 3),
+        )
+    return claimed
 
 
 def heartbeat(factory, task_id, token, *, progress=False, clock=utcnow, limits=DEFAULT_LIMITS):

@@ -2206,5 +2206,167 @@
         "plan_hash": "forged-approved-plan"
       }
     }
+  },
+  {
+    "id": "verification-pending-watchdog",
+    "category": "golden",
+    "input_text": "SO-1001 把未发的 40 件黑色 M 改成白色 M",
+    "expected": {
+      "outcome": "COMMITTED",
+      "diff_summary": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ]
+    },
+    "fixture_payload": {
+      "order_candidates": [
+        "SO-1001"
+      ],
+      "customer_candidate": null,
+      "line_changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ],
+      "new_lines": [],
+      "missing_fields": [],
+      "conflicts": [],
+      "questions": [],
+      "source_refs": [],
+      "business_event": {
+        "event_type": "change_order",
+        "order_id": "SO-1001",
+        "line_changes": [
+          {
+            "mode": "replace_remaining",
+            "sku_id": null,
+            "from_sku": "A-BLACK-M",
+            "to_sku": "A-WHITE-M",
+            "qty": 40
+          }
+        ],
+        "new_lines": [],
+        "clarification_choice": null,
+        "source_refs": []
+      }
+    },
+    "scenario": "verification_watchdog"
+  },
+  {
+    "id": "verification-pending-worker-once",
+    "category": "golden",
+    "input_text": "SO-1001 把未发的 40 件黑色 M 改成白色 M",
+    "expected": {
+      "outcome": "COMMITTED",
+      "diff_summary": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ]
+    },
+    "fixture_payload": {
+      "order_candidates": [
+        "SO-1001"
+      ],
+      "customer_candidate": null,
+      "line_changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ],
+      "new_lines": [],
+      "missing_fields": [],
+      "conflicts": [],
+      "questions": [],
+      "source_refs": [],
+      "business_event": {
+        "event_type": "change_order",
+        "order_id": "SO-1001",
+        "line_changes": [
+          {
+            "mode": "replace_remaining",
+            "sku_id": null,
+            "from_sku": "A-BLACK-M",
+            "to_sku": "A-WHITE-M",
+            "qty": 40
+          }
+        ],
+        "new_lines": [],
+        "clarification_choice": null,
+        "source_refs": []
+      }
+    },
+    "scenario": "verification_worker_once"
+  },
+  {
+    "id": "idempotent-commit-replay",
+    "category": "golden",
+    "input_text": "SO-1001 把未发的 40 件黑色 M 改成白色 M",
+    "expected": {
+      "outcome": "COMMITTED",
+      "diff_summary": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ]
+    },
+    "fixture_payload": {
+      "order_candidates": [
+        "SO-1001"
+      ],
+      "customer_candidate": null,
+      "line_changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": null,
+          "from_sku": "A-BLACK-M",
+          "to_sku": "A-WHITE-M",
+          "qty": 40
+        }
+      ],
+      "new_lines": [],
+      "missing_fields": [],
+      "conflicts": [],
+      "questions": [],
+      "source_refs": [],
+      "business_event": {
+        "event_type": "change_order",
+        "order_id": "SO-1001",
+        "line_changes": [
+          {
+            "mode": "replace_remaining",
+            "sku_id": null,
+            "from_sku": "A-BLACK-M",
+            "to_sku": "A-WHITE-M",
+            "qty": 40
+          }
+        ],
+        "new_lines": [],
+        "clarification_choice": null,
+        "source_refs": []
+      }
+    },
+    "scenario": "commit_replay"
   }
 ]

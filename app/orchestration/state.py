@@ -8,6 +8,9 @@ from sqlalchemy import select
 
 from app.db.models import JobAttempt, Task
 from app.errors import AppError
+from app.observability import get_logger, log_event
+
+logger = get_logger(__name__)
 
 ALLOWED = {
     "RECEIVED": {"QUEUED", "CANCELLED"},
@@ -60,6 +63,15 @@ def check_fence(session, task_id, token, now):
         or attempt.lease_until is None
         or aware(attempt.lease_until) <= now
     ):
+        log_event(
+            logger,
+            "lease.expired_or_fenced",
+            task_id=task_id,
+            attempt_id=attempt.id if attempt else None,
+            order_id=task.order_id if task else None,
+            outcome="rejected",
+            error_code="STALE_ATTEMPT",
+        )
         raise AppError("旧 attempt 结果已丢弃", code="STALE_ATTEMPT", http_status=409)
     return task, attempt
 

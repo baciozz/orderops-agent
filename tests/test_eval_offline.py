@@ -25,7 +25,12 @@ CATEGORIES = {
 
 def test_case_contract_and_all_live_inputs():
     cases = eval_offline.load_cases()
-    assert len(cases) >= 45
+    assert len(cases) == 53
+    assert [case["scenario"] for case in cases[50:]] == [
+        "verification_watchdog",
+        "verification_worker_once",
+        "commit_replay",
+    ]
     assert len({case["id"] for case in cases}) == len(cases)
     assert {case["category"] for case in cases} == CATEGORIES
     assert {text for _, _, text in SAMPLES} <= {case["input_text"] for case in cases}
@@ -79,6 +84,7 @@ def test_script_end_to_end_without_opening_any_socket(tmp_path, monkeypatch, cap
     assert report["mode"] == "FIXTURE"
     assert "not model understanding" in report["note"]
     assert report["case_count"] == len(cases)
+    assert [(group["pass"], group["total"]) for group in report["groups"]] == [(23, 23), (30, 30)]
     assert set(report["categories"]) == CATEGORIES
     assert len(report["groups"]) == 2
     for group in report["groups"]:
@@ -108,7 +114,8 @@ def test_script_end_to_end_without_opening_any_socket(tmp_path, monkeypatch, cap
             assert row["row_count_delta"]["operation"] == 1
     table = eval_offline.format_table(report)
     assert "不代表模型理解准确率" in table
-    assert table in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert table in output and "Total: 53/53" in output
     docs = eval_offline.CASE_PATH.parents[1] / "docs" / "OFFLINE_EVAL.md"
     assert table in docs.read_text()
 

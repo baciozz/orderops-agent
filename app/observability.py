@@ -17,6 +17,7 @@ from pydantic import SecretStr
 
 from app.config import Settings
 from app.errors import AppError
+from app.metrics import record_event
 
 _REDACTED = "[REDACTED]"
 _SENSITIVE = re.compile(
@@ -150,8 +151,13 @@ def configure_logging(settings: Settings) -> None:
 
 
 def log_event(logger: logging.Logger, event: str, **fields: Any) -> None:
+    metadata = {**(_context.get() or {}), **fields}
     try:
-        logger.info(event, extra={**(_context.get() or {}), **fields, "event": event})
+        record_event(event, metadata)
+    except Exception:
+        pass
+    try:
+        logger.info(event, extra={**metadata, "event": event})
     except Exception:
         pass
 

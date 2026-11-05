@@ -1,7 +1,7 @@
 # 离线合成评测（FIXTURE）
 
-本评测固定为 **FIXTURE**：50 条中文合成输入、逐条写出的 golden parser
-payload，测试真实 dispatcher、schema 校验、库存/下游预检和 kernel。
+本评测固定为 **FIXTURE**：53 条用例（原 50 条中文合成输入保持不变，追加 3 条恢复/重放用例），
+使用逐条写出的 golden parser payload，测试真实 dispatcher、schema 校验、库存/下游预检和 kernel。
 不调用模型，不发送 HTTP，不读取 `.env`，不需要凭据。
 
 ```bash
@@ -10,7 +10,7 @@ payload，测试真实 dispatcher、schema 校验、库存/下游预检和 kerne
 make eval-offline PY=.venv/bin/python
 ```
 
-默认只向 stdout 输出类别表格及失败明细；`--out` 另外写 JSON 报告。
+默认只向 stdout 输出总分、类别表格及失败明细；`--out` 另外写 JSON 报告。
 JSON 包含 `mode: "FIXTURE"`、评测局限说明、逐条实际状态/错误码/计划 diff、
 Approval/Operation/Outbox 行数增量、类别通过率及失败原因。
 `groups` 提供组名称、中文标签、类别列表、pass/fail/known_issues/pass_rate 小计，
@@ -22,7 +22,7 @@ Approval/Operation/Outbox 行数增量、类别通过率及失败原因。
 
 数据在 [`evals/offline_cases.json`](../evals/offline_cases.json)。每条包含唯一
 `id`、`category`、`input_text`、`expected` 和完整的 `fixture_payload`。
-`product_question` 是可选的产品问题注释字段。
+`product_question` 是可选的产品问题注释字段；`scenario` 可选，指定核验重试或幂等重放路径。
 这里选择现有 fixture 的 `ExtractionResult` 结构（含 `business_event`），
 直接通过 `dispatch_text(..., fixtures={完整输入: 显式payload})` 注入
 `FixtureLLMClient`；没有关键词/正则“理解”，没有改变原有默认 fixtures。
@@ -36,7 +36,7 @@ Approval/Operation/Outbox 行数增量、类别通过率及失败原因。
 | invalid_qty | literal 0、-5、1.5/2.5；覆盖改单及新建 |
 | unknown_order | payload 保留不存在的订单号（如 SO-9999），期望 NOT_FOUND |
 | injection | 外传、忽略规则、伪造 approved、单价、fence、plan_hash |
-| golden | 原黄金现货改色：预检 → 人工批准 API → 提交 API → 修订2 |
+| golden | 原黄金现货改色 + watchdog / worker-once 清除 pending 核验 + 幂等提交重放不双写 |
 
 先用真实 Alembic migration 和 seed 生成临时 SQLite 模板，关闭连接后为每条
 case 复制一个独立数据库。没有状态串扰；整个评测通常约 2–5 秒。
@@ -50,7 +50,12 @@ case 复制一个独立数据库。没有状态串扰；整个评测通常约 2�
 存储值，拒绝任何外部 HTTP(S) URL。SAFE 可以是合法业务部分进入待人工批准，
 但不能由模型批准或提交。六条带非法额外字段的答案应被 schema 拒绝。
 
-本评测入口是 dispatcher，不包含 inbox/UI 原始输入持久化或上传文件流程。
+原有 50 条评测入口是 dispatcher，不包含 inbox/UI 原始输入持久化或上传文件流程。
+追加 3 条复用 golden 的显式 payload：首次提交用 verify_failpoint 注入 pending，分别调用
+watchdog.scan 和实际 worker-once CLI 清除；另一条调用 recovery.durable_commit 两次重放。
+每条检查业务、修订、审计、事件等表的完整快照不变、只有一个 Operation 且结果不变；
+worker-once 允许 outbox 投递状态/消费回执更新，核验路径只允许 pending 标记清除。
+同时断言 retry/cleared/scan 或 replay counter 增量，二次调用不重复成功计数或核验。
 fixture 的来源引用为空，因此不会把用户输入中的攻击 URL 作为原始证据存入库；
 外传字段仍以原样恶意 payload 交给 schema 拒绝。这里的全表 URL 断言不能用来
 推断 inbox 对原始用户证据的存储策略，也不能证明模型会拒绝输出这些字段。
@@ -60,7 +65,7 @@ fixture 的来源引用为空，因此不会把用户输入中的攻击 URL 作�
 `live_enabled=False`，清空模型/凭据/价格字段，并检查 `resolve_mode` 必须为
 FIXTURE。测试额外禁止创建任何 socket，并验证网络 guard 在系统调用之前拒绝外部地址。
 
-## 最新结果（FIXTURE，2026-11-03）
+## 最新结果（FIXTURE，2026-11-06）
 
 ### 兜底能力（safeguards）
 
@@ -78,11 +83,11 @@ FIXTURE。测试额外禁止创建任何 socket，并验证网络 guard 在系�
 | alias | 9 | 0 | 0 | 100.0% |
 | ambiguous_wording | 9 | 0 | 0 | 100.0% |
 | multi_line_change | 8 | 0 | 0 | 100.0% |
-| golden | 1 | 0 | 0 | 100.0% |
-| 小计 | 27 | 0 | 0 | 100.0% |
+| golden | 4 | 0 | 0 | 100.0% |
+| 小计 | 30 | 0 | 0 | 100.0% |
 
-合计 **50/50**，当前没有 `known_issue`。0/负数返回 BUSINESS_CONFLICT，非整数返回
-SCHEMA_INVALID，不存在订单返回 NOT_FOUND。未修改生产代码或业务检查。
+合计 **53/53**，当前没有 `known_issue`。0/负数返回 BUSINESS_CONFLICT，非整数返回
+SCHEMA_INVALID，不存在订单返回 NOT_FOUND。保留原有业务检查，新增观测事件与进程内指标。
 
 ## 诚实说明：这不是模型理解能力分数
 
@@ -103,7 +108,7 @@ SCHEMA_INVALID，不存在订单返回 NOT_FOUND。未修改生产代码或业�
 payload，写明 `known_issue`，让报告保持失败；不要为通过评测修改生产规则。
 
 兜底能力（safeguards）覆盖非法数量、不存在订单及注入的 schema/kernel 边界。
-管道回归（pipeline regression）覆盖显式结构化答案下的别名、含糊措辞、多行变更和黄金链。
+管道回归（pipeline regression）覆盖显式结构化答案下的别名、含糊措辞、多行变更、黄金链、核验重试与幂等重放。
 管道回归不代表模型理解准确率，不得表述为模型 100% 准确率（如简历）。
 
 Qi 已确认：设置总数量、替换剩余数量、增加数量和新建订单行时，数量为 0 均拒绝处理，

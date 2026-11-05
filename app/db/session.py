@@ -13,9 +13,52 @@ from contextlib import contextmanager
 from pathlib import Path
 from sqlite3 import Connection as SQLiteConnection
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
+
+from app.db.models import Task
+from app.observability import get_logger, log_event
+
+logger = get_logger(__name__)
+
+
+class _ObservedSession(Session):
+    """Emit terminal task events only after their transaction becomes durable."""
+
+
+@event.listens_for(_ObservedSession, "after_flush")
+def _collect_terminal_tasks(session: Session, flush_context: object) -> None:
+    pending = session.info.get("terminal_tasks", {})
+    for row in session.new | session.dirty:
+        if (
+            isinstance(row, Task)
+            and row.status in {"SUCCEEDED", "FAILED"}
+            and (inspect(row).attrs.status.history.has_changes() or row.id in pending)
+        ):
+            session.info.setdefault("terminal_tasks", {})[row.id] = {
+                "task_id": row.id,
+                "order_id": row.order_id,
+                "status": row.status,
+                "error_code": row.error_code,
+            }
+
+
+@event.listens_for(_ObservedSession, "after_commit")
+def _emit_terminal_tasks(session: Session) -> None:
+    for fields in session.info.pop("terminal_tasks", {}).values():
+        log_event(
+            logger,
+            "task.finished",
+            **fields,
+            outcome="success" if fields["status"] == "SUCCEEDED" else "failed",
+        )
+
+
+@event.listens_for(_ObservedSession, "after_rollback")
+def _discard_terminal_tasks(session: Session) -> None:
+    session.info.pop("terminal_tasks", None)
+
 
 _BEGIN_IMMEDIATE: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "oos_begin_immediate",
@@ -47,7 +90,7 @@ def make_engine(url: str, *, busy_timeout_ms: int = 5000) -> Engine:
 
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
-    return sessionmaker(bind=engine, expire_on_commit=False)
+    return sessionmaker(bind=engine, class_=_ObservedSession, expire_on_commit=False)
 
 
 @contextmanager
