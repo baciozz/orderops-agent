@@ -218,7 +218,12 @@ The browser checks current task status/revision before each new action. Answers
 also carry revision and latest-input-event fences, checked atomically by the
 server before appending a new answer. Exact delivery retries reuse their receipt;
 legacy clients omitting the optional fences retain their prior concurrency limits.
-A raced page can require a safe refresh. Uploads have no idempotency key: after a network failure, refresh and
-inspect the persisted file list before retrying to avoid using another upload
-slot. No automatic upload, answer, approval, commit, or cancellation occurs on
-refresh or history navigation. JavaScript is required for these controls.
+A raced page can require a safe refresh. Browser uploads now use a stable key
+covering the task, exact filename, and all file bytes: identical reselection or
+retry reuses the committed source without another slot or duplicate list entry.
+A different file/name uses a new key; API callers omitting the key retain their
+prior behavior. After an uncertain result, refresh the saved list before retrying.
+Receipts do not recreate missing temporary originals or recover uncommitted crash
+orphans; original-file persistence remains a separate limitation. No automatic
+upload, answer, approval, commit, or cancellation occurs on refresh or history
+navigation. JavaScript is required for these controls.

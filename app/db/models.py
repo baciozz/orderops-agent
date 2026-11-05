@@ -33,6 +33,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     UniqueConstraint,
@@ -369,6 +370,24 @@ class TaskSource(Base):
 
     task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), primary_key=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("input_source.id"), primary_key=True)
+
+
+class SourceUploadReceipt(Base):
+    """Optional upload identity, committed with the task-owned evidence."""
+
+    __tablename__ = "source_upload_receipt"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id", "source_id"],
+            ["task_source.task_id", "task_source.source_id"],
+            name="fk_upload_receipt_owner",
+        ),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_upload_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class JobAttempt(Base):

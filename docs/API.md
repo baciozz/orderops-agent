@@ -35,7 +35,7 @@
 | GET | `/ui/demo/tasks`、`/ui/demo/orders/{order_id}` | 最近任务列表、订单只读页 |
 | POST | `/ui/demo/worker-once` | 本机 FIXTURE 扫描恢复、处理一条任务、投递 outbox；返回 mode / recovered_task_ids / result（含 task_id、status，空闲为 null）/ published |
 | GET | `/tasks/{task_id}/download` | 已有变更清单的 CSV/XLSX 下载，`fmt` 默认为 `csv` |
-| POST | `/sources` | multipart `task_id` + `file`；每次一个文件、每任务最多三个，静态切分 TXT/MD/XLSX |
+| POST | `/sources` | multipart `task_id` + `file`，可选 `client_upload_key` 幂等重试；每次一个文件、每任务最多三个，静态切分 TXT/MD/XLSX |
 | GET | `/sources/{source_id}/spans` | 必填查询参数 `task_id`，只读取属于该任务的来源 |
 | GET | `/orders/{order_id}` | 当前订单版本、状态和行明细 |
 | GET | `/stock` | 库存与可用量查询 |
@@ -132,3 +132,20 @@ Tasks without any durable input payload expose no answer/upload controls in the
 HTML UI and direct the operator to start a new task. Legacy API clients can still
 omit the input fence; they retain revision/status guards only. No unbound-task revision
 semantics were changed. Clients omitting fences retain legacy concurrency limits.
+
+## 上传重试身份（兼容不带 key 的客户端）
+
+`POST /sources` 的 multipart 表单可选 `client_upload_key`。允许 1–128 个 ASCII 字母、数字及 `.`、`_`、`:`、`-`；重复、空白或不合法字段返回 400。作用域为 `task_id`，不同任务可使用相同 key。
+
+- 首次成功上传将回执与 `input_source`、`task_source`、`source_span` 同事务提交。身份指纹包含完整解码文件名参数（保留首尾空白，净化显示名前；等价的 RFC 编码形式不算不同文件名）和原始文件字节，使用带长度边界的 SHA-256；不是仅按显示名或文件内容去重。
+- 同一任务、key、文件名和字节重试返回 200，复用原 `source_id` / `parser_status=ok`，不新增文件、来源或 spans，也不占用新的三文件额度。响应 `request_id` / `correlation_id` 与 HTTP trace 头均属于本次请求，`limits` 为当前上限。
+- 同 key 搭配不同文件名或字节返回 409 `UPLOAD_KEY_CONFLICT`，不覆盖旧文件。文件名净化后相同也不视为相同请求。使用不同 key，或不传 key，可以有意上传相同内容的独立副本，仍受每任务三个文件限制。
+- 重放先只读查询已提交回执；未命中才在写锁外静态解析，再在 `BEGIN IMMEDIATE` 事务内重查身份与任务关联、检查额度并保存。并发首次请求只会提交一份证据；解析不持有 SQLite 写锁。回执通过复合外键关联该任务的来源，查询也再次核对来源归属。
+- 上传接口维持原行为：任务须存在，但不要求可回答状态。重放可在任务完成、取消或额度已满后返回旧来源；不会追加输入、重开任务、调度 worker、批准、提交或修改业务。网页仍会先核对任务是否变化。
+- 网页用任务 ID、完整文件名和文件字节摘要生成稳定 key，不包含意图版本。选择同名同内容文件，重试、刷新或再次选择都会复用原证据；列表按 `source_id` 避免重复展示。网页不提供“强制上传相同副本”按钮。上传后仍需重新勾选证据，再单独提交回答。
+
+新增 Alembic revision `upload_idempotency`，前序为 `verification_retries`。部署候选时须由操作者显式运行 `python -m app.cli init-db`，启动和请求不会自动迁移。升级仅新增回执表，不改写历史来源；降级仅移除回执表，保留文件、来源归属和 spans，但丢失对应重试身份。再次升级不会重建丢失的身份，因此旧 key 可能再次占用额度。
+
+普通写入/提交失败经只读核对确认无持久来源后，删除本请求成功创建的文件。已有文件发生 `xb` 路径冲突时不会被删除；提交成功后回调/响应失败时保留已提交文件，随后同 key 可重放。清理核对或删除失败时保留文件并记录脱敏 `upload.cleanup_deferred`，不覆盖原异常。
+
+本扩展解决“提交成功但响应丢失”的重试，不提供文件系统与 SQLite 的跨资源事务。提交前进程硬崩溃仍可能留下未关联临时文件，重试会使用新的随机路径而不覆盖孤儿。默认文件目录是进程临时目录，尚无持久存储、垃圾回收或灾难恢复保证；数据库回执存在不代表原文件永远可用；重放不会重建丢失的临时原文件，已存数据库 spans 仍可用于任务证据读取。原 5 MiB、静态解析和恶意文件保护不变。

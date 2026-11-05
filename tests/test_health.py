@@ -60,7 +60,7 @@ def test_startup_requires_explicit_migration(tmp_path, revision):
         ):
             pytest.fail("An outdated schema must refuse startup")
         assert str(error.value).startswith(
-            f"数据库 schema 未迁移到最新版本（当前 {revision}，需要 verification_retries），"
+            f"数据库 schema 未迁移到最新版本（当前 {revision}，需要 upload_idempotency），"
             "请先运行 python -m app.cli init-db"
         )
         with engine.connect() as connection:

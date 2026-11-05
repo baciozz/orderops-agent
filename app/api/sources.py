@@ -5,6 +5,7 @@ from email.message import Message
 from email.parser import BytesParser
 from hashlib import sha256
 from pathlib import Path, PureWindowsPath
+from re import fullmatch
 from tempfile import mkdtemp
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from fastapi.responses import JSONResponse
 from schemas.api import SourceUploadResponse
 from schemas.common import SourceRef
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.adapters.parser import split_source
 from app.adapters.uploads import (
@@ -27,10 +29,10 @@ from app.adapters.uploads import (
     UploadValidationError,
 )
 from app.api.errors import error_payload
-from app.db.models import InputSource, SourceSpan, Task, TaskSource
+from app.db.models import InputSource, SourceSpan, SourceUploadReceipt, Task, TaskSource
 from app.db.session import begin_immediate
 from app.errors import AppError
-from app.observability import enrich, get_logger, observed
+from app.observability import enrich, get_logger, log_event, observed
 from app.services.source_spans import task_spans
 
 logger = get_logger(__name__)
@@ -56,7 +58,7 @@ def _payload_bytes(part: Message) -> bytes:
     return payload
 
 
-async def _upload_form(request: Request) -> tuple[str, str, bytes]:
+async def _upload_form(request: Request) -> tuple[str, str, bytes, str | None, str]:
     # A bounded stdlib MIME reader avoids an optional multipart dependency. One
     # file per request; MAX_FILES also applies across all uploads for this task.
     content_type = request.headers.get("content-type", "")
@@ -85,9 +87,9 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
             raise ValueError("上传文件必须带文件名")
         if filename is not None:
             file_parts.append(part)
-        elif name == "task_id":
+        elif name in {"task_id", "client_upload_key"}:
             if name in fields:
-                raise ValueError("task_id 不能重复")
+                raise ValueError(f"{name} 不能重复")
             fields[name] = _payload_bytes(part).decode("utf-8")
     if (
         len(file_parts) != 1
@@ -100,7 +102,71 @@ async def _upload_form(request: Request) -> tuple[str, str, bytes]:
     filename = file.get_filename()
     if filename is None or not filename.strip():
         raise ValueError("上传文件必须带文件名")
-    return fields["task_id"], filename, _payload_bytes(file)
+    key = fields.get("client_upload_key")
+    if key is not None and fullmatch(r"[A-Za-z0-9._:-]{1,128}", key) is None:
+        raise ValueError("client_upload_key 必须为 1–128 个 ASCII 字母、数字或 . _ : -")
+    # get_filename() strips whitespace. Retain that legacy parser/display
+    # behavior, but bind retries to the complete decoded parameter instead.
+    identity_name = file.get_param("filename", header="content-disposition")
+    if identity_name is None:
+        identity_name = file.get_param("name", header="content-type")
+    if not isinstance(identity_name, str):
+        raise ValueError("上传文件名格式不正确")
+    return fields["task_id"], filename, _payload_bytes(file), key, identity_name
+
+
+def _upload_fingerprint(filename: str, content: bytes) -> str:
+    # Preserve the complete decoded multipart filename, not the sanitized display
+    # name. Length-prefixing makes the name/content boundary unambiguous.
+    name = filename.encode("utf-8")
+    digest = sha256(b"source-upload-v1\0")
+    digest.update(len(name).to_bytes(8, "big"))
+    digest.update(name)
+    digest.update(content)
+    return digest.hexdigest()
+
+
+def _replay_source(session: Session, task_id: str, key: str, fingerprint: str) -> str | None:
+    receipt = session.get(SourceUploadReceipt, (task_id, key))
+    if receipt is None:
+        return None
+    # The composite FK enforces ownership on writes; the join also checks it on
+    # reads rather than trusting a receipt in isolation.
+    source_id = session.scalar(
+        select(TaskSource.source_id)
+        .join(InputSource, InputSource.id == TaskSource.source_id)
+        .where(TaskSource.task_id == task_id, TaskSource.source_id == receipt.source_id)
+    )
+    if source_id is None:
+        raise AppError("上传回执来源不可用", code="UPLOAD_RECEIPT_INVALID", http_status=409)
+    if receipt.payload_sha256 != fingerprint:
+        raise AppError(
+            "client_upload_key 已用于不同文件，请为新的上传使用不同的 key",
+            code="UPLOAD_KEY_CONFLICT",
+            http_status=409,
+        )
+    enrich(source_id=source_id, upload_replayed=True)
+    return source_id
+
+
+def _cleanup_failed_upload(request: Request, source_id: str, created_path: Path) -> None:
+    # The transaction may have committed before an after_commit callback failed.
+    # Only delete our newly created file if a fresh read confirms no durable row.
+    # Failure to prove rollback is safer as an orphan than destroyed evidence.
+    try:
+        with request.app.state.session_factory() as session:
+            if session.get(InputSource, source_id) is not None:
+                return
+        created_path.unlink(missing_ok=True)
+    except Exception:
+        # Never replace the original error or log filenames, bytes or paths.
+        log_event(
+            logger,
+            "upload.cleanup_deferred",
+            source_id=source_id,
+            outcome="deferred",
+            error_code="UPLOAD_CLEANUP_UNCERTAIN",
+        )
 
 
 @router.post("/sources", response_model=SourceUploadResponse)
@@ -115,7 +181,15 @@ async def upload_source(request: Request):
         limits=LIMITS,
     )
     try:
-        task_id, filename, content = await _upload_form(request)
+        task_id, filename, content, key, identity_name = await _upload_form(request)
+        enrich(task_id=task_id)
+        fingerprint = _upload_fingerprint(identity_name, content)
+        if key is not None:
+            with request.app.state.session_factory() as session:
+                replayed = _replay_source(session, task_id, key, fingerprint)
+            if replayed is not None:
+                response.source_id = replayed
+                return response
         enrich(
             task_id=task_id,
             source_id=source_id,
@@ -142,9 +216,16 @@ async def upload_source(request: Request):
                 ),
             },
         )
-    storage_path = None
+    created_path = None
     try:
         with request.app.state.session_factory() as session, begin_immediate(session):
+            # Parsing stays outside SQLite's write lock. Another request may
+            # have won while we parsed, so recheck before caps or file creation.
+            if key is not None:
+                replayed = _replay_source(session, task_id, key, fingerprint)
+                if replayed is not None:
+                    response.source_id = replayed
+                    return response
             if session.get(Task, task_id) is None:
                 raise AppError("任务不存在", code="TASK_NOT_FOUND", http_status=404)
             count = session.scalar(
@@ -160,6 +241,7 @@ async def upload_source(request: Request):
                 request.app.state.source_storage_dir = root
             storage_path = root / source_id
             with storage_path.open("xb") as target:
+                created_path = storage_path
                 target.write(content)
             session.add(
                 InputSource(
@@ -179,9 +261,19 @@ async def upload_source(request: Request):
             session.flush()
             session.add(TaskSource(task_id=task_id, source_id=source_id))
             session.add_all(SourceSpan(id=f"SPAN-{uuid4().hex}", **span) for span in spans)
+            if key is not None:
+                session.flush()  # Composite ownership FK must already exist.
+                session.add(
+                    SourceUploadReceipt(
+                        task_id=task_id,
+                        client_upload_key=key,
+                        source_id=source_id,
+                        payload_sha256=fingerprint,
+                    )
+                )
     except Exception:
-        if storage_path is not None:
-            storage_path.unlink(missing_ok=True)
+        if created_path is not None:
+            _cleanup_failed_upload(request, source_id, created_path)
         raise
     return response
 

@@ -172,8 +172,17 @@ if (taskInputs) {
     mutate(message, async () => {
       await checkCurrent();
       showMessage(message, "正在上传并解析…");
+      // Re-selecting identical evidence is a retry, including after a reload.
+      // A distinct filename/content/task creates a new upload identity.
+      const fileDigest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+      const contentHash = [...new Uint8Array(fileDigest)]
+        .map((n) => n.toString(16).padStart(2, "0")).join("");
+      const identity = new TextEncoder().encode(JSON.stringify([taskId, file.name, contentHash]));
+      const digest = await crypto.subtle.digest("SHA-256", identity);
+      const key = [...new Uint8Array(digest)].map((n) => n.toString(16).padStart(2, "0")).join("");
       const body = new FormData();
       body.append("task_id", taskId);
+      body.append("client_upload_key", key);
       body.append("file", file);
       const response = await fetch("/sources", { method: "POST", body });
       const payload = await response.json().catch(() => null);
@@ -184,15 +193,19 @@ if (taskInputs) {
       list.querySelector("[data-empty]")?.remove();
       // Do not carry forward selections after changing the evidence set.
       list.querySelectorAll("input").forEach((input) => { input.checked = false; });
-      const item = document.createElement("li");
-      const label = document.createElement("label");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.name = "answer-source";
-      checkbox.value = payload.source_id;
-      label.append(checkbox, ` ${file.name}（${file.size} 字节） · ${payload.source_id}`);
-      item.append(label);
-      list.append(item);
+      const alreadyListed = [...list.querySelectorAll('input[name="answer-source"]')]
+        .some((input) => input.value === payload.source_id);
+      if (!alreadyListed) {
+        const item = document.createElement("li");
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.name = "answer-source";
+        checkbox.value = payload.source_id;
+        label.append(checkbox, ` ${file.name}（${file.size} 字节） · ${payload.source_id}`);
+        item.append(label);
+        list.append(item);
+      }
       upload.reset();
       showMessage(message, "上传成功（parser_status: ok）。请重新勾选本次回答需要的证据；尚未入队。");
     });
