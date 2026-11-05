@@ -25,7 +25,7 @@ make run
 pip install -r requirements-dev.lock && pip install --no-deps -e .
 ```
 
-根目录 `requirements.lock` 是运行时依赖，`requirements-dev.lock` 是运行时与开发依赖；由 `uv pip compile pyproject.toml --universal --python-version 3.11`（开发版另加 `--extra dev`）生成，`pyproject.toml` 保留顶层依赖精确版本。 锁文件不包含构建后端；editable 安装仍使用 `pyproject.toml` 中未完全锁定的 `setuptools>=68` / `wheel` 构建隔离依赖，因此不是完全封闭构建。
+根目录 `requirements.lock` 是运行时依赖，`requirements-dev.lock` 是运行时与开发依赖；由 `uv pip compile pyproject.toml --universal --python-version 3.11`（开发版另加 `--extra dev`）生成，`pyproject.toml` 保留顶层依赖精确版本。 应用锁文件不包含构建后端；下述 ordinary-wheel gate 单独使用 requirements-build.lock。editable 安装仍使用 `pyproject.toml` 中未完全锁定的 `setuptools>=68` / `wheel` 构建隔离依赖，因此不是完全封闭构建。
 
 ### 演示网页
 
@@ -238,3 +238,39 @@ python scripts/check_distribution.py /tmp/oos-wheel/order_ops_superagent-1.0.0rc
 ```
 
 该显式检查不安装或下载依赖，也不代替安装后数据库迁移测试。锁文件不包含构建工具，CI 的 make check 不自动运行此构建检查。sdist 包含迁移与上述检查/合成验收脚本，但不是完整测试/eval 开发工具链；完整验收推荐源码 archive。安装资源升级只读，revision 编写需要可写源码。模拟禁止写入的验证不等于实际 OS 只读文件系统验证。
+
+### Ordinary-wheel CI regression gate
+
+Source CI remains unchanged. CI additionally provisions dependency wheels, then runs
+an offline ordinary-wheel build/install/migration smoke check on Python 3.12:
+
+```sh
+python -m pip download --only-binary=:all: --dest /tmp/order-ops-wheelhouse -r requirements-build.lock -r requirements.lock
+make check-wheel WHEELHOUSE=/tmp/order-ops-wheelhouse WHEEL_OUTPUT=/tmp/order-ops-wheel-evidence
+```
+
+The wheelhouse must be explicitly provisioned for the current Python/platform.
+The evidence directory must not exist and must be outside the checkout. The gate
+never downloads dependencies: missing wheels fail installation. Build and runtime
+use separate fresh venvs, not the caller's editable install. Packaging inputs are
+copied to disposable storage; the checkout is never a build directory. Package
+trees plus explicit MANIFEST `include` inputs form the allowlist; unsupported
+manifest directives and symlinks fail rather than silently dropping inputs.
+
+Evidence includes logs, exact wheel and SHA-256, resource inventory, installed-byte
+checks, module origins, fresh migration head/schema readiness and repeat-init
+checks. Only an explicit temporary SQLite database is used. The runtime probe
+blocks sockets, settings construction, app startup and installed resource writes.
+These are application-level regression guards, not an OS security sandbox.
+
+`requirements-build.lock` separately pins pip, setuptools, wheel and packaging.
+To update it, deliberately select compatible versions, provision their wheels,
+then pass this gate on CI Python 3.12 and review the resulting artifact. Application
+lock generation does not update this file. Pins are version locks, not a
+hash-locked supply-chain guarantee. The runtime installer pin in check_wheel.py
+must be kept aligned with the build lock.
+
+This gate covers one ordinary source-built wheel, not editable installs, sdists,
+all supported Python/platform combinations, historical business-row preservation,
+browsers, live providers or deployment. Existing source tests and offline fixture
+evaluation remain separate required checks.

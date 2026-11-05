@@ -1,0 +1,6 @@
+# Build/installer pins, maintained separately from application locks.
+# Update deliberately and validate check-wheel on CI Python 3.12.
+pip==26.2.2
+setuptools==84.2.1
+wheel==0.48.0
+packaging==26.3

@@ -26,3 +26,8 @@ jobs:
         run: make check
       - name: Evaluate offline fixtures
         run: make eval-offline
+      - name: Provision locked wheel dependencies
+        run: |
+          python -m pip download --only-binary=:all: --dest "$RUNNER_TEMP/wheelhouse" -r requirements-build.lock -r requirements.lock
+      - name: Check ordinary installed wheel offline
+        run: make check-wheel WHEELHOUSE="$RUNNER_TEMP/wheelhouse" WHEEL_OUTPUT="$RUNNER_TEMP/wheel-evidence"

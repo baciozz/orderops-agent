@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck cov check run seed init-db eval-offline
+.PHONY: install test lint typecheck cov check run seed init-db eval-offline check-wheel
 
 PY ?= python
 
@@ -22,7 +22,7 @@ typecheck:
 cov:
 	$(PY) -m pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=xml
 
-# Everything CI runs, in one target.
+# Source quality gates (CI also runs eval-offline and check-wheel).
 check: lint typecheck cov
 
 run:
@@ -33,3 +33,7 @@ seed:
 
 init-db:
 	$(PY) -m app.cli init-db
+
+# WHEELHOUSE must already contain locked build/runtime wheels. Output must be new.
+check-wheel:
+	$(PY) -B scripts/check_wheel.py --wheelhouse "$(WHEELHOUSE)" --output "$(WHEEL_OUTPUT)"
