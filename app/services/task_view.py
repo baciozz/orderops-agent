@@ -290,6 +290,15 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
                 if operation
                 else None,
             ),
+            verification_manual_required=bool(
+                operation
+                and operation.committed_verification_pending
+                and operation.verification_manual_required
+            ),
+            verification_retry_attempts=operation.verification_retry_attempts if operation else 0,
+            verification_next_attempt_at=aware(operation.verification_next_attempt_at)
+            if operation and operation.verification_next_attempt_at
+            else None,
             download_url=f"/tasks/{task.id}/download" if diffs else None,
         ),
     )

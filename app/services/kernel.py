@@ -6,7 +6,6 @@ Downstream documents are relinked in the same commit as the order revision.
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -23,6 +22,7 @@ from seeds.golden import WAREHOUSE_ID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import Settings
 from app.db.models import (
     Approval,
     AuditRecord,
@@ -63,10 +63,7 @@ from app.domain.orders import derive_order_status
 from app.errors import AppError
 from app.observability import (
     enrich,
-    exception_code,
     get_logger,
-    log_context,
-    log_event,
     observed,
     task_fields_from_factory,
     task_log_fields,
@@ -350,6 +347,7 @@ def commit_plan(
     actor_id: str = DEMO_ACTOR_ID,
     now: datetime | None = None,
     acknowledge: bool = True,
+    verification_settings: Settings | None = None,
 ) -> CommitOutcome:
     moment = _now(now)
     request_hash = canonical_hash(
@@ -383,7 +381,9 @@ def commit_plan(
         replayed=outcome.replayed,
     )
     if outcome.replayed:
-        retry_pending_verification(session_factory, outcome.operation_id)
+        retry_pending_verification(
+            session_factory, outcome.operation_id, now=now, settings=verification_settings
+        )
     else:
         _post_verify(session_factory, outcome.operation_id)
     if acknowledge:
@@ -1473,52 +1473,17 @@ def _new_task_plan(
 
 
 def retry_pending_verification(
-    session_factory: sessionmaker[Session], operation_id: str | None = None
+    session_factory: sessionmaker[Session],
+    operation_id: str | None = None,
+    *,
+    now: datetime | None = None,
+    clock=None,
+    settings: Settings | None = None,
 ) -> int:
-    """Return readbacks attempted; errors leave the durable flag available for retry."""
-    with session_factory() as session:
-        pending = select(Operation.id).where(
-            Operation.status == "COMMITTED", Operation.committed_verification_pending.is_(True)
-        )
-        if operation_id is not None:
-            pending = pending.where(Operation.id == operation_id)
-        operation_ids = list(session.scalars(pending))
-    for pending_id in operation_ids:
-        started = perf_counter()
-        with log_context(exclude=("mode", "task_id", "attempt_id", "order_id")):
-            try:
-                with session_factory() as session:
-                    operation = session.get(Operation, pending_id)
-                    if operation is not None:
-                        plan = session.get(Plan, operation.plan_id)
-                        if plan is not None:
-                            enrich(**task_log_fields(session, plan.task_id))
-            except Exception:
-                # Optional log identifiers must not prevent the real readback attempt.
-                pass
-            outcome, error_code = "error", None
-            try:
-                _post_verify(session_factory, pending_id)
-                with session_factory() as session:
-                    operation = session.get(Operation, pending_id)
-                    outcome = (
-                        "cleared"
-                        if operation is not None and not operation.committed_verification_pending
-                        else "still_pending"
-                    )
-            except Exception as exc:
-                # Verification must not prevent acknowledgement or other pending retries.
-                # No compensating write: a concurrent successful verification wins.
-                error_code = exception_code(exc)
-            log_event(
-                logger,
-                "verification.retry",
-                operation_id=pending_id,
-                outcome=outcome,
-                error_code=error_code,
-                duration_ms=round((perf_counter() - started) * 1000, 3),
-            )
-    return len(operation_ids)
+    """Retry only due operations within the durable automatic retry budget."""
+    from app.services.verification import retry_pending
+
+    return retry_pending(session_factory, operation_id, now=now, clock=clock, settings=settings)
 
 
 def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
@@ -1543,6 +1508,14 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
                 and operation.committed_verification_pending
             ):
                 operation.committed_verification_pending = bool(problems)
+                if not problems:
+                    # Clear retry metadata atomically with the authoritative pass.
+                    # A crash before the retry wrapper returns cannot leave stale schedules.
+                    operation.verification_manual_required = False
+                    operation.verification_next_attempt_at = None
+                    operation.verification_lease_until = None
+                    operation.verification_lease_token = None
+                    operation.verification_last_error_code = None
     finally:
         session.close()
 

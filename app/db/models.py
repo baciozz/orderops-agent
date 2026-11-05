@@ -460,6 +460,16 @@ class Operation(Base):
     committed_verification_pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    verification_retry_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    verification_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_lease_token: Mapped[str | None] = mapped_column(String(64))
+    verification_manual_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
 
 
 class PurchaseProposal(Base):

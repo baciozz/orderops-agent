@@ -25,7 +25,7 @@ README 和部分模块注释也保留了早期阶段文字，判断已实现能�
 | app/api | HTTP 输入、来源、业务动作、任务查询和下载 | `app/api/inputs.py`、`app/api/sources.py`、`app/api/orders.py`、`app/api/tasks.py` |
 | app/adapters | 静态文件切分、fixture/live 客户端、严格解析和预算账本 | `app/adapters/parser.py`、`app/adapters/uploads.py`、`app/adapters/llm.py`、`app/adapters/live_model.py`、`app/adapters/budget.py` |
 | app/orchestration | 输入持久化、按能力路由、执行轨迹、租约、恢复和投递 | `app/orchestration/inbox.py`、`app/orchestration/router.py`、`app/orchestration/dispatch.py`、`app/orchestration/worker.py` |
-| app/services | 预检、批准、原子提交、核验、任务投影、导出和 seed | `app/services/kernel.py`、`app/services/task_view.py`、`app/services/export.py`、`app/services/seed.py` |
+| app/services | 预检、批准、原子提交、核验、任务投影、导出和 seed | `app/services/kernel.py`、`app/services/verification.py`、`app/services/task_view.py`、`app/services/export.py`、`app/services/seed.py` |
 | app/domain | 订单数量规则、库存不变量、下游影响、规范哈希 | `app/domain/changes.py`、`app/domain/inventory.py`、`app/domain/orders.py`、`app/domain/downstream.py`、`app/domain/hashing.py` |
 | app/db | ORM 表、精确金额类型、会话、SQLite 事务和迁移入口 | `app/db/models.py`、`app/db/types.py`、`app/db/session.py`、`app/db/schema.py` |
 | schemas | Pydantic 请求、响应、业务事件、提案和任务视图契约 | `schemas/api.py`、`schemas/business.py`、`schemas/subagent.py`、`schemas/catalog.py`、`schemas/task_view.py` |
@@ -154,9 +154,13 @@ worker 的 lease / fencing 只用于规划阶段的 JobAttempt，提交不领取
 业务提交事务将 `committed_verification_pending` 设为 True，表示尚未核验或核验失败。
 首次提交后 `_post_verify` 回读当前库存流水和下游一致性，通过后清除标记。
 幂等重放（包括 `durable_commit`）经内核 `retry_pending_verification` 仅重试该操作
-仍 pending 的核验；已通过的操作跳过。失败或异常保留 pending，不重新提交或修复数据，
+仍 pending 且到期的核验；已通过、租约有效或已转人工的操作跳过。失败或异常保留 pending，不重新提交或修复数据，
 不新增业务修订、审计或事件。更新标记前在写事务内重新读取，若并发核验已经通过，
 保留 False，避免较慢的失败结果覆盖成功结果；核验不重建历史快照。
+`app/services/verification.py` 将重试计数、下次时间和带唯一 token 的租约写入 Operation。
+首次提交读回另计，默认最多 5 次自动重试，首次可立即，后续按指数退避；耗尽后只转人工。
+`python -m app.cli verify-operation OPERATION_ID` 仅作一次人工只读核验，不重置自动预算，
+不强制通过、不重新提交、不修复数据；任务视图继续保留已提交回执并提示人工处理。
 `acknowledge_commit` 将任务置 SUCCEEDED；响应丢失可进入 RECONCILING，用原请求和原 key 对账。
 `publish_pending` 至少一次发送，失败按 available_at 退避，发送成功后标 DELIVERED。
 `consume` 在同一事务执行本地 effect 并写 `ConsumerReceipt` / `consumer_receipt`，
@@ -229,7 +233,7 @@ COMMITTING、RECONCILING、SUCCEEDED 返回 ALREADY_COMMITTED，不回滚已提�
 `app/orchestration/watchdog.py` 的 `scan` 先查 Operation，再决定恢复：
 已提交操作对应的任务经 RECONCILING 到 SUCCEEDED，并补建缺失的 ui outbox。
 RUNNING 租约过期、无进展或到期时可重新排队；截止或尝试/步数耗尽则 FAILED。
-现有 BEGIN IMMEDIATE 事务结束后调用内核重试所有 COMMITTED 且 pending 的核验，
+现有 BEGIN IMMEDIATE 事务结束后调用内核限批重试到期、未转人工的 COMMITTED 且 pending 核验，
 包括任务已经 SUCCEEDED 的操作；返回值仍只包含本次恢复的任务 ID。
 `app/orchestration/recovery.py` 的 `durable_commit` 处理提交成功但确认丢失的边界。
 当前不是常驻 worker；`python -m app.cli worker-once` 依次执行迁移、scan、run_once、publish_pending。
@@ -417,7 +421,7 @@ PROVIDER_UNSUPPORTED、MODEL_NOT_CONFIGURED、BASE_URL_UNSUPPORTED、BASE_URL_IN
 
 ## 8. 已知限制
 
-- 单机 SQLite 演示，无生产认证、CSRF 或多用户授权；没有真实 ERP/采购/发货接入。
+- 单机 SQLite 演示，无生产认证、会话权限或多用户授权；已有本机 Host 白名单、浏览器同源检查及防嵌套响应头，但没有 CSRF token，也不能区分剥离全部浏览器来源头的请求与 CLI。不要对外暴露，完整边界见[本机浏览器防护](docs/browser-security.md)。没有真实 ERP/采购/发货接入。
 - worker-once 需外部驱动，未提供常驻调度或浏览器实时事件推送。
 - 上传原件在临时目录，缺少生产存储、生命周期和清理方案。
 - fixture 精确匹配，静态表格仅支持明确列名布局；live 上下文仅包含限定合成主数据。

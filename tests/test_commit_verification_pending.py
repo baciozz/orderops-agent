@@ -1,6 +1,6 @@
 """A durable commit must remain pending until its readback verification succeeds."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from app.config import Settings
@@ -36,7 +36,7 @@ def kernel(session_factory, database_url):
 def client(kernel, database_url, monkeypatch):
     app = create_app(Settings(_env_file=None, database_url=database_url))
     monkeypatch.setattr("app.api.tasks.utcnow", lambda: NOW)
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield client
 
 
@@ -188,7 +188,12 @@ def _contents_except_verification_flag(kernel):
                 dict(row)
                 for row in session.execute(
                     select(
-                        *(col for col in table.c if col.name != "committed_verification_pending")
+                        *(
+                            col
+                            for col in table.c
+                            if col.name != "committed_verification_pending"
+                            and not col.name.startswith("verification_")
+                        )
                     ).order_by(*table.primary_key.columns)
                 ).mappings()
             ]
@@ -214,7 +219,7 @@ def test_slower_failed_verification_preserves_concurrent_pass(
         assert stale.committed_verification_pending is True
         with monkeypatch.context() as patch:
             patch.setattr(kernel_service, "consistency_problems", real_consistency)
-            retry_pending_verification(kernel, original.operation_id)
+            kernel_service._post_verify(kernel, original.operation_id)
         assert stale.committed_verification_pending is True
         if raises:
             raise RuntimeError("合成回读异常")
@@ -249,3 +254,90 @@ def test_retry_skips_noncommitted_and_missing_operations(
     with kernel() as session:
         assert session.get(Operation, original.operation_id).committed_verification_pending is True
     assert _contents_except_verification_flag(kernel) == before
+
+
+def test_manual_escalation_and_recovery_preserve_committed_receipt_and_business_data(
+    kernel, client, approved_commit, monkeypatch
+):
+    from app.services.verification import retry_pending, verify_manually
+
+    settings = Settings(_env_file=None, verification_max_retries=1)
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        original = commit_plan(kernel, **approved_commit[1])
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    before = _contents_except_verification_flag(kernel)
+    with monkeypatch.context() as patch:
+        patch.setattr(kernel_service, "_post_verify", lambda *_: None)
+        assert retry_pending(kernel, now=NOW, settings=settings) == 1
+        result = client.get(f"/tasks/{original.task_id}/view").json()
+        assert result["card"]["status"] == "SUCCEEDED"
+        assert result["result"]["verification"] == "pending"
+        assert result["result"]["verification_manual_required"] is True
+        assert result["result"]["verification_retry_attempts"] == 1
+        assert "自动核验已停止" in client.get(f"/ui/tasks/{original.task_id}").text
+        assert verify_manually(kernel, original.operation_id, now=NOW, settings=settings) is False
+        assert _contents_except_verification_flag(kernel) == before
+    assert verify_manually(kernel, original.operation_id, now=NOW, settings=settings) is True
+    assert _contents_except_verification_flag(kernel) == before
+    result = client.get(f"/tasks/{original.task_id}/view").json()["result"]
+    assert result["verification"] == "passed" and not result["verification_manual_required"]
+    assert result["operation_id"] == original.operation_id
+
+
+def test_pending_retry_timestamp_is_explicit_utc_in_api(
+    kernel, client, approved_commit, monkeypatch
+):
+    from app.services.verification import retry_pending
+
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        original = commit_plan(kernel, **approved_commit[1])
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    monkeypatch.setattr(kernel_service, "_post_verify", lambda *_: None)
+    assert retry_pending(kernel, now=NOW) == 1
+    payload = client.get(f"/tasks/{original.task_id}/view").json()["result"]
+    timestamp = payload["verification_next_attempt_at"]
+    assert datetime.fromisoformat(timestamp).utcoffset() == timedelta(0)
+    assert datetime.fromisoformat(timestamp) == NOW + timedelta(seconds=30)
+
+
+@pytest.mark.parametrize("route", ["worker", "replay"])
+def test_web_honors_explicit_verification_settings(
+    kernel, database_url, approved_commit, monkeypatch, route
+):
+    from unittest.mock import Mock
+
+    token = kernel_service.verify_failpoint.set(True)
+    try:
+        original = commit_plan(kernel, **approved_commit[1])
+    finally:
+        kernel_service.verify_failpoint.reset(token)
+    attempt = Mock()
+    monkeypatch.setattr(kernel_service, "_post_verify", attempt)
+    app = create_app(
+        Settings(_env_file=None, database_url=database_url, verification_max_retries=0)
+    )
+    try:
+        with TestClient(app, base_url="http://127.0.0.1") as configured_client:
+            if route == "worker":
+                response = configured_client.post("/ui/demo/worker-once")
+            else:
+                request = approved_commit[1]
+                response = configured_client.post(
+                    f"/plans/{request['plan_id']}/commit",
+                    json={
+                        key: request[key] for key in ("approval_id", "plan_hash", "idempotency_key")
+                    },
+                )
+            assert response.status_code == 200
+        with kernel() as session:
+            operation = session.get(Operation, original.operation_id)
+            assert operation.verification_manual_required is True
+            assert operation.verification_retry_attempts == 0
+            assert operation.committed_verification_pending is True
+        attempt.assert_not_called()
+    finally:
+        app.state.engine.dispose()

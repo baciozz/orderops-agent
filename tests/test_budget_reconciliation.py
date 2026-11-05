@@ -155,19 +155,19 @@ def test_startup_reconciles_existing_ledger(session_factory, database_url):
     app = create_app(Settings(_env_file=None, database_url=database_url))
     with session_factory() as session:
         assert session.get(ModelUsage, old).status == "RESERVED"
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app, raise_server_exceptions=False) as client:
         assert client.get("/health").status_code == 200
         with session_factory() as session:
             assert session.get(ModelUsage, old).status == "ORPHANED"
     assert book.spent() == Decimal("0.009000")
-    with TestClient(app):
+    with TestClient(base_url="http://127.0.0.1", app=app):
         assert book.spent() == Decimal("0.009000")
 
 
 def test_startup_does_not_create_uninitialized_database(tmp_path):
     path = tmp_path / "absent.db"
     app = create_app(Settings(_env_file=None, database_url=f"sqlite:///{path}"))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         assert client.get("/health").status_code == 200
     assert not path.exists()
 

@@ -141,13 +141,15 @@ python scripts/eval_offline.py
 
 2026-11-05 UTC 对固定 main `20836d7bcc90471bb2b3beb9057f11a1349f09e9` 完成独立复验（FIXTURE，无 live）：`make check` 全绿，ruff clean，mypy **64** 个源文件无问题，pytest **922 passed**，覆盖率 **95.13%**（TOTAL **4868** stmts，**237** miss；`fail_under=90`）。这是该 SHA 的结果，不自动覆盖后续补丁；环境、原始日志与未验证项见 [TEST_REPORT](docs/TEST_REPORT.md)。
 
-离线评测 **53/53**：兜底能力 safeguards **23/23**（invalid_qty 8、unknown_order 7、injection 8）；管道回归 pipeline regression **30/30**（alias 9、ambiguous_wording 9、multi_line_change 8、golden 4：含 pending 重试与幂等重放）。它测的是给定 fixture 答案后的管道与内核，不测模型理解，范围见 [OFFLINE_EVAL](docs/OFFLINE_EVAL.md)。56 个 B/R 用例均已接入真实测试，当前没有占位跳过。
+上述固定基线的离线评测 **53/53**：兜底能力 safeguards **23/23**（invalid_qty 8、unknown_order 7、injection 8）；管道回归 pipeline regression **30/30**（alias 9、ambiguous_wording 9、multi_line_change 8、golden 4：含 pending 重试与幂等重放）。它测的是给定 fixture 答案后的管道与内核，不测模型理解，范围见 [OFFLINE_EVAL](docs/OFFLINE_EVAL.md)。56 个 B/R 用例均已接入真实测试，当前没有占位跳过。
+
+当前有限核验重试与本机浏览器防护的功能说明不代表新的全量测试结果；上述数字仅属于固定基线，后续候选须独立复验。
 
 当前 `.github/workflows/ci.yml` 只跑 lint + test；typecheck、覆盖率、离线评测已暂存于 [待启用 CI](ci/pending-workflow-changes.yml)，等待 workflow 权限后启用。PR #9 已合入，离线脚本已在 main。
 
 ## 已知限制
 
-- PR #19 已修复 watchdog / 幂等提交重放不补做 pending 核验的缺口，lease/recovery/watchdog/retry 已有结构化事件和进程内指标。剩余：无常驻调度器，仅 `worker-once` / watchdog 或提交重放触发；持续失败无重试上限、退避、告警；核验当前事实而非历史快照。跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+- pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅 `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
 - SQLite 单写者、规划任务最多两条 RUNNING；完整聊天/澄清/审批 UI、生产认证和持久上传存储尚未完成。
 - 未开裁同 SKU 生产单可扩量；已开裁单仍不能扩量，不自动新建生产单。补购只生成待供应商确认的草稿。
 - FIXTURE 精确匹配；live 历史样本量小，兼容 provider 仅 mock 验证，通用表格布局尚未支持。
@@ -156,7 +158,7 @@ python scripts/eval_offline.py
 
 ## 后续路线
 
-Stage 5 后跟进 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)，启用待授权 CI，拆分 `app/services/kernel.py` 并解开 inbox/kernel 循环依赖；补全聊天与审批 UI、扩大 live 质量评测，再推进生产认证与存储。正式 v1.0.0 tag 须等 Qi 批准。
+Stage 5 后跟进有限核验重试之外的常驻调度、外部告警及历史核验边界（[issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)），启用待授权 CI，拆分 `app/services/kernel.py` 并解开 inbox/kernel 循环依赖；补全聊天与审批 UI、扩大 live 质量评测，再推进生产认证与存储。正式 v1.0.0 tag 须等 Qi 批准。
 
 ## 数据
 
@@ -192,3 +194,5 @@ make seed
 - [已知限制](docs/KNOWN_LIMITATIONS.md)
 - [测试清单](docs/TEST_CHECKLIST.md)
 - [离线评测](docs/OFFLINE_EVAL.md)与[历史 Live 评测](docs/LIVE_EVAL.md)
+
+本机演示已加入 Host 白名单、浏览器同源校验与防嵌套响应头，仍无用户认证/会话权限；无浏览器来源头的 CLI/API 保持兼容，不防御本机恶意进程。不要暴露到局域网、公网或代理隧道。详细边界见 [browser-security](docs/browser-security.md)。

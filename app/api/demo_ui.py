@@ -119,7 +119,7 @@ def worker_once(request: Request):
     factory = request.app.state.session_factory
     settings = request.app.state.settings
     limits = replace(DEFAULT_LIMITS, active=effective_active(settings.worker_max_active))
-    recovered = scan(factory)
+    recovered = scan(factory, settings=settings)
     # Never consult global live configuration from this local demo endpoint.
     outcome = run_once(
         factory, limits=limits, settings=settings.model_copy(update={"live_enabled": False})

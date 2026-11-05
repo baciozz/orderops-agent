@@ -30,7 +30,7 @@ def recovery(tmp_path, monkeypatch):
     monkeypatch.setattr("app.api.tasks.utcnow", lambda: clock[0])
     monkeypatch.setattr("app.services.kernel._now", lambda value: value or clock[0])
     app = create_app(Settings(_env_file=None, database_url=url))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield factory, client, clock
     engine.dispose()
 

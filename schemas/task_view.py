@@ -77,6 +77,9 @@ class TaskResultBlock(ApiModel):
     operation_id: str | None
     revision: int | None
     verification: VerificationState | None
+    verification_manual_required: bool = False
+    verification_retry_attempts: int = 0
+    verification_next_attempt_at: datetime | None = None
     download_url: str | None
 
 

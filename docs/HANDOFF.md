@@ -26,6 +26,8 @@ make run
 网页 worker 强制 FIXTURE；自由改写可能得到 FIXTURE_NOT_FOUND，不会悄悄调用付费模型。worker 一次处理全局队列中的一条任务，可能不是当前页面的任务；查看返回的任务 ID。
 重复 seed 不重置已有 SO-1001，演示后再次执行同一文字未必得到同样结果。需要重演时使用新副本/新数据库，保留旧库作为证据，不直接删除正在使用的库。
 
+本机服务已有 Host 白名单、浏览器同源校验与防嵌套响应头，但没有身份认证；剥离全部浏览器来源头的请求无法与 CLI 区分。不要通过局域网、公网或代理隧道暴露服务；完整边界见 [browser-security](browser-security.md)。
+
 ## 正常状态与故障处理
 
 | 看到的状态 | 意味着什么 | 下一步 |
@@ -52,13 +54,21 @@ python -m app.cli reconcile-budget
 
 worker-once 调用 watchdog、处理一条规划任务并投递 outbox；pending 核验可在扫描中重试，仍不自动批准或再次提交业务。
 reconcile-budget 只将超时的预算预留标记为 ORPHANED，不释放可能已计费的预算。
-没有常驻调度器；无人调用这些入口时，任务和 pending 不会自己恢复。持续核验失败仍缺重试退避、上限与告警，见 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+pending 核验已持久化自动重试计数、下次时间和有期限的唯一租约 token。首次提交读回另计，默认最多 5 次自动重试；首次可立即运行，失败后指数退避，耗尽后保留 COMMITTED 和 pending 并转人工。查看任务视图的 `verification_manual_required` 与日志 `verification.manual_required`，调查后运行：
+
+```bash
+python -m app.cli verify-operation OPERATION_ID
+```
+
+仅已转人工且没有有效租约的 pending 操作可发起人工核验；已通过则直接成功返回，不重复读回。退出码 0 表示已通过，1 表示仍未通过，2 表示不存在或尚不可执行。命令不重置自动预算、不修复数据、不再次提交业务，也不能强制通过。配置与迁移边界见 [API](API.md#提交后的有限只读核验)。
+
+没有常驻调度器；无人调用 watchdog / `worker-once` 或原提交重放时，到期核验不会自己执行。仍无外部推送告警，且核验当前事实而非历史快照，见 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
 
 ## 后续接手顺序
 
 1. 集成任何补丁后重跑 `make check` 和离线评测，报告候选 SHA 与原始结果，不复用基线数字。
 2. 完成上传、澄清、取消的浏览器闭环，实际验证 JavaScript、刷新、重复点击与网络中断。
-3. 补有限核验重试与人工处理入口；不让恢复逻辑自动批准或重复业务写入。
+3. 在现有有限核验重试和人工入口之上，规划常驻调度与外部告警；明确当前事实核验与历史快照的边界，不让恢复逻辑自动批准或重复业务写入。
 4. 在预算和数据授权范围内做独立 holdout 模型评测，业务人士核对合成案例。
 5. 之后再做行为不变的 kernel 拆分，保留事务边界和竞争测试。
 

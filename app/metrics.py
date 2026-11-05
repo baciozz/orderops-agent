@@ -12,6 +12,7 @@ _NAMES = (
     "commits_replayed",
     "verification_pending_retries",
     "verification_pending_cleared",
+    "verification_manual_required",
     "watchdog_scans",
     "worker_claims",
     "model_calls",
@@ -37,6 +38,8 @@ def record_event(event: str, fields: Mapping[str, object]) -> None:
         names.append("verification_pending_retries")
         if outcome == "cleared":
             names.append("verification_pending_cleared")
+    elif event == "verification.manual_required":
+        names.append("verification_manual_required")
     elif event == "watchdog.scan" and outcome == "started":
         names.append("watchdog_scans")
     elif event == "lease.acquired" and outcome == "success":

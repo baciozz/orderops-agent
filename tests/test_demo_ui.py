@@ -41,7 +41,7 @@ def web(session_factory, database_url, monkeypatch):
 
     monkeypatch.setattr(LiveLLMClient, "__init__", forbidden)
     app = create_app(Settings(_env_file=None, database_url=database_url))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield client, session_factory, app
 
 
@@ -226,7 +226,7 @@ def test_fresh_database_has_friendly_empty_task_list(tmp_path, existing_file):
     if existing_file:
         path.touch()
     app = create_app(Settings(_env_file=None, database_url=f"sqlite:///{path}"))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         assert client.get("/ui").status_code == 200
         response = client.get("/ui/demo/tasks")
         assert response.status_code == 200 and "暂无任务" in response.text

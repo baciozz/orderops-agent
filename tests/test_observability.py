@@ -79,7 +79,7 @@ def web(session_factory, database_url, tmp_path):
     app = create_app(configured)
     app.state.source_storage_dir = tmp_path
     try:
-        with TestClient(app) as client:
+        with TestClient(base_url="http://127.0.0.1", app=app) as client:
             yield client, session_factory, configured, app
     finally:
         app.state.engine.dispose()
@@ -262,7 +262,9 @@ def test_http_unhandled_exception_logs_500(web, caplog):
     def fail():
         raise RuntimeError("PRIVATE_EXCEPTION_BODY")
 
-    with TestClient(web[3], raise_server_exceptions=False) as client:
+    with TestClient(
+        base_url="http://127.0.0.1", app=web[3], raise_server_exceptions=False
+    ) as client:
         assert client.get("/test-unhandled").status_code == 500
     record = events(caplog, "http.request")[-1]
     assert record.status_code == 500 and record.duration_ms >= 0 and record.request_id
@@ -692,7 +694,7 @@ def test_metrics_endpoint_after_worker_round_and_commit_replay(web, caplog):
     initial = client.get("/metrics")
     assert initial.status_code == 200
     assert initial.headers["content-type"] == "application/json"
-    assert len(initial.json()) == 12 and set(initial.json().values()) == {0}
+    assert len(initial.json()) == 13 and set(initial.json().values()) == {0}
     _, plan, _ = committed(web)
     counters = client.get("/metrics").json()
     assert counters == {

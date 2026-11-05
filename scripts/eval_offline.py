@@ -196,7 +196,12 @@ def _durable_snapshot(session, *, delivery_changes=False):
                 tuple(row)
                 for row in session.execute(
                     select(
-                        *(col for col in table.c if col.name != "committed_verification_pending")
+                        *(
+                            col
+                            for col in table.c
+                            if col.name != "committed_verification_pending"
+                            and not col.name.startswith("verification_")
+                        )
                     )
                 )
             ),
@@ -245,7 +250,7 @@ def _exercise_commit_scenario(factory, configured, outcome, scenario):
             assert operation.committed_verification_pending is False
             assert operation.result_json == operation_result
             assert _durable_snapshot(session, delivery_changes=delivery_changes) == before, (
-                "Retry/replay changed durable rows"
+                "Retry/replay changed durable business rows or original receipt"
             )
             assert len(session.scalars(select(Operation)).all()) == 1
     after = snapshot()

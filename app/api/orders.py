@@ -103,6 +103,7 @@ def commit(plan_id: str, body: CommitRequest, request: Request) -> CommitSuccess
         plan_hash=body.plan_hash,
         idempotency_key=body.idempotency_key,
         actor_id=DEMO_ACTOR_ID,
+        verification_settings=request.app.state.settings,
     )
     return CommitSuccess(
         request_id=request.state.request_id,

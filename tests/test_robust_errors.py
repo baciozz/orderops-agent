@@ -27,7 +27,7 @@ def error_app(session_factory, database_url, tmp_path):
     task_id = accept_input(
         session_factory, thread_id="uploads", client_event_key="initial", text="保存输入"
     )[1]
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app, raise_server_exceptions=False) as client:
         # Keep existing evidence in the baseline to catch accidental deletion as
         # well as newly orphaned rows/files on a rejected request.
         assert (

@@ -130,7 +130,7 @@ def test_B01_replace_remaining_black_to_white(tmp_path) -> None:
     load_seed(make_session_factory(engine), database_url=url)
     engine.dispose()
     app = create_app(Settings(_env_file=None, database_url=url))
-    client = TestClient(app)
+    client = TestClient(base_url="http://127.0.0.1", app=app)
     created = client.post(
         "/plans",
         json={
@@ -577,7 +577,7 @@ def test_B15_forged_approved_flag_does_not_create_approval(tmp_path) -> None:
     load_seed(make_session_factory(engine), database_url=url)
     engine.dispose()
     app = create_app(Settings(_env_file=None, database_url=url))
-    client = TestClient(app)
+    client = TestClient(base_url="http://127.0.0.1", app=app)
     response = client.post(
         "/plans",
         json={

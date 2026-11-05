@@ -4,7 +4,8 @@ Stage 5 冻结交接（v1.0.0 候选，1.0.0rc1）：Stage 1–4 已合入 main�
 
 - Worker 由 `worker-once` / Python 调用驱动，没有常驻调度服务；`OOS_WORKER_MAX_ACTIVE` 必须大于等于 1，默认 2。`claim()` 保留 `min(2, limits.active)` 的硬上限，配置大于 2 时，`worker-once` 在 logger `oos.worker` 上记录 WARNING，并按 2 生效，仍限制为 2 条 RUNNING 任务。outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。
 - 与 `docs/PLAN_v1.0_dot.md` 的设计不同，批准后尚未排队新的 commit job，也不领取新的 lease / fencing_token。`POST /plans/{plan_id}/commit` 同步调用内核，在一个 BEGIN IMMEDIATE 事务内原子提交业务写入；worker 的 lease / fencing 只用于规划阶段的 JobAttempt。
-- `Operation.committed_verification_pending=True` 表示业务已提交但尚未回读核验或核验失败，不表示业务事务失败。首次提交回读一次；`commit_plan` 幂等重放（包括 `recovery.durable_commit`）仅重试该操作仍 pending 的核验，`watchdog.scan` 在现有写事务结束后重试所有 COMMITTED 且 pending 的操作，包括任务已经 SUCCEEDED 的操作。通过后只清除此标记，失败或异常保留 pending；已通过的操作跳过，写事务内重新读取标记，保留并发重试已通过的结果，不用较慢的失败结果覆盖它。重试不重新提交、不修复数据、不新增业务修订/审计/事件；核验的是当前库存流水和下游一致性，不是历史快照。没有常驻调度器，watchdog 仅在调用时运行，例如 `python -m app.cli worker-once`；无人调用且没有提交重放时，pending 不会自行消失。watchdog / replay 不补核验的旧缺口已由 PR #19 修复，见 `tests/test_qi_verification_retry.py` 和 `tests/test_commit_verification_pending.py`。剩余限制（无常驻调度器、持续失败无重试上限/退避/告警、核验当前事实而非历史快照）集中跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
+- `Operation.committed_verification_pending=True` 表示业务已经提交、核验尚未通过，绝不能据此重新提交订单。首次提交只读核验一次；随后 watchdog / 幂等重放共享持久化的有限重试计划，默认最多 5 次自动重试，首次重试可立即进行，失败后按 30、60、120、240 秒退避（延迟受配置上限约束）。每次自动重试领取有期限的唯一 token；进程退出消耗该次预算，租约到期才能恢复；旧尝试不能改写较新尝试的计划。耗尽预算后仍保留 COMMITTED 和 pending，转为人工处理，任务视图和 `verification.manual_required` 日志可见。人工只读核验使用 `python -m app.cli verify-operation OPERATION_ID`；失败继续人工处理，不重置自动预算；成功才清 pending，不新增业务修订、审计或事件。迁移需先运行 `python -m app.cli init-db`，历史 pending 默认从零次自动重试开始。配置和退出码详见 `docs/API.md`。尚无常驻调度器或外部推送告警，必须调用 watchdog / `worker-once` 或提交重放才会检查到期工作；核验仍检查当前事实而非历史快照，这些限制继续由 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20) 跟踪。
+
 - 上传为 `POST /sources` 的 multipart `task_id` + `file`，一次一个文件，每任务最多三个；任务须已存在。服务端生成存储路径，通过 `task_source` 关联限制 spans 查询，原始文件放在服务端临时目录，生产持久存储/清理策略尚未实现。拒绝返回 HTTP 400、parser_status=rejected 和中文原因，不保存部分 spans。
 - UTF-8 TXT/MD 按非空行、静态 XLSX 按单元格切分；spans 摘要最多 500 字，完整原文独立保存。XLSM、VBA/宏类型、公式、外部链接和 XML 实体被拒绝；XLSX 有压缩包大小/压缩比及非空单元格上限。上传不会触发调度、批准或外传。
 - R14 已接入 worker 的 `source_ids`：只读取当前任务关联的静态 spans，精确 fixture 聊天与匹配表格行数量不同时，保存 conflicts、questions 和聊天/单元格双来源，返回 NEEDS_CLARIFICATION，不创建计划、批准或提交。JSON 和 HTML 可展开来源并显示问题；抽取结果保存在当前事件的 InputPayload 中，原 text/source_ids 保留。
@@ -16,7 +17,7 @@ Stage 5 冻结交接（v1.0.0 候选，1.0.0rc1）：Stage 1–4 已合入 main�
 - live 预算和每任务调用次数在同一个 SQLite 写事务中预留，响应后在原用量行结算；进程崩溃、超时、连接失败或成功响应缺有效用量时保留悲观估算。提供方报告的实际用量即使超过估算也照实记录。HTTP 错误仍占调用次数，无用量时费用/token 为零，任务卡仍标注 LIVE。429/5xx/超时/连接错误不会自动重试，须重新提交新任务。测试从收集阶段起禁用 dotenv，生产 `.env` 加载不变。
 - LIVE 的 `replace_remaining` 若模型返回 `qty: null` 且没有明确的 `only_uncut` 选择，返回 NEEDS_CLARIFICATION，询问总件数或是否只改未开裁；不会把“全部”自行解释为未执行量。精确 FIXTURE `TEXT_ALL_NAVY` 提供 300 件，仍走已裁剪锁定的 B19 澄清。离线顺序回放确认：原 STALE_ATTEMPT 是缺数量导致内核先持久化 FAILED/BUSINESS_CONFLICT、清理阶段再次校验 RUNNING fence 后掩盖原错误；不是同链等待任务、超时或 usage 独立事务导致。清理对已结束任务只读返回，实际写入仍校验完整 fence。
 - 结构化日志（见 `docs/OBSERVABILITY.md`）中批准、提交、outbox 事件不带 `mode`，因为 Task 表未持久化 mode；需要时用 `task_id` 关联同任务的 dispatch 事件获取。lease、recovery、watchdog、pending 核验重试已接入结构化事件，并提供进程内 `/metrics` JSON counter；计数不持久化、不跨 API/CLI 进程聚合，重启归零。
-- ORM relationship、生产认证、CSRF、多用户。Alembic 初始迁移已经接入。
+- ORM relationship、生产认证/会话权限、多用户尚未完成。已加本机 Host 白名单、浏览器同源检查与防嵌套响应头；无浏览器来源头的 CLI/API 仍允许，不防御本机恶意进程，也不是生产 CSRF/身份方案。详见 [本机浏览器边界](browser-security.md)。Alembic 初始迁移已经接入。
 - Qi 已确认支持按变更后 MO 计划量生成补购草稿：同一 MO、同一面料的有效 PO 全部 `RECEIVED` 且总采购量不足时，已收货 PO 只重链、永不重写数量或内容修订，缺口生成 `before=None` 的 `CHANGE_DRAFT`（`PLACED`、到料 0、`PENDING_SUPPLIER`），沿用供应商和 MO，服装 SKU 跟随新订单行。补单 ID 为按 ID 排序的首张有效已收货 PO 的 `{received_po_id}-S{n}`，从 1 起取最小空闲后缀，取消单和未链接现存单也占用 ID。已有补单计入覆盖，重复规划/提交不重复补购；批准后 ID 被占用则以现有单据过期错误拒绝，不覆盖。多个 PO 按 `(MO, 面料)` 汇总，减量优先调整未到料补单；低于已到料总量、取消已到料采购或更换已到料面料仍拒绝。草稿不代表已向供应商实际下单。未取消且未开裁（`cut_qty == 0` / `NOT_STARTED`）的 MO 可扩大 `planned_qty`，吸收同 SKU 的全部剩余订单需求；部分或全部开裁的 MO 仍不得超过原 `planned_qty`。分配后若仍有剩余需求、没有可扩容的同 SKU MO，保留「P0 不支持为剩余数量追加生产单」，不新建 MO。常见的未开裁 MO 计划量等于订单量时，同 SKU 订单增量会扩容 MO，并在同面料有效 PO 全部已收货且采购不足时生成补购草稿。
 - 固定基线复验见 [TEST_REPORT](TEST_REPORT.md)，操作与故障交接见 [HANDOFF](HANDOFF.md)，项目导读和练习见 [LEARNING_GUIDE](LEARNING_GUIDE.md)。这些文档不代表新增功能、正式发布或真实业务验收。测试清单继续使用 `docs/TEST_CHECKLIST.md`。
 
@@ -50,7 +51,7 @@ Qi 已确认：设置总数量、替换剩余数量、增加数量和新建订�
 
 ## 后续计划
 
-- 跟进 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)：pending 核验的常驻调度、重试上限/退避/告警，以及当前事实核验与历史快照的边界。
+- 跟进 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20) 的残余范围：pending 核验的常驻调度、外部推送告警，以及当前事实核验与历史快照的边界。持久重试上限、指数退避、转人工状态和人工只读核验入口已实现。
 - 拆分 app/services/kernel.py（约 1500+ 行）：按计划/预检、审批、提交、下游重链、校验拆成子模块，行为不变。
 - 解开 `app/orchestration/inbox.py` 与 `app/services/kernel.py` 之间仍存在的包间互相依赖（inbox 导入 `invalidate_order`，kernel 导入 orchestration.state）。
 

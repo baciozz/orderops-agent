@@ -77,3 +77,29 @@ XLSX 每张表的实际行位置不得超过 10,000，列位置不得超过 256�
 超过上限返回上传拒绝及中文说明，请拆分文件或将数据移至表格左上区域。
 现有 5 MB、5 张工作表、总计 5,000 非空行和 100,000 非空单元格限制仍生效。
 嵌套行、重复/逆序行列坐标或单元格行归属冲突返回 `UPLOAD_CORRUPT`，避免证据静默覆盖；合法隐式坐标仍受支持。
+
+### 提交后的有限只读核验
+
+业务已提交与核验通过是独立事实；核验 pending 或转人工不允许重新提交订单。
+`result.verification` 保持 `pending` / `passed` 兼容语义，新增 `verification_manual_required`、
+`verification_retry_attempts`、`verification_next_attempt_at`。任务状态仍可为 `SUCCEEDED`。
+首次提交读回一次，自动重试由 watchdog 或幂等重放触发，不启动常驻调度器。
+首次自动重试可立即运行；失败后指数退避，默认最多 5 次自动重试；通过后不再核验。
+
+环境配置：`OOS_VERIFICATION_MAX_RETRIES=5`（0–100，0 表示下次到期扫描或重放时直接转人工，不执行自动重试）、
+`OOS_VERIFICATION_BASE_DELAY_SECONDS=30`、`OOS_VERIFICATION_MAX_DELAY_SECONDS=3600`
+（均 1–86400）、`OOS_VERIFICATION_LEASE_SECONDS=120`（1–3600）、
+`OOS_VERIFICATION_BATCH_SIZE=100`（1–1000）。延迟为 base × 2^(已重试次数−1)，受 max 上限约束。
+重试预算在读取前持久化；崩溃同样消耗预算，租约过期后恢复，耗尽转人工。
+租约限制并发，但超时的只读核验可能仍在运行；成功结果保持有效，旧 token 不改写新计划。
+
+操作者调查并处理后，可运行 `python -m app.cli verify-operation OPERATION_ID` 执行一次只读核验。
+仅已转人工且无有效租约的 pending 操作可执行；通过后清 pending，失败仍转人工，不重置自动预算。已通过的 COMMITTED 操作直接返回成功，不发起新的读回。
+命令退出码 0=已通过、1=仍未通过、2=不存在或尚不可执行。命令不会修复或重提业务数据，
+也没有强制标记通过的功能。用任务视图或结构化日志定位需人工的操作；尚无外部推送通知。
+升级前先运行 `python -m app.cli init-db`，历史操作和回执保持不变。
+降级迁移只删除核验重试元数据列，保留已提交业务、原始回执及 pending 标记；再次升级会从零次自动重试开始，不能把降级/升级当成恢复或重试预算重置的常规操作。
+
+### 本机浏览器请求边界
+
+所有 HTTP 路由要求单个受信任 Host（`localhost`、`127.0.0.1` 或 `[::1]`，可带有效端口）；否则返回 `UNTRUSTED_HOST`（400）。GET/HEAD/OPTIONS 之外的方法还检查 Origin、Referer 和 fetch metadata，拒绝非同源或冲突证据，返回 `CROSS_ORIGIN_REQUEST`（403）。拒绝发生在读取请求体和路由分派之前，使用统一错误信封。无浏览器来源头的 CLI/API 请求保持兼容，不等于认证成功；不要对外开放。防嵌套响应头及完整例外见 [browser-security](browser-security.md)。

@@ -139,7 +139,7 @@ def test_resource_rejections_are_atomic_api_errors(
     app = create_app(Settings(_env_file=None, database_url=database_url))
     app.state.source_storage_dir = tmp_path / "sources"
     try:
-        with TestClient(app) as client:
+        with TestClient(base_url="http://127.0.0.1", app=app) as client:
             response = client.post(
                 "/sources",
                 data={"task_id": task_id},

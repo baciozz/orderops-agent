@@ -55,6 +55,9 @@ def test_task_view_schema_has_required_blocks() -> None:
         "operation_id",
         "revision",
         "verification",
+        "verification_manual_required",
+        "verification_retry_attempts",
+        "verification_next_attempt_at",
         "download_url",
     }
     assert set(TaskView.model_fields) >= {
@@ -69,7 +72,7 @@ def test_task_view_schema_has_required_blocks() -> None:
 
 
 def test_stub_view_and_missing_task() -> None:
-    client = TestClient(create_app(Settings(_env_file=None)))
+    client = TestClient(base_url="http://127.0.0.1", app=create_app(Settings(_env_file=None)))
     found = client.get("/tasks/T-STUB/view")
     assert found.status_code == 200
     body = found.json()

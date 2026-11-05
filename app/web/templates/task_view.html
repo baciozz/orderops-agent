@@ -95,6 +95,15 @@
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
     <dt>revision</dt><dd>{{ view.result.revision }}</dd>
     <dt>核验</dt><dd>{{ view.result.verification }}</dd>
+    {% if view.result.verification == 'pending' %}
+    <dt>核验进度</dt><dd>业务已提交，请勿重复提交。自动重试已执行 {{ view.result.verification_retry_attempts }} 次。
+      {% if view.result.verification_manual_required %}
+      自动核验已停止，需维护人员人工处理。处理后仅运行只读核验命令 verify-operation，不会修复或重新提交业务数据。
+      {% elif view.result.verification_next_attempt_at %}
+      下次可重试时间：{{ view.result.verification_next_attempt_at }}（由 watchdog 调用执行）。
+      {% else %}等待只读核验。{% endif %}
+    </dd>
+    {% endif %}
     <dt>下载</dt><dd>{% if view.result.download_url %}
       <a href="{{ view.result.download_url }}">下载变更清单（{{ view.card.mode }}）</a>
       {% else %}无{% endif %}</dd>

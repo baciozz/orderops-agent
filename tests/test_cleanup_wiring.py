@@ -18,6 +18,7 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
     get_settings()
     monkeypatch.setenv("OOS_WORKER_MAX_ACTIVE", "1")
     monkeypatch.setenv("OOS_DATABASE_URL", database_url)
+    monkeypatch.setenv("OOS_VERIFICATION_MAX_RETRIES", "0")
     reset_settings_cache()
     calls = []
 
@@ -28,7 +29,16 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
             assert str(session.get_bind().url) == database_url
         calls.append("run_once")
 
-    monkeypatch.setattr(watchdog, "scan", lambda factory: calls.append("scan"))
+    def scan(factory, *, settings):
+        assert settings is get_settings()
+        assert settings.database_url == database_url
+        assert settings.worker_max_active == 1
+        assert settings.verification_max_retries == 0
+        with factory() as session:
+            assert str(session.get_bind().url) == database_url
+        calls.append("scan")
+
+    monkeypatch.setattr(watchdog, "scan", scan)
     monkeypatch.setattr(worker, "run_once", run_once)
     monkeypatch.setattr(outbox, "publish_pending", lambda factory: calls.append("publish_pending"))
 
@@ -40,6 +50,7 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
 def test_worker_once_clamps_active_limit(monkeypatch, database_url, caplog, configured):
     monkeypatch.setenv("OOS_WORKER_MAX_ACTIVE", str(configured))
     monkeypatch.setenv("OOS_DATABASE_URL", database_url)
+    monkeypatch.setenv("OOS_VERIFICATION_MAX_RETRIES", "0")
     reset_settings_cache()
     caplog.set_level(logging.WARNING, logger="oos.worker")
     calls = []
@@ -49,7 +60,16 @@ def test_worker_once_clamps_active_limit(monkeypatch, database_url, caplog, conf
         assert limits == replace(DEFAULT_LIMITS, active=2)
         calls.append("run_once")
 
-    monkeypatch.setattr(watchdog, "scan", lambda factory: calls.append("scan"))
+    def scan(factory, *, settings):
+        assert settings is get_settings()
+        assert settings.database_url == database_url
+        assert settings.worker_max_active == configured
+        assert settings.verification_max_retries == 0
+        with factory() as session:
+            assert str(session.get_bind().url) == database_url
+        calls.append("scan")
+
+    monkeypatch.setattr(watchdog, "scan", scan)
     monkeypatch.setattr(worker, "run_once", run_once)
     monkeypatch.setattr(outbox, "publish_pending", lambda factory: calls.append("publish_pending"))
 
