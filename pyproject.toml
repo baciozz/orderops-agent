@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "order-ops-superagent"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "服装批发订单的多 Agent 调度系统（订单变更协调层）"
 readme = "README.md"
 requires-python = ">=3.11"
