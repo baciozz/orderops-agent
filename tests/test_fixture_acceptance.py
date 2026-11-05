@@ -38,7 +38,7 @@ def test_two_fresh_runs_preserve_business_and_external_canaries(tmp_path):
     )
     operations = []
     for number in (1, 2):
-        output = tmp_path / f"run-{number}"
+        output = tmp_path / f"run {number} % evidence"
         result = invoke(output, tmp_path, env)
         assert result.returncode == 0, result.stderr + (output / "run.log").read_text()
         assert not list(output.glob("*-ephemeral-*"))
@@ -72,11 +72,50 @@ def test_two_fresh_runs_preserve_business_and_external_canaries(tmp_path):
             operations.append(report["commit"]["operation_id"])
             assert (output / f"{name}-changes.csv").stat().st_size > 100
             assert (output / f"{name}-changes.xlsx").stat().st_size > 100
+        new_order = json.loads((output / "new-stock-result.json").read_text())
+        assert new_order["mixed_boundary"]["error_code"] == "MTO_CREATE_UNSUPPORTED"
+        assert new_order["mixed_boundary"]["business_unchanged"]
+        assert new_order["plan_replay_all_tables_unchanged"]
+        assert new_order["historical_replay_all_tables_unchanged"]
+        assert new_order["historical_quantity_diffs_preserved"]
+        assert new_order["exports_use_current_availability"]
+        assert new_order["source_ref_preserved"]
+        assert new_order["supplier_contacted"] is False
+        assert [step["cli"] for step in new_order["steps"]] == ["init-db", "seed"]
+        expected = {
+            "creation": {"A-WHITE-M": 10, "B-BLUE-L": 6},
+            "amendment": {"A-WHITE-M": 6, "A-BLACK-M": 4, "B-BLUE-L": 9},
+        }
+        for revision, phase in enumerate(("creation", "amendment"), 1):
+            proof = new_order[phase]
+            assert proof["no_business_change_before_approval"]
+            assert proof["no_business_change_on_approval"]
+            assert proof["replay_all_tables_unchanged"]
+            assert proof["commit"]["operation_id"] == proof["replay"]["operation_id"]
+            assert proof["order"]["current_revision"] == revision
+            assert proof["reservations"] == expected[phase]
+            assert {r["sku_id"]: r["ordered_qty"] for r in proof["order"]["lines"]} == expected[
+                phase
+            ]
+            operations.append(proof["commit"]["operation_id"])
+        assert new_order["original_commit_replay_after_amend"]["revision"] == 1
+        assert (
+            new_order["original_commit_replay_after_amend"]["operation_id"]
+            == new_order["creation"]["commit"]["operation_id"]
+        )
+        for label in ("new-stock-create", "new-stock-amend", "new-stock-create-after-amend"):
+            audit = json.loads((output / f"{label}-audit.json").read_text())
+            assert len(audit["committed_operations"]) == 1
+            assert (output / f"{label}-changes.csv").stat().st_size > 100
+            assert (output / f"{label}-changes.xlsx").stat().st_size > 100
+        source = json.loads((output / "SOURCE.json").read_text())
+        assert "scripts/accept_fixture.py" in source["files"]
+        assert "新建库存单" in (output / "SUMMARY.md").read_text()
         for path in output.iterdir():
             if path.suffix != ".xlsx":
                 assert "FAKE_ENV_KEY" not in path.read_text()
                 assert "FAKE_DOTENV_KEY" not in path.read_text()
-    assert len(set(operations)) == 4
+    assert len(set(operations)) == 8
     assert canary.read_bytes() == b"DO NOT OPEN OR REPLACE"
 
 
@@ -111,7 +150,8 @@ def test_configured_child_ignores_dotenv_and_blocks_network(tmp_path):
     code = runner.child_code(
         "m['configure'](m['Path'](sys.argv[1])); "
         "from app.main import app; "
-        "assert str(app.state.engine.url) == 'sqlite:///' + sys.argv[1]; "
+        "assert app.state.engine.url.database == sys.argv[1]; "
+        "assert app.state.engine.url.drivername == 'sqlite'; "
         "assert not app.state.settings.live_enabled; "
         "assert app.state.settings.llm_api_key is None; "
         "import socket; socket.getaddrinfo('invalid.invalid',443)"

@@ -51,7 +51,7 @@ SO-1001 把未发的 40 件黑色 M 改成白色 M
 
 ### 离线演示（FIXTURE）
 
-推荐先运行 [两条合成验收](docs/FIXTURE_ACCEPTANCE.md)：`python scripts/accept_fixture.py --output ./fixture-acceptance-01`。它使用独立新临时库，模拟批准/提交并保存业务结果、CSV/XLSX 和审计，不启动服务。此验收脚本需完整源码及已装依赖；普通解包 wheel 支持运行时迁移，但不包含该源码验收工具链。下面保留手动 API 演示。
+推荐先运行 [三条合成验收](docs/FIXTURE_ACCEPTANCE.md)：`python scripts/accept_fixture.py --output ./fixture-acceptance-01`。它使用独立新临时库，模拟批准/提交并保存业务结果、CSV/XLSX 和审计，不启动服务。此验收脚本需完整源码及已装依赖；普通解包 wheel 支持运行时迁移，但不包含该源码验收工具链。下面保留手动 API 演示。
 
 保持默认 `OOS_LIVE_ENABLED=false`（已有环境若启用过 live，请先关闭并重启 API）。在另一个已激活虚拟环境的终端中：
 

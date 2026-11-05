@@ -1,4 +1,4 @@
-"""Two synthetic FIXTURE journeys; no server, live configuration, or existing database."""
+"""Three synthetic FIXTURE journeys; no server, live configuration, or existing database."""
 
 import argparse
 import csv
@@ -335,6 +335,334 @@ def journey(output, name, database):
         return result
 
 
+def new_order_journey(output, database):
+    """Explicit synthetic service inputs, not upload/extraction or browser coverage."""
+    configure(database)
+    from dataclasses import asdict
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from app.api.orders import get_order
+    from app.db.models import Base, Operation, SalesOrder
+    from app.db.session import make_engine, make_session_factory
+    from app.errors import AppError
+    from app.orchestration.recovery import durable_commit
+    from app.services.export import export_change_list
+    from app.services.kernel import (
+        approve_plan,
+        consistency_problems,
+        downstream_problems,
+        plan_change,
+        plan_new_order,
+    )
+    from app.services.task_audit import export_task_audit
+    from app.services.task_view import build_task_view
+    from openpyxl import load_workbook
+    from sqlalchemy import select
+
+    log = []
+    cli(database, "init-db", log)
+    cli(database, "seed", log)
+    engine = make_engine("sqlite:///" + str(database))
+    factory = make_session_factory(engine)
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(session_factory=factory)),
+        state=SimpleNamespace(
+            request_id="synthetic-new-stock", correlation_id="synthetic-new-stock"
+        ),
+    )
+
+    def snapshot():
+        rows = business_rows(database)
+        with factory() as session:
+            rows["operations"] = [
+                dict(row) for row in session.execute(Operation.__table__.select()).mappings()
+            ]
+            rows["orders"] = [
+                {"id": order.id, "revision": order.current_revision, "status": order.status}
+                for order in session.scalars(select(SalesOrder).order_by(SalesOrder.id))
+            ]
+        return rows
+
+    def full_snapshot():
+        with engine.connect() as connection:
+            return {
+                table.name: [tuple(row) for row in connection.execute(table.select())]
+                for table in Base.metadata.sorted_tables
+            }
+
+    def consistent():
+        with factory() as session:
+            require(not consistency_problems(session), "New-order inventory inconsistency")
+            require(not downstream_problems(session), "New-order downstream inconsistency")
+
+    def view(plan):
+        with factory() as session:
+            return build_task_view(
+                session,
+                plan.task_id,
+                request_id="synthetic",
+                correlation_id="synthetic",
+                now=datetime.now(UTC),
+            ).model_dump(mode="json")
+
+    def finish(plan, key, before):
+        require(plan.status == "VALIDATED", "New-order plan must be validated")
+        require(snapshot() == before, "Planning changed stored business")
+        preview = view(plan)
+        require(preview["card"]["mode"] == "FIXTURE", "New-order mode must be FIXTURE")
+        approval_request = {
+            "plan_id": plan.plan_id,
+            "plan_hash": plan.plan_hash,
+            "expected_intent_revision": plan.intent_revision,
+        }
+        approval = approve_plan(factory, **approval_request)
+        require(snapshot() == before, "Simulated approval changed stored business")
+        commit_request = {
+            "plan_id": plan.plan_id,
+            "approval_id": approval.approval_id,
+            "plan_hash": plan.plan_hash,
+            "idempotency_key": key,
+        }
+        commit = durable_commit(factory, **commit_request)
+        state = full_snapshot()
+        replay = durable_commit(factory, **commit_request)
+        require(
+            replay.replayed and replay.operation_id == commit.operation_id,
+            "New operation on replay",
+        )
+        require(full_snapshot() == state, "Replay changed stored rows")
+        consistent()
+        final = view(plan)
+        require(final["card"]["status"] == "SUCCEEDED", "New-order task did not succeed")
+        require(final["result"]["verification"] == "passed", "New-order verification failed")
+        return {
+            "plan_id": plan.plan_id,
+            "task_id": plan.task_id,
+            "preapproval_view": preview,
+            "no_business_change_before_approval": True,
+            "no_business_change_on_approval": True,
+            "simulated_approval_request": approval_request,
+            "simulated_approval": asdict(approval),
+            "simulated_commit_request": commit_request,
+            "commit": asdict(commit),
+            "replay": asdict(replay),
+            "replay_all_tables_unchanged": True,
+            "final_view": final,
+        }
+
+    def check_order(order_id, quantities, revision):
+        order = get_order(order_id, request).model_dump(mode="json")
+        require(
+            order["current_revision"] == revision and order["status"] == "OPEN",
+            "Wrong new-order revision",
+        )
+        require(
+            {row["sku_id"]: row["ordered_qty"] for row in order["lines"]} == quantities,
+            "Wrong new-order quantities",
+        )
+        require(
+            all(row["shipped_qty"] == row["cut_qty"] == 0 for row in order["lines"]),
+            "Unexpected new-order execution",
+        )
+        reservations = {
+            row["sku_id"]: row["qty"]
+            for row in business_rows(database)["reservation"]
+            if row["order_id"] == order_id and row["qty"]
+        }
+        require(reservations == quantities, "New-order reservations differ from demand")
+        return {"order": order, "reservations": reservations}
+
+    def export(plan, label, quantities):
+        current = view(plan)
+        rows = [{"mode": current["card"]["mode"], **row} for row in current["line_diffs"]]
+        require(
+            {row["sku_id"]: row["new_qty"] for row in rows} == quantities,
+            "Export quantities changed",
+        )
+        available = {
+            row["sku_id"]: row["on_hand"] - row["reserved"]
+            for row in business_rows(database)["stock_balance"]
+        }
+        require(
+            all(row["available_qty"] == available[row["sku_id"]] for row in rows),
+            "Export availability must reflect current stock, not historical inventory",
+        )
+        for fmt in ("csv", "xlsx"):
+            content = export_change_list(rows, fmt=fmt)
+            if fmt == "csv":
+                actual = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+                expected = [
+                    {key: "" if value is None else str(value) for key, value in row.items()}
+                    for row in rows
+                ]
+            else:
+                workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+                try:
+                    sheet = list(workbook.active.values)
+                    actual = [dict(zip(sheet[0], row, strict=True)) for row in sheet[1:]]
+                finally:
+                    workbook.close()
+                expected = rows
+            require(actual == expected, f"New-order {fmt} differs from task view")
+            with (output / f"{label}-changes.{fmt}").open("xb") as stream:
+                stream.write(content)
+        audit = json.loads(export_task_audit(engine, plan.task_id))
+        require(len(audit["committed_operations"]) == 1, "New-order task must have one operation")
+        write_json(output / f"{label}-audit.json", audit)
+        return current
+
+    try:
+        consistent()
+        initial = snapshot()
+        mixed = [{"sku_id": "A-WHITE-M", "qty": 8}, {"sku_id": "C-NAVY-L", "qty": 6}]
+        try:
+            plan_new_order(
+                factory, customer_code="HD", lines=mixed, client_event_key="mixed-unsupported"
+            )
+        except AppError as exc:
+            require(exc.code == "MTO_CREATE_UNSUPPORTED", "Unexpected mixed-order error")
+            boundary = {
+                "input": mixed,
+                "error_code": exc.code,
+                "business_unchanged": snapshot() == initial,
+            }
+            require(boundary["business_unchanged"], "Unsupported creation changed business")
+        else:
+            raise AcceptanceError("Mixed STOCK/MTO creation must remain unsupported")
+        ref = {
+            "source_id": "synthetic-new-order.csv",
+            "sheet": "Orders",
+            "cell_range": "B2:C4",
+            "text_excerpt": "WHITE 8; BLUE 6; WHITE 2",
+        }
+        inputs = {
+            "customer_code": "HD",
+            "lines": [
+                {"sku_id": "A-WHITE-M", "qty": 8, "source_ref": ref},
+                {"sku_id": "B-BLUE-L", "qty": 6},
+                {"sku_id": "A-WHITE-M", "qty": 2},
+            ],
+            "client_event_key": "new-stock-create",
+        }
+        creation = plan_new_order(factory, **inputs)
+        state = full_snapshot()
+        repeated_plan = plan_new_order(factory, **inputs)
+        require(
+            repeated_plan.plan_id == creation.plan_id and full_snapshot() == state,
+            "Plan replay changed rows",
+        )
+        created = finish(creation, "new-stock-create-commit", initial)
+        order_id = created["commit"]["order_id"]
+        create_quantities = {"A-WHITE-M": 10, "B-BLUE-L": 6}
+        created.update(check_order(order_id, create_quantities, 1))
+        original = export(creation, "new-stock-create", create_quantities)
+        require(
+            any(
+                source["source_id"] == ref["source_id"]
+                and source["cell_range"] == ref["cell_range"]
+                for source in original["sources"]
+            ),
+            "Synthetic provenance missing",
+        )
+        before_amend = snapshot()
+        amendment_input = {
+            "order_id": order_id,
+            "base_revision": 1,
+            "intent_revision": 1,
+            "changes": [
+                {
+                    "mode": "replace_remaining",
+                    "from_sku": "A-WHITE-M",
+                    "to_sku": "A-BLACK-M",
+                    "qty": 4,
+                },
+                {"mode": "increment", "sku_id": "B-BLUE-L", "qty": 3},
+            ],
+            "client_event_key": "new-stock-amend",
+            "source_refs": [{"source_id": "synthetic-amend.txt", "line_start": 1, "line_end": 1}],
+        }
+        amendment = plan_change(factory, **amendment_input)
+        amended = finish(amendment, "new-stock-amend-commit", before_amend)
+        amend_quantities = {"A-WHITE-M": 6, "A-BLACK-M": 4, "B-BLUE-L": 9}
+        amended.update(check_order(order_id, amend_quantities, 2))
+        amended_view = export(amendment, "new-stock-amend", amend_quantities)
+        require(
+            any(
+                source["source_id"] == "synthetic-amend.txt" and source["line_start"] == 1
+                for source in amended_view["sources"]
+            ),
+            "Amendment synthetic provenance missing",
+        )
+        historical = export(creation, "new-stock-create-after-amend", create_quantities)
+
+        def projection(v):
+            return [(r["sku_id"], r["old_qty"], r["new_qty"], r["delta"]) for r in v["line_diffs"]]
+
+        require(projection(original) == projection(historical), "Historical quantity diffs changed")
+        require(
+            {r["sku_id"]: r["available_qty"] for r in original["line_diffs"]}
+            == {"A-WHITE-M": 110, "B-BLUE-L": 14},
+            "Unexpected creation availability",
+        )
+        require(
+            {r["sku_id"]: r["available_qty"] for r in historical["line_diffs"]}
+            == {"A-WHITE-M": 114, "B-BLUE-L": 11},
+            "Old task must show current availability after amendment",
+        )
+        state = full_snapshot()
+        late_replay = durable_commit(factory, **created["simulated_commit_request"])
+        require(
+            late_replay.replayed
+            and late_replay.revision == 1
+            and late_replay.operation_id == created["commit"]["operation_id"],
+            "Historical commit receipt changed",
+        )
+        require(full_snapshot() == state, "Original replay reverted amended order")
+        check_order(order_id, amend_quantities, 2)
+        consistent()
+        final = snapshot()
+        for table in ("production_order", "purchase_order", "shipment_record"):
+            require(
+                final[table] == initial[table], "New STOCK lifecycle changed unrelated execution"
+            )
+        # Approval expiration is a datetime in the service outcome; serialize explicitly.
+        for result in (created, amended):
+            result["simulated_approval"]["expires_at"] = result["simulated_approval"][
+                "expires_at"
+            ].isoformat()
+        write_json(
+            output / "new-stock-result.json",
+            {
+                "scenario": "new-stock",
+                "evidence": "SYNTHETIC FIXTURE; simulated demo approval; direct services",
+                "input": inputs,
+                "amendment_input": amendment_input,
+                "mixed_boundary": boundary,
+                "stored_before": initial,
+                "stored_after_create": before_amend,
+                "stored_after": final,
+                "creation": created,
+                "amendment": amended,
+                "plan_replay_all_tables_unchanged": True,
+                "create_view_after_amend": historical,
+                "historical_quantity_diffs_preserved": True,
+                "exports_use_current_availability": True,
+                "original_commit_replay_after_amend": asdict(late_replay),
+                "historical_replay_all_tables_unchanged": True,
+                "source_ref_preserved": True,
+                "supplier_contacted": False,
+                "steps": log,
+            },
+        )
+        print(
+            "new-stock: 创建白10/蓝6 → 改单白6/黑4/蓝9；模拟批准前业务未变；原提交重放不回滚",
+            flush=True,
+        )
+    finally:
+        engine.dispose()
+
+
 RUNTIME_DIRS = ("app", "schemas", "seeds", "order_ops_migrations")
 SOURCE_FILES = (
     "pyproject.toml",
@@ -390,6 +718,8 @@ def controller(output):
     for name in ("stock", "uncut"):
         with tempfile.TemporaryDirectory(prefix=f"{name}-ephemeral-", dir=output) as temporary:
             journey(output, name, Path(temporary) / "synthetic.db")
+    with tempfile.TemporaryDirectory(prefix="new-stock-ephemeral-", dir=output) as temporary:
+        new_order_journey(output, Path(temporary) / "synthetic.db")
 
 
 def publish_summary(output):
@@ -401,9 +731,16 @@ def publish_summary(output):
             "只改未裁 180，黑色已裁 120 保留。\n"
             "- PUR-3002：藏青面料 360 为 PENDING_SUPPLIER 草案，仍需供应商确认。"
             "没有联系供应商，也没有取得对方同意。\n\n"
-            "两条旅程均经过持久输入和单独 CLI worker；批准前订单及业务表未变。"
+            "前两条旅程均经过持久输入和单独 CLI worker；批准前订单及业务表未变。"
             "脚本模拟 demo-user 批准，再单独提交；最终 revision 2、SUCCEEDED、"
             "verification passed。同 key 重放返回原 Operation ID，审计各只有一次操作。\n\n"
+            "- 新建库存单：白色 8+2 合并为 10，蓝色 6，revision 1；独立模拟批准后提交。\n"
+            "- 新单改单：白色 6、黑色 4、蓝色 9，revision 2；预留与订单数量一致。\n"
+            "- 原建单提交重放仍返回 revision 1 同一 Operation ID，不回滚当前 revision 2。\n"
+            "- 混合 STOCK/MTO 新单明确拒绝 MTO_CREATE_UNSUPPORTED，业务未变。\n\n"
+            "新单通过直接服务规划和同步读回，不经过文本提取、上传或 worker。"
+            "new-stock-create-after-amend 文件保留建单历史差量（白10/蓝6）；库存等字段"
+            "仍来自当前事实，不是完整历史快照。来源是显式合成引用，不证明上传归属。\n\n"
             "这是模拟批准，不是真实人工验收。仅证明 FIXTURE 管道，不证明浏览器、"
             "模型理解、ERP 或部署就绪。CSV/XLSX 是当前视图，不是批准时库存快照；"
             "audit 文件保留自身的历史与来源语义限制。IDs/时间戳每次不同。\n\n"
