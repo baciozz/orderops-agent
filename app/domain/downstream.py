@@ -31,20 +31,35 @@ def assess_downstream(
         if line.fulfillment_mode == FulfillmentMode.MTO and line.ordered_qty > 0
     }
     active = [row for row in production if row["status"] != "CANCELLED"]
-    # Equal aggregate demand is a no-op, not permission to consolidate split MOs.
-    # Reserve these allocations before the existing changed-SKU allocator runs.
+    # Reserve existing allocations for equal or growing same-SKU demand.
+    # Growth needs an existing uncut host; never create or expand executed MOs.
     totals: dict[str, int] = {}
-    for row in active:
+    hosts: dict[str, str] = {}
+    for row in sorted(active, key=lambda item: str(item["doc_id"])):
         planned, cut = int(row["planned_qty"]), int(row["cut_qty"])
         if not 0 <= cut <= planned:
             return [], "生产单的裁剪数量或计划数量无效"
         sku = str(row["sku_id"])
         totals[sku] = totals.get(sku, 0) + planned
-    preserved = {sku for sku, qty in totals.items() if qty > 0 and demand.get(sku) == qty}
-    preserved_rows = sorted(
-        [row for row in active if str(row["sku_id"]) in preserved],
-        key=lambda row: str(row["doc_id"]),
-    )
+        if cut == 0:
+            hosts.setdefault(sku, str(row["doc_id"]))
+    preserved = {
+        sku
+        for sku, qty in totals.items()
+        if qty > 0 and (demand.get(sku) == qty or (demand.get(sku, 0) > qty and sku in hosts))
+    }
+    verdicts: list[dict[str, Any]] = []
+    assigned: dict[str, str] = {}
+    for row in sorted(active, key=lambda item: str(item["doc_id"])):
+        sku, doc_id = str(row["sku_id"]), str(row["doc_id"])
+        if sku not in preserved:
+            continue
+        growth = demand[sku] - totals[sku]
+        if growth and doc_id == hosts[sku]:
+            verdicts.append(_change_mo(row, sku, int(row["planned_qty"]) + growth, "NOT_STARTED"))
+        else:
+            verdicts.append(_unchanged_mo(row))
+        assigned[doc_id] = sku
     for sku in preserved:
         del demand[sku]
     active = [row for row in active if str(row["sku_id"]) not in preserved]
@@ -55,8 +70,6 @@ def assess_downstream(
     ]
     partial = [row for row in active if 0 < int(row["cut_qty"]) < int(row["planned_qty"])]
     zero = [row for row in active if int(row["cut_qty"]) == 0]
-    verdicts: list[dict[str, Any]] = [_unchanged_mo(row) for row in preserved_rows]
-    assigned: dict[str, str] = {str(row["doc_id"]): str(row["sku_id"]) for row in preserved_rows}
 
     def take(sku: str, qty: int) -> bool:
         if demand.get(sku, 0) < qty:

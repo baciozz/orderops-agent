@@ -324,3 +324,78 @@ def test_cancel_and_unsupported_new_production_controls():
     verdicts, error = assess([mo("a", "same", 90)], {"same": 90, "new": 40})
     assert verdicts == []
     assert error == "P0 不支持为剩余数量追加生产单"
+
+
+@pytest.mark.parametrize("receipts", [(0, 0), (180, 180), (180, 0), (0, 180), (40, 50)])
+def test_split_growth_changes_only_residual_demand(split, receipts):
+    factory, request = split
+    with factory.begin() as session:
+        for doc_id, received in zip(["PUR-3002", "PUR-3003"], receipts, strict=True):
+            row = session.get(PurchaseOrder, doc_id)
+            row.received_qty = received
+            row.status = (
+                "RECEIVED" if received == 180 else "PARTIALLY_RECEIVED" if received else "PLACED"
+            )
+            revision = session.scalar(select(DocRevision).where(DocRevision.doc_id == doc_id))
+            revision.snapshot_json = {
+                **revision.snapshot_json,
+                "received_qty": received,
+                "status": row.status,
+            }
+    before = snapshot(factory, [ProductionOrder, PurchaseOrder, DocRevision])
+    with factory() as session:
+        assert consistency_problems(session) + downstream_problems(session) == []
+    preview = plan(
+        request,
+        [
+            {"mode": "set_total", "sku_id": "C-BLACK-L", "qty": 301},
+            {"mode": "replace_remaining", "from_sku": "A-BLACK-M", "to_sku": "A-WHITE-M", "qty": 1},
+        ],
+    )
+    assert preview.status == "VALIDATED" and preview.requires_human_approval
+    assert snapshot(factory, [ProductionOrder, PurchaseOrder, DocRevision]) == before
+    with factory() as session:
+        verdicts = session.get(Plan, preview.plan_id).normalized_changes["downstream"]
+        by_id = {v["doc_id"]: v for v in verdicts}
+        assert by_id["MO-2002"]["after"]["planned_qty"] == 91
+        for doc_id in ["MO-2001", "MO-2003", "PUR-3001", "PUR-3003"]:
+            assert by_id[doc_id]["verdict"] == "UNAFFECTED_RELINK"
+            assert by_id[doc_id]["before"] == by_id[doc_id]["after"]
+        if receipts[0] == 180:
+            assert by_id["PUR-3002"]["verdict"] == "UNAFFECTED_RELINK"
+            assert by_id["PUR-3002-S1"]["after"]["ordered_qty"] == 2
+        else:
+            assert by_id["PUR-3002"]["after"]["ordered_qty"] == 182
+        assert all(v["verdict"] != "CANCEL_DRAFT" for v in verdicts)
+    assert execute(request, preview).revision == 2
+    with factory() as session:
+        assert [
+            session.get(ProductionOrder, key).planned_qty
+            for key in ["MO-2001", "MO-2002", "MO-2003"]
+        ] == [120, 91, 90]
+        assert consistency_problems(session) + downstream_problems(session) == []
+        assert len(
+            list(session.scalars(select(DownstreamLink).where(DownstreamLink.order_revision == 2)))
+        ) == len(verdicts)
+
+
+def test_growth_allocation_is_deterministic_and_does_not_expand_cut_hosts():
+    rows = [
+        mo("a", "same", 90, 10, "PARTIALLY_CUT"),
+        mo("b", "same", 90),
+        mo("c", "same", 90),
+        mo("0", "same", 999, status="CANCELLED"),
+    ]
+    expected, error = assess(rows, {"same": 271})
+    assert error is None
+    assert assess(list(reversed(rows)), {"same": 271}) == (expected, None)
+    by_id = {v["doc_id"]: v for v in expected}
+    assert by_id["a"]["verdict"] == by_id["c"]["verdict"] == "UNAFFECTED_RELINK"
+    assert by_id["b"]["after"]["planned_qty"] == 91
+    assert "0" not in by_id
+    for cuts in [(90, 90), (10, 10)]:
+        verdicts, error = assess(
+            [mo("a", "same", 90, cuts[0]), mo("b", "same", 90, cuts[1])], {"same": 181}
+        )
+        assert verdicts == [] and error == "P0 不支持为剩余数量追加生产单"
+    assert assess(rows, {"same": 271, "new": 1})[1] is not None
