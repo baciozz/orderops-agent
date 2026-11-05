@@ -55,6 +55,7 @@ def create_plan(body: PlanChangeRequest, request: Request) -> PlanPreviewRespons
         base_revision=body.base_revision,
         intent_revision=body.intent_revision,
         changes=_changes(body),
+        bind_request=True,
         source_refs=_refs(body),
         client_event_key=body.client_event_key or f"plan-{body.order_id}-{body.intent_revision}",
     )

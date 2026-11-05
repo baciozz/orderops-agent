@@ -136,9 +136,26 @@ def plan_change(
     source_refs: list[dict[str, object]] | None = None,
     client_event_key: str,
     bump_intent: bool = True,
+    bind_request: bool = False,
     now: datetime | None = None,
 ) -> PlanOutcome:
     """Precheck a change. A new event bumps intent and invalidates old approvals."""
+    request_hash = (
+        canonical_hash(
+            {
+                "binding_version": 1,
+                "kind": "direct_change",
+                "order_id": order_id,
+                "base_revision": base_revision,
+                "intent_revision": intent_revision,
+                "changes": [_clean_change(item) for item in changes],
+                "source_refs": source_refs or [],
+                "bump_intent": bump_intent,
+            }
+        )
+        if bind_request
+        else None
+    )
     moment = _now(now)
     session = session_factory()
     error: AppError | None = None
@@ -146,7 +163,7 @@ def plan_change(
     try:
         with begin_immediate(session):
             enforce(session)
-            prior = _existing_outcome(session, client_event_key)
+            prior = _existing_outcome(session, client_event_key, request_hash=request_hash)
             if prior is not None:
                 outcome, error = prior
             else:
@@ -161,6 +178,8 @@ def plan_change(
                     bump_intent=bump_intent,
                     now=moment,
                 )
+                if request_hash is not None:
+                    _store_request_binding(session, client_event_key, request_hash)
     finally:
         session.close()
     if error is not None:
@@ -1572,8 +1591,39 @@ def consistency_problems(session: Session) -> list[str]:
     return problems
 
 
+def _store_request_binding(
+    session: Session,
+    client_event_key: str,
+    request_hash: str,
+) -> None:
+    """Attach request metadata atomically, outside the approval/business hash.
+
+    Validation failures that create no plan/event do not reserve a retry key.
+    Never infer a historical request from its resulting business snapshot.
+    """
+    event = session.scalar(
+        select(Event).where(
+            Event.thread_id == _THREAD,
+            Event.source_event_key == client_event_key,
+        )
+    )
+    if event is None:
+        return
+    plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    if plan is None:
+        # Diagnostic-only failures retain their first error; retry is fail-closed.
+        return
+    plan.normalized_changes = {
+        **(plan.normalized_changes or {}),
+        "direct_request_binding": {
+            "version": 1,
+            "request_hash": request_hash,
+        },
+    }
+
+
 def _existing_outcome(
-    session: Session, client_event_key: str
+    session: Session, client_event_key: str, *, request_hash: str | None = None
 ) -> tuple[PlanOutcome | None, AppError | None] | None:
     event = session.scalar(
         select(Event).where(
@@ -1581,9 +1631,22 @@ def _existing_outcome(
             Event.source_event_key == client_event_key,
         )
     )
-    if event is None or not event.payload_ref:
+    if event is None:
         return None
-    plan = session.get(Plan, event.payload_ref)
+    plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    binding = (plan.normalized_changes or {}).get("direct_request_binding") if plan else None
+    if request_hash is not None or binding is not None:
+        if (
+            not isinstance(binding, dict)
+            or binding.get("version") != 1
+            or request_hash is None
+            or binding.get("request_hash") != request_hash
+        ):
+            raise AppError(
+                "事件键已用于其他请求，或历史请求身份无法验证；请使用新的事件键",
+                code="PLAN_REQUEST_CONFLICT",
+                http_status=409,
+            )
     if plan is None:
         return None
     task = session.get(Task, plan.task_id)
