@@ -1,12 +1,23 @@
 """Business events and the extraction result from plan section 9."""
 
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from schemas import SCHEMA_VERSION
 from schemas.common import ApiModel, SourceRef
 from schemas.enums import BusinessEventType, InputMode, LineMode
+
+
+def _reject_boolean_quantity(value: Any) -> Any:
+    # bool is an int subclass; reject it before Pydantic erases the distinction.
+    # Keep the existing coercion and let the kernel decide missing/zero/negative semantics.
+    if isinstance(value, bool):
+        raise ValueError("数量必须是整数，不能是布尔值")
+    return value
+
+
+_Quantity = Annotated[int | None, BeforeValidator(_reject_boolean_quantity)]
 
 
 class LineChange(ApiModel):
@@ -15,7 +26,7 @@ class LineChange(ApiModel):
     sku_id: str | None = None
     from_sku: str | None = None
     to_sku: str | None = None
-    qty: int | None = None
+    qty: _Quantity = None
     inferred: bool = False
     inference_basis: str | None = None
     source_refs: list[SourceRef] = Field(default_factory=list)
@@ -30,7 +41,7 @@ class NewOrderLine(ApiModel):
     color: str | None = None
     size: str | None = None
     sku_id: str | None = None
-    qty: int | None = None
+    qty: _Quantity = None
     unit: Literal["piece"] = "piece"
     fulfillment_mode: Literal["STOCK"] = "STOCK"
     source_ref: SourceRef | None = None
