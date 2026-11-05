@@ -17,6 +17,9 @@
       {{ source.name }}（{{ source.size }} 字节） · {{ source.id }}</label></li>
     {% else %}<li data-empty>暂无上传文件</li>{% endfor %}
   </ul>
+  {% if uploaded_sources %}
+  <p id="evidence-retention-notice">上传成功仅表示当时已解析并保存提取内容，不代表原始文件仍被保留。原始文件使用临时存储，本页未检查其是否存在。即使原始文件丢失，已保存的提取内容仍可读取；使用同一上传键重试不会恢复原始文件。审计摘要不包含原始文件。</p>
+  {% endif %}
   {% if can_answer %}
   <form id="clarification-answer" class="input-form">
     <label for="answer-text">回答或修订意图</label>
