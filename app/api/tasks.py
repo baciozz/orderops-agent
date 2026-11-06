@@ -10,7 +10,7 @@ from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
 from sqlalchemy import inspect, select
 
 from app.api.errors import json_error
-from app.db.models import Approval, Event, InputSource, Plan, Task, TaskSource
+from app.db.models import Approval, Event, InputSource, Operation, Plan, Task, TaskSource
 from app.errors import AppError
 from app.orchestration.inbox import latest_input
 from app.orchestration.state import utcnow
@@ -107,8 +107,23 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     renewable = False
     duplicate_warning = None
     uploaded_sources = []
+    failure_guidance = None
     if task_id != STUB_TASK_ID:
         with request.app.state.session_factory() as session:
+            task = session.get(Task, task_id)
+            if task and task.status == "FAILED" and view.card.status == TaskStatus.FAILED:
+                # result_ref may contain private input or an exception. Never render it.
+                # Check all task plans too: a failure may have overwritten the reference.
+                operation = session.scalar(
+                    select(Operation.id)
+                    .outerjoin(Plan, Operation.plan_id == Plan.id)
+                    .where((Plan.task_id == task_id) | (Operation.id == task.result_ref))
+                    .limit(1)
+                )
+                failure_guidance = {
+                    "fixture_not_found": task.error_code == "FIXTURE_NOT_FOUND",
+                    "has_operation": operation is not None,
+                }
             uploaded_sources = [
                 {"id": source.id, "name": source.original_name, "size": source.size}
                 for source in session.scalars(
@@ -156,6 +171,7 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "approval_id": approval_id,
             "renewable": renewable,
             "duplicate_warning": duplicate_warning,
+            "failure_guidance": failure_guidance,
             "uploaded_sources": uploaded_sources,
             "input_event_id": input_event_id,
             "audit_url": f"/tasks/{quote(task_id, safe='')}/audit"

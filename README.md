@@ -224,7 +224,11 @@ worker. Approval and commit remain separate human actions. The answer delivery
 key covers the task, displayed revision, latest input event, answer text, and selected source IDs;
 identical retries reuse it and edited payloads do not. Cancellation asks for
 confirmation and submits the displayed intent revision. Terminal tasks have no
-answer/upload/cancel controls.
+answer/upload/cancel controls. Failed task pages retain a safe explanation after refresh:
+`FIXTURE_NOT_FOUND` links to the exact demo examples when no associated operation
+is found. Unknown errors direct the operator to task ID/audit review without
+showing raw error text. Existing execution records require review before any new
+submission; committed verification-pending/manual-review guidance is unchanged.
 
 The browser checks current task status/revision before each new action. Answers
 also carry revision and latest-input-event fences, checked atomically by the

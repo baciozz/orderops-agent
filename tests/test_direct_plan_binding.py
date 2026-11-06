@@ -2,11 +2,14 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import Barrier
 from types import SimpleNamespace
 
 import pytest
 from app.api.orders import create_plan
 from app.db.models import Base, Event, Plan
+from app.db.schema import init_db
+from app.db.session import make_engine, make_session_factory
 from app.errors import AppError
 from app.services.kernel import approve_plan, commit_plan, plan_change, plan_new_order
 from app.services.seed import load_seed
@@ -18,6 +21,20 @@ from sqlalchemy import select
 def seeded(session_factory, database_url):
     load_seed(session_factory, database_url=database_url)
     return session_factory
+
+
+@pytest.fixture()
+def concurrent_seeded(tmp_path):
+    # Race tests exercise production lock waiting, not the shared 200 ms denial fixture.
+    url = f"sqlite:///{tmp_path / 'direct-plan-race.db'}"
+    engine = make_engine(url)
+    try:
+        init_db(engine)
+        factory = make_session_factory(engine)
+        load_seed(factory, database_url=url)
+        yield factory
+    finally:
+        engine.dispose()
 
 
 def body(**updates):
@@ -164,10 +181,15 @@ def test_kernel_cannot_reuse_direct_bound_key(seeded):
         assert snapshot(seeded) == before
 
 
-def test_competing_request_has_one_winner(seeded):
+def test_competing_request_has_one_winner(concurrent_seeded):
+    seeded = concurrent_seeded
+    ready = Barrier(2)
+
     def run(qty):
         data = body()
         data["changes"][0]["qty"] = qty
+        # Rendezvous before route() creates a session or takes a database lock.
+        ready.wait(timeout=10)
         try:
             return route(seeded, data)
         except AppError as error:
@@ -176,9 +198,24 @@ def test_competing_request_has_one_winner(seeded):
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(run, [10, 40]))
     assert sum(isinstance(result, AppError) for result in results) == 1
-    assert next(result for result in results if isinstance(result, AppError)).http_status == 409
+    loser = next(result for result in results if isinstance(result, AppError))
+    assert (loser.code, loser.http_status) == ("PLAN_REQUEST_CONFLICT", 409)
+    winner = next(result for result in results if not isinstance(result, AppError))
     with seeded() as session:
-        assert len(session.scalars(select(Plan)).all()) == 1
+        assert [plan.id for plan in session.scalars(select(Plan))] == [winner.plan_id]
+        events = session.scalars(select(Event)).all()
+        assert len(events) == 1
+        assert events[0].source_event_key == "direct-test"
+        assert events[0].payload_ref == winner.plan_id
+    before = snapshot(seeded)
+    for qty, result in zip([10, 40], results, strict=True):
+        data = body()
+        data["changes"][0]["qty"] = qty
+        if isinstance(result, AppError):
+            conflict(seeded, data)
+        else:
+            assert route(seeded, data) == winner
+        assert snapshot(seeded) == before
 
 
 @pytest.mark.parametrize("kind", ["shortage", "clarify"])
@@ -216,12 +253,27 @@ def test_failure_without_event_does_not_reserve_key(seeded):
     assert route(seeded, body()).plan_id
 
 
-def test_simultaneous_exact_retry_returns_same_plan(seeded):
+def test_simultaneous_exact_retry_returns_same_plan(concurrent_seeded):
+    seeded = concurrent_seeded
+    ready = Barrier(2)
+
+    def run(_):
+        # No session or write lock exists when either worker reaches this barrier.
+        ready.wait(timeout=10)
+        return route(seeded, body())
+
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(lambda _: route(seeded, body()), range(2)))
+        results = list(executor.map(run, range(2)))
     assert results[0] == results[1]
     with seeded() as session:
-        assert len(session.scalars(select(Plan)).all()) == 1
+        assert [plan.id for plan in session.scalars(select(Plan))] == [results[0].plan_id]
+        events = session.scalars(select(Event)).all()
+        assert len(events) == 1
+        assert events[0].source_event_key == "direct-test"
+        assert events[0].payload_ref == results[0].plan_id
+    before = snapshot(seeded)
+    assert route(seeded, body()) == results[0]
+    assert snapshot(seeded) == before
 
 
 def test_diagnostic_only_failure_fails_closed_on_retry(seeded):
