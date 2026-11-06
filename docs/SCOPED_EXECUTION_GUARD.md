@@ -36,6 +36,7 @@ Operation 新增可空 `verification_observation`，与业务 `result_json` 分�
 本实现不再生成笼统的 passed。新增 `verification_details` 携带上述记录。已有客户端必须接受新增字段
 和状态；不能将“非 pending”解析为整单通过。数据库旧记录没有观察时，即使旧 pending=false，也显示 unassessed。
 读取页面/API 不补记录、不重新核验。模板显示字段差异、未覆盖对象及时间，并声明观察不持续保证当前状态。
+结果区的中文范围说明、旧任务迁移与人工核对指引已通过[真实 HTTP 体验验收](VERIFICATION_EXPERIENCE_HTTP.md)；这不扩大核验范围。
 页面的限时更新提示也比较观察时间和状态，仍不自动批准、提交或重载。
 
 业务提交成功仍为 SUCCEEDED，核验异常不诱发重提；业务审批规则没有因 partial 放宽。

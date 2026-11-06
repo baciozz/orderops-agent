@@ -211,8 +211,20 @@ def test_legacy_false_flag_is_unassessed_and_manual_check_does_not_certify_it(se
         view = client.get(f"/tasks/{result.task_id}/view").json()
         assert view["result"]["verification"] == "unassessed"
         assert view["result"]["verification_details"] is None
+        html = client.get(f"/ui/tasks/{result.task_id}").text
+        assert 'id="verification-next-steps"' in html
+        assert "无法确认历史核验覆盖了哪些对象或字段" in html
+        assert "未记录的对象不能视为已核验" in html
+        assert "请勿重复提交" in html
     assert not verification.verify_manually(seeded, result.operation_id, now=NOW)
     assert observation(seeded, result.operation_id)[1]["status"] == "inconclusive"
+    with TestClient(
+        create_app(Settings(_env_file=None, database_url=database_url)), base_url="http://127.0.0.1"
+    ) as client:
+        html = client.get(f"/ui/tasks/{result.task_id}").text
+        assert "未保留可供核对的执行证据" in html
+        assert "没有可列出的对象清单，不能理解为全部覆盖" in html
+        assert "维护人员" in html and "verify-operation" in html
 
 
 @pytest.mark.parametrize("takeover", [False, True])
