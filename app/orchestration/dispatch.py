@@ -116,6 +116,7 @@ def _dispatch_text(
     """Parse one utterance, run the routed sub-agents, then precheck."""
     validate_text(text, allow_empty=bool(source_ids))
     moment = _moment(now)
+    configured = settings or get_settings()
     if durable_task_id is None:
         from app.orchestration.sync_dispatch import execute
 
@@ -126,6 +127,7 @@ def _dispatch_text(
                 {"text": text, "input_mode": input_mode, "source_ids": source_ids or []}
             ),
             clock=clock or ((lambda: moment) if now is not None else utcnow),
+            runtime_mode=resolve_mode(configured).mode.value,
             run=lambda task_id: _dispatch_text(
                 session_factory,
                 text=text,
@@ -138,31 +140,38 @@ def _dispatch_text(
                 timeout_agent=timeout_agent,
                 durable_task_id=task_id,
                 source_ids=source_ids,
-                settings=settings,
+                settings=configured,
                 client_factory=client_factory,
             ),
         )
     registered = registry or build_default_registry()
     router = Router(registered)
-    configured = settings or get_settings()
     task_id = durable_task_id
     from app.services.sheet_order import is_sheet_task
 
     with session_factory() as read_session:
         task = read_session.get(Task, task_id)
+        if task is None or task.runtime_mode not in {"FIXTURE", "LIVE"}:
+            raise AppError("任务运行模式不可验证", code="TASK_MODE_INVALID", http_status=409)
+        task_mode = task.runtime_mode
         bounded = (
             durable_guard.get() is not None
             and task is not None
             and is_sheet_task(read_session, task)
         )
-    enrich(mode="FIXTURE" if bounded else resolve_mode(configured).mode.value)
+    use_live = not bounded and task_mode == "LIVE"
+    if use_live and resolve_mode(configured).mode != "LIVE":
+        return _fail(
+            session_factory, task_id, "TASK_MODE_UNAVAILABLE", "任务需要已配置的 LIVE 消费者"
+        )
+    enrich(mode="LIVE" if use_live else "FIXTURE")
     client: LLMClient | None = None
     if not bounded:
         library = golden_fixtures()
         if fixtures:
             library.update(fixtures)
         client = FixtureLLMClient(library)
-    if not bounded and resolve_mode(configured).mode == "LIVE":
+    if use_live:
         ledger = BudgetLedger(
             session_factory,
             cap_usd=configured.effective_live_budget_usd,

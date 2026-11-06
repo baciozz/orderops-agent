@@ -43,6 +43,15 @@ def _worker_loop(options: LoopOptions) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except Exception as exc:
+        log_event(get_logger("cli"), "cli.failed", outcome="failed", error_code=exception_code(exc))
+        print("命令未完成，请检查配置、数据库和结构化错误码；未自动重试")
+        return 1
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="oos", description="order-ops-superagent")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db", help="创建 SQLite 表")
@@ -80,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         init_db(engine)
         if args.command == "init-db":
-            print(f"已创建表：{settings.database_url}")
+            print("数据库表已初始化")
             return 0
         if args.command == "reconcile-budget":
             count = reconcile_reservations(
@@ -116,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         engine.dispose()
     if report.created:
-        print(f"已载入合成 seed：{', '.join(report.orders)} @ {report.database_url}")
+        print(f"已载入合成 seed：{', '.join(report.orders)}")
     else:
         print(f"seed 已存在，未重复写入：{', '.join(report.orders)}")
     return 0

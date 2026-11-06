@@ -16,7 +16,7 @@ from app.adapters.providers import provider_for_settings
 from app.adapters.providers.schema import ensure_supported_schema, validate_payload
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
-from app.observability import enrich, get_logger, observed
+from app.observability import enrich, get_logger, observed, protect_http_logging
 
 logger = get_logger(__name__)
 
@@ -32,6 +32,7 @@ class LiveLLMClient:
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        protect_http_logging()
         resolution = resolve_mode(settings)
         if resolution.mode != "LIVE":
             raise LiveStartRefused(resolution.live_block_reason or "LIVE_DISABLED")

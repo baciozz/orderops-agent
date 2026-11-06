@@ -277,7 +277,7 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             waiting_on=cast(WaitingOn, waiting),
             mode=RuntimeMode.LIVE
             if session.scalar(select(ModelUsage.id).where(ModelUsage.task_id == task.id).limit(1))
-            else RuntimeMode.FIXTURE,
+            else RuntimeMode(task.runtime_mode),
         ),
         dispatch=dispatch,
         line_diffs=diffs,

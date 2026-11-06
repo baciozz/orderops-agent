@@ -34,7 +34,7 @@ from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
 from app.db.schema import schema_ready
 from app.db.session import make_engine, make_session_factory
-from app.errors import AppError
+from app.errors import AppError, SchemaNotReadyError
 from app.metrics import snapshot
 from app.observability import configure_logging, exception_code, get_logger, log_context, log_event
 from app.orchestration.defaults import build_default_registry
@@ -50,6 +50,14 @@ _HTTP_ERROR_CODES = {
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    try:
+        return _create_app(settings)
+    except Exception as exc:
+        log_event(logger, "startup.failed", outcome="failed", error_code=exception_code(exc))
+        raise RuntimeError("应用配置或初始化失败，请检查配置和结构化错误码") from None
+
+
+def _create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
     registry = build_default_registry()
@@ -60,18 +68,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # init-db/migrations remain an explicit operator action. A fresh health
         # server must not create a database just to reconcile an empty ledger.
         engine = app.state.engine
-        database = engine.url.database
-        present = database in (None, "", ":memory:") or Path(database).is_file()
         try:
-            if present and schema_ready(engine):
-                reconcile_reservations(
-                    app.state.session_factory,
-                    now=datetime.now(UTC),
-                    ttl=timedelta(seconds=settings.effective_budget_reservation_ttl_s),
+            try:
+                database = engine.url.database
+                present = database in (None, "", ":memory:") or Path(database).is_file()
+                if present and schema_ready(engine):
+                    reconcile_reservations(
+                        app.state.session_factory,
+                        now=datetime.now(UTC),
+                        ttl=timedelta(seconds=settings.effective_budget_reservation_ttl_s),
+                    )
+            except SchemaNotReadyError:
+                raise
+            except Exception as exc:
+                log_event(
+                    logger, "startup.failed", outcome="failed", error_code=exception_code(exc)
                 )
+                raise RuntimeError("启动准备失败，请检查配置、数据库和结构化错误码") from None
             yield
         finally:
-            engine.dispose()
+            try:
+                engine.dispose()
+            except Exception as exc:
+                log_event(
+                    logger, "shutdown.failed", outcome="failed", error_code=exception_code(exc)
+                )
+                raise RuntimeError("应用清理失败，请检查结构化错误码") from None
 
     application = FastAPI(
         title="order-ops-superagent",

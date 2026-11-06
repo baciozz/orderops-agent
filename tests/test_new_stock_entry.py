@@ -44,8 +44,8 @@ def web(engine, session_factory, database_url, monkeypatch):
         settings=Settings(_env_file=None, database_url=database_url),
     )
 
-    async def inline(func, *args):
-        return func(*args)
+    async def inline(func, *args, **kwargs):
+        return func(*args, **kwargs)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("No network or live model")

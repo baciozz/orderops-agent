@@ -31,6 +31,7 @@ def execute(
     request_hash: str,
     clock: Callable[[], datetime],
     run: Callable[[str], "DispatchOutcome"],
+    runtime_mode: str = "FIXTURE",
 ) -> "DispatchOutcome":
     with factory() as session, begin_immediate(session):
         receipt = session.get(SyncDispatchReceipt, key)
@@ -50,7 +51,13 @@ def execute(
                 code="DISPATCH_REQUEST_CONFLICT",
                 http_status=409,
             )
-        task = Task(id=str(uuid4()), chain_id="CH-UNASSIGNED", status="RUNNING", intent_revision=0)
+        task = Task(
+            id=str(uuid4()),
+            chain_id="CH-UNASSIGNED",
+            status="RUNNING",
+            intent_revision=0,
+            runtime_mode=runtime_mode,
+        )
         session.add(task)
         session.flush()
         session.add(

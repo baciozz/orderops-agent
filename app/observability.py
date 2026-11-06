@@ -90,6 +90,36 @@ class RedactionFilter(logging.Filter):
 _redaction = RedactionFilter()
 
 
+class _DropHTTPDetails(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return False
+
+
+_drop_http_details = _DropHTTPDetails()
+# Names used by pinned httpx/httpcore (sync and async transports). Pre-create
+# their loggers so later imports cannot emit headers/URLs through root handlers.
+_HTTP_LOGGERS = {
+    "httpx",
+    "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpcore.http2",
+    "httpcore.proxy",
+    "httpcore.socks",
+}
+
+
+def protect_http_logging() -> None:
+    """Suppress transport metadata; retain our structured model events instead."""
+    existing = set(logging.Logger.manager.loggerDict)
+    names = _HTTP_LOGGERS | {name for name in existing if name.startswith(("httpx.", "httpcore."))}
+    for name in names:
+        logger = logging.getLogger(name)
+        logger.addFilter(_drop_http_details)
+        # Also prevent future descendants that inherit their namespace's level.
+        logger.setLevel(logging.CRITICAL + 1)
+
+
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         if not _redaction.filter(record):
@@ -134,6 +164,7 @@ def get_logger(name: str) -> logging.Logger:
 def configure_logging(settings: Settings) -> None:
     """Idempotent process-wide oos setup; root handlers/levels are untouched."""
     logger = logging.getLogger("oos")
+    protect_http_logging()
     key = settings.llm_api_key_value()
     if key:
         # Retain prior configured keys too, for apps sharing a process.

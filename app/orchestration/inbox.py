@@ -49,7 +49,10 @@ def accept_input(
     expected_input_event_id=None,
     clock=utcnow,
     fault=lambda _: None,
+    runtime_mode="FIXTURE",
 ):
+    if runtime_mode not in {"FIXTURE", "LIVE"}:
+        raise AppError("任务运行模式无效", code="TASK_MODE_INVALID", http_status=400)
     validate_text(text, allow_empty=bool(source_ids))
     enrich(**text_digest(text or ""))
     request_hash = _request_hash(text, source_ids, task_id, selected_order_id)
@@ -96,12 +99,15 @@ def accept_input(
             if task is None or task.status not in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"}:
                 raise AppError("任务不能恢复", code="ILLEGAL_TRANSITION", http_status=409)
         else:
+            from app.services.sheet_order import ACTIVATION
+
             task = Task(
                 id=str(uuid4()),
                 chain_id=thread_id,
                 order_id=selected_order_id,
                 status="RECEIVED",
                 intent_revision=0,
+                runtime_mode="FIXTURE" if text == ACTIVATION else runtime_mode,
             )
             session.add(task)
             session.flush()

@@ -9,6 +9,7 @@ import pytest
 from alembic.script import ScriptDirectory
 from app.config import Settings
 from app.db import schema
+from app.errors import SchemaNotReadyError
 from app.main import create_app
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
@@ -25,8 +26,8 @@ def _head():
     return ScriptDirectory.from_config(schema._migration_config()).get_current_head()
 
 
-def _safe(error, expected):
-    assert type(error) is RuntimeError
+def _safe(error, expected, error_type=SchemaNotReadyError):
+    assert type(error) is error_type
     assert str(error) == expected
     rendered = "".join(traceback.format_exception(error))
     assert "FAKE_ONLY_SECRET" not in rendered
@@ -151,20 +152,22 @@ def test_programming_errors_are_not_relabeled(engine, monkeypatch, failure):
     assert caught.value is failure
 
 
-def test_reconciliation_errors_are_outside_boundary(engine, database_url, monkeypatch):
+def test_reconciliation_errors_are_sanitized_at_lifespan_boundary(
+    engine, database_url, monkeypatch
+):
     failure = OperationalError(
-        "synthetic reconciliation", {}, sqlite3.OperationalError("synthetic")
+        "synthetic reconciliation " + CANARY, {}, sqlite3.OperationalError(CANARY)
     )
     monkeypatch.setattr("app.main.reconcile_reservations", Mock(side_effect=failure))
     with (
-        pytest.raises(OperationalError) as caught,
+        pytest.raises(RuntimeError) as caught,
         TestClient(
             create_app(Settings(_env_file=None, database_url=database_url)),
             base_url="http://127.0.0.1",
         ),
     ):
         pytest.fail("Reconciliation must fail")
-    assert caught.value is failure
+    _safe(caught.value, "启动准备失败，请检查配置、数据库和结构化错误码", RuntimeError)
 
 
 def test_migration_errors_are_outside_boundary(engine, monkeypatch):

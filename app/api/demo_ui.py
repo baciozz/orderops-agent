@@ -111,7 +111,7 @@ async def submit(request: Request):
                 "此精确示例的固定订单与所选订单不一致，未提交。请核对订单和示例。",
                 code="DEMO_EXAMPLE_ORDER_MISMATCH",
             )
-        result = await run_in_threadpool(receipt, body, request)
+        result = await run_in_threadpool(receipt, body, request, fixture_only=True)
     except AppError as exc:
         return _submit_page(request, values, error=exc)
     return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
@@ -175,7 +175,7 @@ async def new_stock_submit(request: Request):
             text=TEXT_NEW_ORDER,
             selected_order_id=None,
         )
-        result = await run_in_threadpool(receipt, body, request)
+        result = await run_in_threadpool(receipt, body, request, fixture_only=True)
     except AppError as exc:
         return _new_stock_page(request, key, error=exc)
     return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
@@ -232,7 +232,7 @@ async def new_stock_sheet_submit(request: Request):
             selected_order_id=None,
             source_ids=[],
         )
-        result = await run_in_threadpool(receipt, body, request)
+        result = await run_in_threadpool(receipt, body, request, fixture_only=True)
     except AppError as exc:
         return _new_stock_sheet_page(request, key, error=exc)
     return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)

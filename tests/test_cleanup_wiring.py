@@ -22,7 +22,8 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
     reset_settings_cache()
     calls = []
 
-    def run_once(factory, *, limits):
+    def run_once(factory, *, limits, settings):
+        assert settings.live_enabled is False
         assert limits.active == 1
         assert limits == replace(DEFAULT_LIMITS, active=1)
         with factory() as session:
@@ -30,7 +31,8 @@ def test_worker_once_uses_configured_active_limit(monkeypatch, database_url):
         calls.append("run_once")
 
     def scan(factory, *, settings):
-        assert settings is get_settings()
+        assert settings is not get_settings()
+        assert settings.live_enabled is False
         assert settings.database_url == database_url
         assert settings.worker_max_active == 1
         assert settings.verification_max_retries == 0
@@ -55,13 +57,15 @@ def test_worker_once_clamps_active_limit(monkeypatch, database_url, caplog, conf
     caplog.set_level(logging.WARNING, logger="oos.worker")
     calls = []
 
-    def run_once(factory, *, limits):
+    def run_once(factory, *, limits, settings):
+        assert settings.live_enabled is False
         assert limits.active == 2
         assert limits == replace(DEFAULT_LIMITS, active=2)
         calls.append("run_once")
 
     def scan(factory, *, settings):
-        assert settings is get_settings()
+        assert settings is not get_settings()
+        assert settings.live_enabled is False
         assert settings.database_url == database_url
         assert settings.worker_max_active == configured
         assert settings.verification_max_retries == 0

@@ -25,8 +25,9 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
   FIXTURE 只保证模型执行离线，**不会鉴别数据库中是否含真实数据**，操作者必须指向合成库。
 - 只推进已有任务规划、租约恢复、提交后的只读核验和本地 outbox 回执。不会自动批准计划、
   提交订单或修复业务数据。待批准任务仍停在 `AWAITING_APPROVAL`。
-- 同样使用既有 CLI 的显式建表/迁移步骤。`worker-once` 的原调用参数、配置透传和单轮行为保持不变；
-  两个 CLI 命令共用单轮函数。网页 worker 端点与 API 启动行为不变。
+- 同样使用既有 CLI 的显式建表/迁移步骤。两个 CLI 命令共用单轮函数，均强制 FIXTURE；
+  `worker-once` 现在也明确透传关闭 LIVE 的配置副本。LIVE 持久任务不会被领取或降级。
+  任务模式与旧数据迁移见 [运行边界](DEPLOYMENT_BOUNDARIES.md)。
 
 ## 停止与错误
 
@@ -62,7 +63,7 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
 `tests/test_worker_loop.py` 使用注入的 clock、wait、stop 和临时 SQLite 合成数据验证轮数边界、
 空闲等待、串行顺序、强制 FIXTURE、租约到期恢复、核验退避耗尽、outbox 到期投递和不重复业务提交。
 信号处理器以合成调用及受控 signal.raise_signal 测试（包括持有 Event 锁时），启动/清理故障以注入测试，不运行后台常驻服务或真实模型。
-`tests/test_cleanup_wiring.py` 继续覆盖 `worker-once` 旧参数和配置透传。
+`tests/test_cleanup_wiring.py` 覆盖 `worker-once` 的并发上限及 FIXTURE 配置副本透传。
 
 这不是托管调度器，不代表真实业务、生产负载、操作系统进程信号端到端验收或部署验收。
 外部推送告警、长期调度和历史快照核验仍未实现。

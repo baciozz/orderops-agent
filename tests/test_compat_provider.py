@@ -616,6 +616,7 @@ def test_dispatch_compat_matches_openai_kernel_outcome(tmp_path, strict, caplog,
                 thread_id=provider,
                 client_event_key=provider,
                 clock=lambda: NOW,
+                runtime_mode="LIVE",
             )
             outcome = run_once(factory, settings=settings, clock=lambda: NOW)
             assert outcome.task_id == task_id

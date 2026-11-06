@@ -9,6 +9,7 @@ from schemas.api import (
 )
 from sqlalchemy import select
 
+from app.adapters.llm import resolve_mode
 from app.db.models import JobAttempt, Plan, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
@@ -18,11 +19,12 @@ from app.orchestration.state import transition
 router = APIRouter()
 
 
-def receipt(body, request, task_id=None):
+def receipt(body, request, task_id=None, *, fixture_only=False):
     event_id, task_id, status = accept_input(
         request.app.state.session_factory,
         **body.model_dump(exclude={"schema_version"}),
         task_id=task_id,
+        runtime_mode="FIXTURE" if fixture_only else resolve_mode(request.app.state.settings).mode,
     )
     with request.app.state.session_factory() as session:
         chain_id = session.get(Task, task_id).chain_id
@@ -65,6 +67,7 @@ def get_task(task_id: str, request: Request):
             "extraction": payload.body.get("extraction") if payload else None,
             "task_id": task.id,
             "status": task.status,
+            "runtime_mode": task.runtime_mode,
             "intent_revision": task.intent_revision,
             "result_ref": task.result_ref,
             "error_code": task.error_code,

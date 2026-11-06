@@ -18,6 +18,7 @@ CHAIN = [
     "verification_retries",
     "upload_idempotency",
     "sync_dispatch_receipts",
+    "task_runtime_mode",
 ]
 
 

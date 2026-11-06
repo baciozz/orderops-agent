@@ -1,7 +1,7 @@
 # 结构化日志与可观测性
 
 应用使用标准库 `logging`，不新增依赖。`create_app()` 和 CLI `main()` 调用
-`configure_logging(settings)`，只配置 `oos` 命名空间，重复配置不会增加 handler。
+`configure_logging(settings)`，配置 `oos` 命名空间并屏蔽 httpx/httpcore 的传输细节，重复配置不会增加 handler。
 日志写到 stderr；保留 `propagate=True`，pytest 的 caplog 和宿主 root handler 可继续接收。
 模块通过 `get_logger(__name__)` 获取 `oos.<module>` logger，通过 `log_event()` 打点。
 导入日志模块不会配置 root logger。
@@ -16,7 +16,9 @@
 | `OOS_LOG_LEVEL` | `INFO` | `oos` 的日志级别，如 DEBUG、INFO、WARNING、ERROR；未知名称回退 INFO |
 
 当前业务事件均为 INFO；设置 WARNING 会隐藏这些事件，包括 outcome 为 failed 的事件。
-其他库和 root logger 的级别、handler 不受配置影响。多个应用共享进程时，最近一次配置的
+root logger 的级别、handler 不受配置影响；httpx/httpcore 在 logger 上丢弃记录并提高级别。
+直接 LiveLLMClient 构造也执行该屏蔽，范围及启动异常限制见 [运行边界](DEPLOYMENT_BOUNDARIES.md)。
+多个应用共享进程时，最近一次配置的
 格式、级别对整个 `oos` 命名空间生效；之前配置的密钥仍保留在脱敏集合中。
 
 ## 字段

@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from sqlalchemy import func, select
 
+from app.adapters.llm import resolve_mode
+from app.config import get_settings
 from app.db.models import InboxDelivery, InputPayload, JobAttempt, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
@@ -36,7 +38,7 @@ class Limits:
 DEFAULT_LIMITS = Limits()
 
 
-def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
+def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS, allow_live=False):
     started = perf_counter()
     claimed = None
     with factory() as session, begin_immediate(session):
@@ -45,7 +47,12 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
             select(func.count()).select_from(Task).where(Task.status == "RUNNING")
         ) >= min(MAX_ACTIVE, limits.active):
             return None
-        for task in session.scalars(select(Task).where(Task.status == "QUEUED").order_by(Task.id)):
+        modes = ["FIXTURE", "LIVE"] if allow_live else ["FIXTURE"]
+        for task in session.scalars(
+            select(Task)
+            .where(Task.status == "QUEUED", Task.runtime_mode.in_(modes))
+            .order_by(Task.id)
+        ):
             receipt = session.get(InputPayload, task.last_event_id) if task.last_event_id else None
             delivery = session.scalar(
                 select(InboxDelivery).where(
@@ -120,7 +127,15 @@ def run_once(
     fault=lambda _: None,
     **dispatch_options,
 ):
-    claimed = claim(factory, owner, clock=clock, limits=limits)
+    configured = dispatch_options.get("settings") or get_settings()
+    dispatch_options["settings"] = configured
+    claimed = claim(
+        factory,
+        owner,
+        clock=clock,
+        limits=limits,
+        allow_live=resolve_mode(configured).mode == "LIVE",
+    )
     if claimed is None:
         return None
     task_id, fence = claimed

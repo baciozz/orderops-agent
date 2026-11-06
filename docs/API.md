@@ -80,7 +80,8 @@
 - 上述延迟获取规则仅补充持久已有订单 `CHANGE_ORDER` 的首次未绑定获取及重试语义。已选订单仍在接收时获取，匹配解析不再次递增。所选订单范围现在也由所有解析适配器共用的服务器回执检查保护；超出范围或缺失改单目标转入澄清。`NEW_ORDER` 的初始选择限制见下文，回答的 `selected_order_id` 仍不改变原选择。批准 hash、意图/依赖和提交幂等校验不变。
 - 持久输入若在初始 `input.submit` 时显式选择已有订单，后续解析为 `NEW_ORDER` 时固定进入澄清，保留当前任务的订单、链和已获取意图，不生成 CREATE 计划，也不恢复接收时已撤销的批准。此约束读取服务端原始接收 Event，而不是模型可选订单号或可变 Task；适用于 FIXTURE 与 LIVE 解析，也适用于该任务后续回答。澄清要求补充原订单修改要求；如需新单，应另行提交不选择已有订单的新输入（演示也可使用独立新 STOCK 入口），不能在该任务回答“确认新建”来切换归属。
 - 原始未选择订单的正常新单、其澄清回答、后来推断绑定或部分绑定的任务不因当前 Task/回答 Event 带有订单号而被此规则误判为显式选择。回答中的 `selected_order_id` 仍不重设计为改绑指令。此规则不修复旧版本已经脱离原订单的历史任务、不回填归属或意图；也不扩展为所有事件的通用目标隔离保证。租约、最新输入、延迟意图获取及审批/提交校验保持不变。
-- `python -m app.cli worker-once` 执行恢复扫描、一条任务和 outbox 投递。202 不是业务完成回执；API 入队不自动运行 worker。
+- 新任务持久保存运行模式：普通 API 按接收端配置选择；演示表单固定 FIXTURE；客户端不能覆盖。重复输入和回答保留原模式，`GET /tasks/{id}` 返回 `runtime_mode`。LIVE 消费者不会提升 FIXTURE 任务；FIXTURE 消费者跳过 LIVE 队列。旧任务迁移统一为 FIXTURE，详见 [运行边界](DEPLOYMENT_BOUNDARIES.md)。
+- `python -m app.cli worker-once` 固定 FIXTURE，执行恢复扫描、一条 FIXTURE 任务和 outbox 投递。202 不是业务完成回执；API 入队不自动运行 worker。
 - `python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60` 是操作者显式启动的有界 FIXTURE 循环，不自动批准/提交，也不随 API 启动。参数、停止语义和退出码见 [WORKER_LOOP](WORKER_LOOP.md)。
 - 回答使用同一输入模型和新 key。默认 fixture 回答使用完整的已登记语句；可选 live 按预算调用模型。worker 在写入结果前检查租约与 fencing。
 - `source_ids` 持久保存，仅允许读取当前任务关联的静态 spans。上传本身只保存证据，不触发调度或批准；回答可显式选择上传来源参与核对。

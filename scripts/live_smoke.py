@@ -161,6 +161,7 @@ def evaluate(factory, configured, *, client_factory=None, samples=SAMPLES):
             thread_id=f"smoke-{sample_id}",
             client_event_key=f"smoke-{sample_id}",
             text=text,
+            runtime_mode="LIVE",
         )
         error_code = None
         passed = False
