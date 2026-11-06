@@ -506,6 +506,8 @@ class Operation(Base):
         Boolean, nullable=False, default=False, server_default="0"
     )
     verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
+    execution_evidence_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    execution_evidence_digest: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
 class ExecutionEvidence(Base):

@@ -24,8 +24,11 @@ from app.db.models import (
 from app.db.session import begin_immediate, make_engine, make_session_factory
 from app.domain.hashing import canonical_hash
 from app.errors import AppError
+from app.main import create_app
+from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE, TEXT_NEW_ORDER
 from app.services import execution_audit as audit
 from app.services import kernel, link_audit
+from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 from tests import test_link_audit as support
 from tests import test_link_manifest_design as design
@@ -56,10 +59,8 @@ def mutate_body(factory, operation_id, change, *, reseal=False):
         if reseal:
             evidence.digest = canonical_hash(body)
             op = session.get(Operation, operation_id)
-            op.result_json = {
-                **op.result_json,
-                "execution_evidence": {"version": 1, "digest": evidence.digest},
-            }
+            op.execution_evidence_version = 1
+            op.execution_evidence_digest = evidence.digest
 
 
 def test_capture_binds_actual_approval_and_reports_only_retained_fields(seeded, database_url):
@@ -555,3 +556,56 @@ def test_sheet_hash_extension_is_retained_exactly(sheet_env, session_factory, da
         evidence = session.get(ExecutionEvidence, result.operation_id)
         assert "sheet_order_v1" in evidence.body["approved_payload"]
         assert canonical_hash(evidence.body["approved_payload"]) == outcome.plan_hash
+
+
+@pytest.mark.parametrize("text", [TEXT_BLACK_TO_WHITE, TEXT_NEW_ORDER], ids=["change", "new_order"])
+def test_http_dispatch_approve_commit_retry_and_cli_business_journey(
+    seeded, database_url, monkeypatch, capsys, text
+):
+    configured = Settings(_env_file=None, database_url=database_url)
+    with TestClient(create_app(configured), base_url="http://127.0.0.1") as client:
+        planned = client.post("/dispatch", json={"text": text, "client_event_key": "journey-input"})
+        assert planned.status_code == 200
+        plan = planned.json()
+        assert plan["requires_human_approval"] is True
+        approved = client.post(
+            f"/plans/{plan['plan_id']}/approve",
+            json={
+                "plan_hash": plan["plan_hash"],
+                "expected_intent_revision": plan["intent_revision"],
+                "acknowledge_duplicate": True,
+            },
+        )
+        assert approved.status_code == 200
+        request = {
+            "plan_hash": plan["plan_hash"],
+            "approval_id": approved.json()["approval_id"],
+            "idempotency_key": "journey-commit",
+        }
+        committed = client.post(f"/plans/{plan['plan_id']}/commit", json=request)
+        assert committed.status_code == 200
+        outcome = committed.json()
+        assert outcome["status"] == "SUCCEEDED"
+        before_retry = support.dump(database_url)
+        repeated = client.post(f"/plans/{plan['plan_id']}/commit", json=request)
+        assert (
+            repeated.status_code == 200
+            and repeated.json()["operation_id"] == outcome["operation_id"]
+        )
+        assert support.dump(database_url) == before_retry
+        assert client.get(f"/orders/{outcome['order_id']}").status_code == 200
+        assert client.get(f"/tasks/{outcome['task_id']}/view").status_code == 200
+    with seeded() as session:
+        operation = session.get(Operation, outcome["operation_id"])
+        # Real recovery consumers can still construct the same business outcome.
+        restored = kernel.CommitOutcome(operation_id=operation.id, **operation.result_json)
+        assert restored.order_id == outcome["order_id"] and restored.revision == outcome["revision"]
+        assert operation.execution_evidence_version == 1
+        assert session.scalar(select(func.count()).select_from(ExecutionEvidence)) == 1
+    monkeypatch.setattr(cli, "get_settings", lambda: configured)
+    capsys.readouterr()
+    assert cli.main(["audit-execution", outcome["operation_id"]]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["order_id"] == outcome["order_id"]
+    assert report["status"] == "consistent_for_retained_fields" and report["uncovered"]
+    assert report["global_completeness"] == "not_assessed"

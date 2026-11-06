@@ -182,10 +182,8 @@ def retain_execution(
     }
     digest = canonical_hash(body)
     session.add(ExecutionEvidence(operation_id=operation.id, body=body, digest=digest))
-    operation.result_json = {
-        **(operation.result_json or {}),
-        "execution_evidence": {"version": 1, "digest": digest},
-    }
+    operation.execution_evidence_version = 1
+    operation.execution_evidence_digest = digest
 
 
 def _bound_payload(
@@ -195,7 +193,21 @@ def _bound_payload(
     receipt = operation.result_json
     _require(isinstance(receipt, dict), "RECEIPT_INVALID")
     assert isinstance(receipt, dict)
-    binding = receipt.get("execution_evidence")
+    # Preserve the established business receipt shape. Also read, without
+    # rewriting, bindings emitted by the preceding unmerged draft.
+    legacy_binding = receipt.get("execution_evidence")
+    binding: Any
+    if (
+        operation.execution_evidence_version is not None
+        or operation.execution_evidence_digest is not None
+    ):
+        binding = {
+            "version": operation.execution_evidence_version,
+            "digest": operation.execution_evidence_digest,
+        }
+        _require(legacy_binding is None or legacy_binding == binding, "EVIDENCE_BINDING_MISMATCH")
+    else:
+        binding = legacy_binding
     _require(binding is not None, "EXECUTION_EVIDENCE_NOT_RETAINED")
     _require(
         isinstance(binding, dict)

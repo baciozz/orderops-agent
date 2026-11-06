@@ -179,7 +179,7 @@ python scripts/eval_offline.py
 ## 已知限制
 
 - pending 核验已有持久重试计数、指数退避和租约，默认最多 5 次自动重试（不含首次提交读回），耗尽后转人工；`verify-operation` 提供人工只读核验，不重提或修复业务。任务视图和日志可见人工处理状态。剩余：无常驻调度器，仅显式 `worker-loop` / `worker-once` / watchdog 或提交重放检查到期工作；无外部推送告警；核验当前事实而非历史快照。配置、人工入口与退出码见 [API](docs/API.md#提交后的有限只读核验)，残余范围跟踪于 [issue #20](https://github.com/baciozz/order-ops-superagent/issues/20)。
-- `python -m app.cli audit-execution OP-...` 只读核对新提交保留的批准执行字段，并列出父图、共享库存等未覆盖范围；不清除 pending、不授权业务，也不表示整单/全库通过。需显式迁移 `execution_evidence`，旧操作不回填；详见[证据范围与回退说明](docs/EXECUTION_EVIDENCE.md)。
+- `python -m app.cli audit-execution OP-...` 只读核对新提交保留的批准执行字段，并列出父图、共享库存等未覆盖范围；不清除 pending、不授权业务，也不表示整单/全库通过。需显式迁移至 `execution_evidence_binding`，旧操作不回填；详见[证据范围与回退说明](docs/EXECUTION_EVIDENCE.md)。
 - SQLite 单写者、规划任务最多两条 RUNNING；网页已接通证据上传、回答/澄清、取消、批准与提交，完整聊天、完整历史审计快照、生产认证和持久上传存储尚未完成。真实浏览器交互尚未验证。
 - 回答网页发送意图版本和最新输入事件两个可选 fence，服务端在同一事务核对后才追加事件；旧 API 客户端不传 fence 时保留旧并发限制。无持久输入记录的历史任务不提供网页回答/上传，须从新任务开始。详见 [API](docs/API.md#answer-concurrency-extension-compatible-with-v10-clients)。
 - 未开裁同 SKU 生产单可扩量；已开裁单仍不能扩量，不自动新建生产单。补购只生成待供应商确认的草稿。
