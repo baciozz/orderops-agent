@@ -1,7 +1,7 @@
 """LLM client surface. Fixture is the default; live requires explicit configuration."""
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from pydantic import Field, SecretStr
 from schemas.common import ApiModel, UsageReport
@@ -9,6 +9,9 @@ from schemas.enums import RuntimeMode
 
 from app.config import Settings
 from app.errors import LiveStartRefused
+
+if TYPE_CHECKING:
+    from app.adapters.providers.base import ModelProvider
 
 
 class StructuredCallRequest(ApiModel):
@@ -74,6 +77,22 @@ def resolve_mode(settings: Settings) -> ModeResolution:
             live_block_reason="KEY_NOT_CONFIGURED",
         )
     return ModeResolution(mode=RuntimeMode.LIVE, live_requested=True, live_block_reason=None)
+
+
+def validated_live_provider(settings: Settings) -> "ModelProvider":
+    """Validate every local transport prerequisite without I/O, billing or logging.
+
+    resolve_mode is the existing intake/fallback policy, not provider readiness.
+    Consumers must use this full check before spending a durable task attempt.
+    """
+    from app.adapters.providers import provider_for_settings
+
+    resolution = resolve_mode(settings)
+    if resolution.mode != "LIVE":
+        raise LiveStartRefused(resolution.live_block_reason or "LIVE_DISABLED")
+    provider = provider_for_settings(settings)
+    provider.validate(settings)
+    return provider
 
 
 class LLMClient(Protocol):

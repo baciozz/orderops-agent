@@ -7,11 +7,11 @@ from uuid import uuid4
 
 from sqlalchemy import func, select
 
-from app.adapters.llm import resolve_mode
+from app.adapters.llm import validated_live_provider
 from app.config import get_settings
 from app.db.models import InboxDelivery, InputPayload, JobAttempt, Task
 from app.db.session import begin_immediate
-from app.errors import AppError
+from app.errors import AppError, LiveStartRefused
 from app.observability import get_logger, log_event
 from app.orchestration.dispatch import dispatch_text
 from app.orchestration.state import check_fence, guard, transition, utcnow
@@ -127,14 +127,24 @@ def run_once(
     fault=lambda _: None,
     **dispatch_options,
 ):
-    configured = dispatch_options.get("settings") or get_settings()
+    # Keep preflight and dispatch on the same private settings snapshot. A caller
+    # changing its Settings object after this point cannot invalidate the check.
+    configured = (dispatch_options.get("settings") or get_settings()).model_copy(deep=True)
     dispatch_options["settings"] = configured
+    allow_live = False
+    if configured.live_enabled:
+        try:
+            validated_live_provider(configured)
+        except LiveStartRefused as exc:
+            log_event(logger, "worker.live_unavailable", reason=exc.reason, outcome="rejected")
+        else:
+            allow_live = True
     claimed = claim(
         factory,
         owner,
         clock=clock,
         limits=limits,
-        allow_live=resolve_mode(configured).mode == "LIVE",
+        allow_live=allow_live,
     )
     if claimed is None:
         return None

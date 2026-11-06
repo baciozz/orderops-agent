@@ -16,6 +16,8 @@
 | `OOS_LOG_LEVEL` | `INFO` | `oos` 的日志级别，如 DEBUG、INFO、WARNING、ERROR；未知名称回退 INFO |
 
 当前业务事件均为 INFO；设置 WARNING 会隐藏这些事件，包括 outcome 为 failed 的事件。
+`worker.live_unavailable` 记录完整 LIVE 配置校验的固定 `reason`，不输出配置值或异常原文；
+表示本轮消费者不能领取 LIVE，FIXTURE 任务仍可处理，不等同于队列为空或没有恢复/核验工作。
 root logger 的级别、handler 不受配置影响；httpx/httpcore 在 logger 上丢弃记录并提高级别。
 直接 LiveLLMClient 构造也执行该屏蔽，范围及启动异常限制见 [运行边界](DEPLOYMENT_BOUNDARIES.md)。
 多个应用共享进程时，最近一次配置的
