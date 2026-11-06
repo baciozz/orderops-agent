@@ -8,7 +8,7 @@
   <h1>任务卡</h1>
   <dl>
     <dt>task_id</dt><dd>{{ view.card.task_id }}</dd>
-    <dt>order_id</dt><dd>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">{{ view.card.order_id }}</a>{% else %}无{% endif %}</dd>
+    <dt>order_id</dt><dd>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">{{ view.card.order_id }}</a>{% else %}尚未关联订单（新单尚未生成）{% endif %}</dd>
     <dt>状态</dt><dd>{{ view.card.status }}</dd>
     <dt>intent_revision</dt><dd>{{ view.card.intent_revision }}</dd>
     <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>

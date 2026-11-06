@@ -3,7 +3,7 @@
 from dataclasses import asdict, replace
 from pathlib import Path
 from urllib.parse import parse_qs
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,7 +15,7 @@ from app.api.inputs import receipt
 from app.api.orders import get_order
 from app.db.models import Event, Task
 from app.errors import AppError
-from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE
+from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE, TEXT_NEW_ORDER
 from app.orchestration.outbox import publish_pending
 from app.orchestration.watchdog import scan
 from app.orchestration.worker import DEFAULT_LIMITS, effective_active, run_once
@@ -83,6 +83,70 @@ async def submit(request: Request):
         result = await run_in_threadpool(receipt, body, request)
     except AppError as exc:
         return _submit_page(request, values, error=exc)
+    return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
+
+
+def _new_stock_page(request: Request, key: str, error=None) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "demo_new_stock.html",
+        {
+            "example": TEXT_NEW_ORDER,
+            "client_event_key": key,
+            "error": error,
+            "enabled": not request.app.state.settings.live_enabled,
+        },
+        status_code=error.http_status if error else 200,
+    )
+
+
+@router.get("/ui/demo/new-stock", response_class=HTMLResponse)
+def new_stock_page(request: Request):
+    return _new_stock_page(request, str(uuid4()))
+
+
+@router.post("/ui/demo/new-stock", response_class=HTMLResponse)
+async def new_stock_submit(request: Request):
+    """Exact first-input fixture only; shared answers retain their normal contract."""
+    key = ""
+    try:
+        if request.app.state.settings.live_enabled:
+            raise AppError("请关闭 LIVE 后使用此 FIXTURE 入口", code="FIXTURE_REQUIRED")
+        if request.headers.get("content-type", "").split(";", 1)[0] != (
+            "application/x-www-form-urlencoded"
+        ):
+            raise AppError("请使用网页表单提交", code="VALIDATION_ERROR")
+        try:
+            fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError as exc:
+            raise AppError("表单编码无效", code="VALIDATION_ERROR") from exc
+        key = fields.get("client_event_key", [""])[0]
+        # Reject unknown fields (including mode/order/source overrides) and duplicate
+        # parameters before the durable inbox. Never silently pick the first value.
+        if set(fields) != {"text", "client_event_key"} or any(
+            len(values) != 1 for values in fields.values()
+        ):
+            raise AppError("仅允许新单精确示例，不接受订单号或模式参数", code="VALIDATION_ERROR")
+        if fields["text"][0] != TEXT_NEW_ORDER:
+            raise AppError(
+                "仅支持页面上的精确新单示例，不能修改文案或数量", code="VALIDATION_ERROR"
+            )
+        try:
+            if str(UUID(key)) != key:
+                raise ValueError("noncanonical key")
+        except ValueError as exc:
+            raise AppError("提交标识无效，请重新打开示例页面", code="VALIDATION_ERROR") from exc
+        if not _has_table(request, "task"):
+            raise AppError("请先运行 make init-db && make seed", code="DEMO_NOT_READY")
+        body = InputSubmitRequest(
+            thread_id="demo-new-stock",
+            client_event_key=key,
+            text=TEXT_NEW_ORDER,
+            selected_order_id=None,
+        )
+        result = await run_in_threadpool(receipt, body, request)
+    except AppError as exc:
+        return _new_stock_page(request, key, error=exc)
     return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
 
 

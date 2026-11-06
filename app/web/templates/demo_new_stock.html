@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}新建库存订单 · FIXTURE 示例{% endblock %}
+{% block content %}
+  <h1>新建库存订单 · FIXTURE 示例</h1>
+  <p>客户：华东服饰；SKU：A-WHITE-M；数量：30 件；仓库：W1；类型：STOCK。</p>
+  <p>仅支持下方不可编辑的精确示例，不支持任意新单或通用自然语言理解。不选择或更改任何旧订单。新单尚未生成。</p>
+  <p>提交只保存首次输入并入队。请在任务页单独触发 FIXTURE worker、核对计划、批准，再提交生效；不会自动执行这些步骤。</p>
+  <p>本入口只保证首次输入为新单示例。后续共享任务页的回答仍按普通规则处理，不永久锁定新建意图。</p>
+  <p>同一页面重复点击或返回重试使用同一提交标识，复用原回执。重新打开页面生成新标识，属于新事件，仍受疑似重复新单保护；不会自动确认重复。</p>
+  {% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+  {% if not enabled %}<p class="error" role="alert">此入口已禁用：请关闭 LIVE 配置后使用 FIXTURE 演示。不得同时运行 LIVE worker 消费演示队列。</p>{% endif %}
+  <form action="/ui/demo/new-stock" method="post" class="input-form">
+    <label for="new-stock-text">固定新单示例</label>
+    <textarea id="new-stock-text" name="text" rows="3" readonly>{{ example }}</textarea>
+    <input type="hidden" name="client_event_key" value="{{ client_event_key }}">
+    <button type="submit" {% if not enabled %}disabled{% endif %}>保存新单示例并查看任务</button>
+  </form>
+{% endblock %}

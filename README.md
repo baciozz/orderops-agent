@@ -288,3 +288,14 @@ This gate covers one ordinary source-built wheel, not editable installs, sdists,
 all supported Python/platform combinations, historical business-row preservation,
 browsers, live providers or deployment. Existing source tests and offline fixture
 evaluation remain separate required checks.
+
+### 新建库存订单精确示例（本机 FIXTURE）
+
+首页/导航的「新建库存订单 · FIXTURE 示例」进入 `/ui/demo/new-stock`。
+固定输入 `新建订单 华东服饰 A 款白 M 30`，创建候选为华东服饰、
+A-WHITE-M 30 件、W1。服务端拒绝修改文本/数量、订单号、模式或其他额外字段，
+不选择旧单；收件只入队，任务页的 FIXTURE worker、人工批准、提交仍分开进行。
+LIVE 配置开启时该入口拒绝收件；演示队列不得由另一个 LIVE worker 消费。
+不增加建单 API、通用语言理解或持久化模式。只限定首次输入，后续共享回答仍使用普通规则。
+原页面重试保留提交标识并复用回执；重新打开页面产生新事件，疑似重复仍阻止默认批准。
+无订单号表示尚未关联订单，新单尚未生成，不是提交失败。
