@@ -20,6 +20,9 @@ MTO 数量分配救援实现。修复全部在隔离合成 SQLite、静态文件
 
 ## PR #61 核验跟进
 
+本节记录 `66776c53` 的核验修复与当时的保守失效策略。其后针对无关写入的可用性改进、
+锁内复核方案及持锁成本见 [并发写入核验评估](VERIFICATION_CONCURRENT_WRITES.md)。
+
 跟进基线为精确提交 `f1c4d3028b3b9502b994ef65064fda787c188778`，main 及 PR #60
 头部均未变化。新增测试 `tests/test_verification_result_fencing.py` 共 14 项，分别复制到
 这两个未经修改的源码归档后运行，均 **14 failed**；修复后专项套件 **174 passed**。

@@ -1689,6 +1689,15 @@ def _verification_owned(
     )
 
 
+def _verification_problems(session: Session) -> list[str]:
+    try:
+        if verify_failpoint.get():
+            raise RuntimeError("injected verification failure")
+        return consistency_problems(session) + downstream_problems(session)
+    except Exception as exc:
+        return [str(exc)]
+
+
 def _post_verify(
     session_factory: sessionmaker[Session],
     operation_id: str,
@@ -1705,26 +1714,26 @@ def _post_verify(
         read_version = session.scalar(text("PRAGMA main.data_version"))
         if not _verification_owned(session.get(Operation, operation_id), lease_token, clock()):
             return
-        problems: list[str] = []
-        try:
-            if verify_failpoint.get():
-                raise RuntimeError("injected verification failure")
-            problems = consistency_problems(session)
-            problems.extend(downstream_problems(session))
-        except Exception as exc:
-            problems = [str(exc)]
+        problems = _verification_problems(session)
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
             # The SELECT acquires the actual write lock; read the clock afterward.
-            # Ownership, snapshot freshness, and the result update are one transaction.
-            # Other-connection commits invalidate even a still-owned successful readback.
+            # Lost ownership or a failed readback never becomes a pass here.
             if (
-                _verification_owned(operation, lease_token, clock())
-                and read_version is not None
-                and session.scalar(text("PRAGMA main.data_version")) == read_version
-                and not problems
+                not _verification_owned(operation, lease_token, clock())
+                or read_version is None
+                or problems
             ):
+                return
+            if session.scalar(text("PRAGMA main.data_version")) != read_version:
+                # An unrelated commit must not starve verification. Re-read the
+                # actual checks once under the write lock, not a duplicate list
+                # of their dependencies. No writer can change facts until commit.
+                problems = _verification_problems(session)
+            # Rechecking may consume the lease. Even without takeover, an expired
+            # owner must not publish; the result update uses this same transaction.
+            if not problems and _verification_owned(operation, lease_token, clock()):
                 assert operation is not None
                 operation.committed_verification_pending = False
                 # A crash before the wrapper returns cannot leave stale schedules.
