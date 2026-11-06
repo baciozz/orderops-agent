@@ -45,6 +45,7 @@ from app.services.kernel import (
     current_doc_fingerprint,
 )
 from app.services.source_spans import task_spans
+from app.services.verification_observation import recorded_observation
 
 
 def _revision_lines(session, order_id, revision_no):
@@ -291,7 +292,14 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             revision=result.get("revision"),
             verification=cast(
                 VerificationState | None,
-                ("pending" if operation.committed_verification_pending else "passed")
+                (
+                    "pending"
+                    if operation.committed_verification_pending
+                    else "partial"
+                    if (recorded := recorded_observation(operation))
+                    and recorded.status == "partial"
+                    else "unassessed"
+                )
                 if operation
                 else None,
             ),
@@ -304,6 +312,7 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             verification_next_attempt_at=aware(operation.verification_next_attempt_at)
             if operation and operation.verification_next_attempt_at
             else None,
+            verification_details=recorded_observation(operation),
             download_url=f"/tasks/{task.id}/download" if diffs else None,
         ),
     )

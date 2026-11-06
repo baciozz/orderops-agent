@@ -121,7 +121,7 @@ def _main(argv: list[str] | None = None) -> int:
                 print(f"核验未执行：{exc.code}")
                 return 2
             print(
-                "只读核验通过；业务提交未重复执行"
+                "限定字段核验完成；整单来源与共享依赖仍不确定，非全库通过；业务提交未重复执行"
                 if passed
                 else "核验仍未通过，保留人工处理状态；未修改业务数据"
             )

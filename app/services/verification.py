@@ -43,7 +43,7 @@ def _claim(factory, operation_id, moment, settings, *, manual=False, clock=None)
         if (
             operation is None
             or operation.status != "COMMITTED"
-            or not operation.committed_verification_pending
+            or (not manual and not operation.committed_verification_pending)
         ):
             return None
         if (
@@ -52,8 +52,14 @@ def _claim(factory, operation_id, moment, settings, *, manual=False, clock=None)
         ):
             return None
         if manual:
-            if not operation.verification_manual_required:
+            if (
+                operation.committed_verification_pending
+                and not operation.verification_manual_required
+            ):
                 return None
+            # An explicit manual check re-reads a settled/legacy operation too.
+            # Never return a stale success without inspecting today's facts.
+            operation.committed_verification_pending = True
         else:
             if operation.verification_manual_required:
                 return None
@@ -198,8 +204,6 @@ def verify_manually(
         operation = session.get(Operation, operation_id)
         if operation is None or operation.status != "COMMITTED":
             raise AppError("已提交操作不存在", code="NOT_FOUND", http_status=404)
-        if not operation.committed_verification_pending:
-            return True
     token = _claim(factory, operation_id, moment, settings, manual=True, clock=clock)
     if token is None:
         raise AppError(

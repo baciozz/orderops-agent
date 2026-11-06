@@ -1,4 +1,4 @@
-"""GET /tasks/{id}/view fields frozen by revision section 5."""
+"""Task view with explicit limited verification observation and legacy unknown state."""
 
 from datetime import datetime
 from typing import Literal
@@ -17,6 +17,7 @@ from schemas.enums import (
     VerificationState,
     WaitingOn,
 )
+from schemas.verification_observation import VerificationObservation
 
 
 class TaskCard(ApiModel):
@@ -80,6 +81,7 @@ class TaskResultBlock(ApiModel):
     verification_manual_required: bool = False
     verification_retry_attempts: int = 0
     verification_next_attempt_at: datetime | None = None
+    verification_details: VerificationObservation | None = None
     download_url: str | None
 
 

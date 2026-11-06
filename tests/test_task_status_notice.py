@@ -105,7 +105,7 @@ def test_real_projection_baseline_and_same_status_changes(web):
         operation.verification_retry_attempts = 3
     pending, _ = snapshot(web, task_id)
     assert pending["card"] == passed["card"]
-    assert passed["result"]["verification"] == "passed"
+    assert passed["result"]["verification"] == "partial"
     assert pending["result"]["verification"] == "pending"
     assert pending["result"]["verification_manual_required"] is True
     assert pending["result"]["verification_retry_attempts"] == 3

@@ -19,6 +19,21 @@ from sqlalchemy import text
 NOW = datetime(2026, 11, 6, tzinfo=UTC)
 
 
+@pytest.fixture()
+def retained_fields_pass(monkeypatch):
+    """Scheduler unit tests stub the audit; real evidence journeys have their own suite."""
+    from app.services import execution_audit
+    from schemas.execution_audit import ExecutionAudit
+
+    monkeypatch.setattr(
+        execution_audit,
+        "audit_in_session",
+        lambda session, op_id: ExecutionAudit(
+            operation_id=op_id, status="consistent_for_retained_fields"
+        ),
+    )
+
+
 def settings(**kwargs):
     return Settings(_env_file=None, **kwargs)
 
@@ -112,7 +127,7 @@ def test_zero_retries_escalates_without_readback(session_factory, monkeypatch):
     attempt.assert_not_called()
 
 
-def test_success_clears_schedule_and_is_sticky(session_factory):
+def test_success_clears_schedule_and_is_sticky(session_factory, retained_fields_pass):
     add_operation(session_factory)
     assert verification.retry_pending(session_factory, now=NOW) == 1
     op = read(session_factory)
@@ -188,7 +203,9 @@ def test_batch_bound_does_not_starve_other_pending_operations(session_factory, m
     ]
 
 
-def test_manual_retry_does_not_reset_automatic_budget(session_factory, monkeypatch):
+def test_manual_retry_does_not_reset_automatic_budget(
+    session_factory, monkeypatch, retained_fields_pass
+):
     add_operation(session_factory)
     config = settings(verification_max_retries=0)
     verification.retry_pending(session_factory, now=NOW, settings=config)
@@ -274,7 +291,7 @@ def test_migration_preserves_historical_operation_and_downgrades(tmp_path):
     "state,expected", [("passed", 0), ("pending", 1), ("not_ready", 2), ("missing", 2)]
 )
 def test_manual_cli_returns_honest_outcome(
-    session_factory, database_url, monkeypatch, capsys, state, expected
+    session_factory, database_url, monkeypatch, capsys, state, expected, retained_fields_pass
 ):
     monkeypatch.setenv("OOS_DATABASE_URL", database_url)
     if state != "missing":
@@ -363,7 +380,9 @@ def test_claim_takes_fresh_clock_after_acquiring_write_lock(session_factory, mon
     assert aware(read(session_factory).verification_lease_until) == NOW + timedelta(seconds=30)
 
 
-def test_crash_after_success_cannot_leave_stale_retry_metadata(session_factory, monkeypatch):
+def test_crash_after_success_cannot_leave_stale_retry_metadata(
+    session_factory, monkeypatch, retained_fields_pass
+):
     class ProcessExit(BaseException):
         pass
 

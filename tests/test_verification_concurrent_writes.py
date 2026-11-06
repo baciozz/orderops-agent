@@ -25,7 +25,6 @@ from app.services import verification
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from tests import test_commit_verification_pending as commit_support
-from tests import test_verification_backoff as backoff_support
 from tests import test_verification_result_fencing as support
 
 kernel = support.kernel
@@ -304,7 +303,15 @@ def test_locked_recheck_excludes_writers_and_releases_lock(kernel, approved_comm
 
 def test_concurrent_verifiers_do_not_invalidate_each_other(kernel, approved_commit, monkeypatch):
     first = support.pending(kernel, approved_commit[1])
-    second = backoff_support.add_operation(kernel, "other-verification")
+    from tests import test_link_audit as execution_support
+
+    marker = service.verify_failpoint.set(True)
+    try:
+        second = execution_support.commit(
+            kernel, 2, changes=[{"mode": "set_total", "sku_id": "A-WHITE-M", "qty": 41}]
+        ).operation_id
+    finally:
+        service.verify_failpoint.reset(marker)
     barrier = Barrier(2)
     original = service.downstream_problems
 

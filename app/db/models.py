@@ -508,6 +508,7 @@ class Operation(Base):
     verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
     execution_evidence_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     execution_evidence_digest: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    verification_observation: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 class ExecutionEvidence(Base):

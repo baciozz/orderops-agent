@@ -26,6 +26,8 @@ def test_legacy_upgrade_preserves_rows_and_does_not_backfill_or_change_pending(
 ):
     # Simulate the old protocol's lack of a retention hook, not a security fence.
     monkeypatch.setattr(execution_audit, "retain_execution", lambda *args, **kwargs: None)
+    # The previous writer did not retain a verification observation either.
+    monkeypatch.setattr(kernel, "_post_verify", lambda *args, **kwargs: None)
     token = kernel.verify_failpoint.set(True)
     try:
         old = support.commit(seeded)

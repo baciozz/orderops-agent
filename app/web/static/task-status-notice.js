@@ -37,7 +37,7 @@
         typeof a.approvable !== "boolean" ||
         ![null, "STALE", "EXPIRED", "CONSUMED"].includes(a.disabled_reason) ||
         !nullableText(r.operation_id) || !(r.revision === null || integer(r.revision)) ||
-        ![null, "pending", "passed"].includes(r.verification) ||
+        ![null, "pending", "passed", "partial", "unassessed"].includes(r.verification) ||
         typeof r.verification_manual_required !== "boolean" ||
         !integer(r.verification_retry_attempts) || !date(r.verification_next_attempt_at)) {
       throw new Error("fields");
@@ -46,7 +46,8 @@
     return JSON.stringify([c.task_id, c.status, c.intent_revision, c.waiting_on,
       a.plan_hash, a.generated_at, a.expires_at, a.approvable, a.disabled_reason,
       r.operation_id, r.revision, r.verification, r.verification_manual_required,
-      r.verification_retry_attempts, r.verification_next_attempt_at]);
+      r.verification_retry_attempts, r.verification_next_attempt_at,
+      r.verification_details?.observed_at ?? null, r.verification_details?.status ?? null]);
   }
   let rendered, baseline;
   try {

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from schemas.common import SourceRef
@@ -22,6 +22,7 @@ from schemas.enums import (
 )
 from seeds.golden import WAREHOUSE_ID
 from sqlalchemy import case, func, literal, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -1110,8 +1111,19 @@ def _commit_locked(
     )
     session.flush()  # Evidence FK references this same transaction's operation.
     _hit_failpoint("before_execution_evidence")
-    retain_execution(session, operation=operation, approval=approval, payload=approved_execution)
-    session.flush()
+    try:
+        retain_execution(
+            session, operation=operation, approval=approval, payload=approved_execution
+        )
+        session.flush()
+    except SQLAlchemyError:
+        # The enclosing transaction rolls back before the API handles this error.
+        raise AppError(
+            "业务保存失败，本次事务已回滚；恢复后请使用原提交标识重试",
+            code="COMMIT_STORAGE_FAILED",
+            http_status=503,
+            retryable=True,
+        ) from None
     _hit_failpoint("after_execution_evidence")
     _hit_failpoint("after_audit")
     return (
@@ -1714,6 +1726,10 @@ def _post_verify(
     lease_token: str | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> None:
+    from schemas.verification_observation import VerificationObservation
+
+    from app.services.execution_audit import audit_in_session
+
     clock = clock or (lambda: datetime.now(UTC))
     with session_factory() as unbound:
         engine = unbound.get_bind().engine
@@ -1724,26 +1740,46 @@ def _post_verify(
         if not _verification_owned(session.get(Operation, operation_id), lease_token, clock()):
             return
         problems = _verification_problems(session)
+        execution = audit_in_session(session, operation_id)
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
             # The SELECT acquires the actual write lock; read the clock afterward.
             # Lost ownership or a failed readback never becomes a pass here.
-            if (
-                not _verification_owned(operation, lease_token, clock())
-                or read_version is None
-                or problems
-            ):
+            if not _verification_owned(operation, lease_token, clock()) or read_version is None:
                 return
             if session.scalar(text("PRAGMA main.data_version")) != read_version:
                 # An unrelated commit must not starve verification. Re-read the
                 # actual checks once under the write lock, not a duplicate list
                 # of their dependencies. No writer can change facts until commit.
                 problems = _verification_problems(session)
+                execution = audit_in_session(session, operation_id)
             # Rechecking may consume the lease. Even without takeover, an expired
             # owner must not publish; the result update uses this same transaction.
-            if not problems and _verification_owned(operation, lease_token, clock()):
+            if _verification_owned(operation, lease_token, clock()):
                 assert operation is not None
+                status: Literal["partial", "findings", "inconclusive"] = (
+                    "findings"
+                    if problems or execution.status == "findings"
+                    else "inconclusive"
+                    if execution.status == "uncertain"
+                    else "partial"
+                )
+                observation = VerificationObservation(
+                    operation_id=operation_id,
+                    observed_at=clock(),
+                    status=status,
+                    existing_fact_checks="findings" if problems else "consistent",
+                    execution=execution,
+                ).model_dump(mode="json")
+                if not _verification_owned(operation, lease_token, clock()):
+                    return
+                operation.verification_observation = observation
+                # The legacy pending bit records unsettled readback, NOT graph
+                # completeness. Unknown/mismatched retained evidence vetoes its
+                # clearance. A settled observation remains explicitly partial.
+                if status != "partial":
+                    return
                 operation.committed_verification_pending = False
                 # A crash before the wrapper returns cannot leave stale schedules.
                 operation.verification_manual_required = False

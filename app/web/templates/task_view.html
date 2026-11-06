@@ -99,7 +99,25 @@
   <dl>
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
     <dt>revision</dt><dd>{{ view.result.revision }}</dd>
-    <dt>核验</dt><dd>{{ view.result.verification }}</dd>
+    <dt>核验</dt><dd>{% if view.result.verification == 'partial' %}限定字段一致；整单来源仍不确定
+      {% elif view.result.verification == 'pending' %}核验待处理
+      {% elif view.result.verification == 'unassessed' %}旧核验记录；来源及覆盖范围未评估
+      {% else %}尚无核验结果{% endif %}</dd>
+    {% if view.result.verification_details %}
+    {% set detail = view.result.verification_details %}
+    <dt>最近一次核验观察</dt><dd>{{ detail.observed_at }} · {{ detail.status }}。
+      仅核对本次提交保留的订单行、关联和预占流水，并检查现存业务事实。
+      父链与共享依赖完整性仍未证明，不代表整单或全库通过，也不授权业务操作。
+      这是记录时的观察，不是当前状态的持续保证。</dd>
+    {% if detail.execution.reason_code %}<dt>证据不足原因</dt><dd>{{ detail.execution.reason_code }}</dd>{% endif %}
+    {% for field in detail.execution.fields %}
+    <dt>{{ field.field }}</dt><dd>{{ field.status }} · 预期 {{ field.expected_count }} / 观察 {{ field.observed_count }}
+      {% for reason in field.reason_codes %} · {{ reason }}{% endfor %}</dd>
+    {% endfor %}
+    <dt>未覆盖范围</dt><dd><ul>{% for item in detail.execution.uncovered %}
+      <li>{{ item.object_type }} {{ item.object_id }}：{{ item.reason_code }}</li>
+      {% else %}<li>完整订单图、可信父链与共享依赖仍未证明。</li>{% endfor %}</ul></dd>
+    {% endif %}
     {% if view.result.verification == 'pending' %}
     <dt>核验进度</dt><dd>业务已提交，请勿重复提交。自动重试已执行 {{ view.result.verification_retry_attempts }} 次。
       {% if view.result.verification_manual_required %}

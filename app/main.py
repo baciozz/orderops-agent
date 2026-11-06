@@ -158,7 +158,22 @@ def _create_app(settings: Settings | None = None) -> FastAPI:
                 return response
             except Exception as exc:
                 request.state.error_code = exception_code(exc)
-                raise
+                # Keep unhandled exception text/SQL parameters out of Uvicorn's
+                # outer traceback logger. The transaction owner controls rollback;
+                # a generic failure may also happen after a durable commit.
+                response = json_error(
+                    AppError(
+                        "请求未能完成；请保留原请求标识并核对任务状态",
+                        code="INTERNAL_ERROR",
+                        http_status=500,
+                    ),
+                    request,
+                )
+                response.headers["x-frame-options"] = "DENY"
+                response.headers["content-security-policy"] = "frame-ancestors 'none'"
+                response.headers["x-request-id"] = request_id
+                response.headers["x-correlation-id"] = correlation_id
+                return response
             finally:
                 log_event(
                     logger,

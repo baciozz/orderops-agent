@@ -21,6 +21,7 @@ CHAIN = [
     "task_runtime_mode",
     "execution_evidence",
     "execution_evidence_binding",
+    "execution_verification_guard",
 ]
 
 

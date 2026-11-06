@@ -153,7 +153,7 @@ def test_idempotent_replay_after_crash_reports_passed(kernel, client, approved_c
         assert task.status == "SUCCEEDED"
         assert task.result_ref == operation_id
         assert session.get(SalesOrder, "SO-1001").current_revision == 2
-    assert _verification(client, task_id) == "passed"
+    assert _verification(client, task_id) == "partial"
 
 
 def test_normal_commit_reports_passed(kernel, client, approved_commit):
@@ -163,7 +163,7 @@ def test_normal_commit_reports_passed(kernel, client, approved_commit):
         operation = session.get(Operation, outcome.operation_id)
         assert operation.committed_verification_pending is False
         assert session.get(Task, task_id).status == "SUCCEEDED"
-    assert _verification(client, task_id) == "passed"
+    assert _verification(client, task_id) == "partial"
 
 
 def test_verification_failure_reports_pending(kernel, client, approved_commit):
@@ -289,7 +289,7 @@ def test_manual_escalation_and_recovery_preserve_committed_receipt_and_business_
     assert verify_manually(kernel, original.operation_id, now=NOW, settings=settings) is True
     assert _contents_except_verification_flag(kernel) == before
     result = client.get(f"/tasks/{original.task_id}/view").json()["result"]
-    assert result["verification"] == "passed" and not result["verification_manual_required"]
+    assert result["verification"] == "partial" and not result["verification_manual_required"]
     assert result["operation_id"] == original.operation_id
 
 

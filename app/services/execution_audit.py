@@ -496,6 +496,21 @@ def _project(session: Session, operation_id: str) -> ExecutionAudit:
     )
 
 
+def audit_in_session(session: Session, operation_id: str) -> ExecutionAudit:
+    """Compare within the caller's snapshot; publication/fencing belongs to caller."""
+    try:
+        report = _project(session, operation_id)
+        _require(len(report.model_dump_json().encode()) <= MAX_OUTPUT_BYTES, "EVIDENCE_LIMIT")
+        return report
+    except _Uncertain as exc:
+        code = str(exc)
+    except (ValueError, TypeError, KeyError, RecursionError):
+        code = "EVIDENCE_MALFORMED"
+    except (SQLAlchemyError, sqlite3.Error, OSError):
+        code = "DATABASE_UNAVAILABLE"
+    return ExecutionAudit(operation_id=operation_id, status="uncertain", reason_code=code)
+
+
 def audit_execution(database_url: str, operation_id: str) -> ExecutionAudit:
     """Single read snapshot via mode=ro, no migration, repair or result publication."""
     try:
@@ -505,11 +520,7 @@ def audit_execution(database_url: str, operation_id: str) -> ExecutionAudit:
             with engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN")
                 with Session(bind=connection, autoflush=False) as session:
-                    report = _project(session, operation_id)
-                    _require(
-                        len(report.model_dump_json().encode()) <= MAX_OUTPUT_BYTES, "EVIDENCE_LIMIT"
-                    )
-                    return report
+                    return audit_in_session(session, operation_id)
         finally:
             engine.dispose()
     except _Uncertain as exc:

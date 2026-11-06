@@ -92,9 +92,10 @@ def test_missing_current_line_and_all_links_remain_detectable(seeded, database_u
         session.get(Operation, result.operation_id).committed_verification_pending = True
     kernel._post_verify(seeded, result.operation_id)
     with seeded() as session:
-        # NEGATIVE CONTROL: this is an existing rollout blocker, not desired
-        # behavior. A partial read-only report does not change the old verifier.
-        assert not session.get(Operation, result.operation_id).committed_verification_pending
+        # The integrated evidence veto now blocks the old global-check blind spot.
+        op = session.get(Operation, result.operation_id)
+        assert op.committed_verification_pending
+        assert op.verification_observation["status"] == "findings"
     assert link_audit.audit_operation_links(database_url, result.operation_id).status == "uncertain"
     report = read(database_url, result)
     fields = {f.field: f for f in report.fields}
