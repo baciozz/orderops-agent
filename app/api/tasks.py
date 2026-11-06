@@ -10,7 +10,17 @@ from schemas.task_view import ApprovalBlock, TaskCard, TaskResultBlock, TaskView
 from sqlalchemy import inspect, select
 
 from app.api.errors import json_error
-from app.db.models import Approval, Event, InputSource, Operation, Plan, Task, TaskSource
+from app.db.models import (
+    Approval,
+    Event,
+    InputPayload,
+    InputSource,
+    Operation,
+    Plan,
+    PurchaseProposal,
+    Task,
+    TaskSource,
+)
 from app.errors import AppError
 from app.orchestration.inbox import latest_input
 from app.orchestration.state import utcnow
@@ -108,9 +118,11 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     duplicate_warning = None
     uploaded_sources = []
     failure_guidance = None
+    sheet_workflow = None
     if task_id != STUB_TASK_ID:
         with request.app.state.session_factory() as session:
             task = session.get(Task, task_id)
+            sheet_workflow = _sheet_presentation(session, task)
             if task and task.status == "FAILED" and view.card.status == TaskStatus.FAILED:
                 # result_ref may contain private input or an exception. Never render it.
                 # Check all task plans too: a failure may have overwritten the reference.
@@ -174,6 +186,7 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "renewable": renewable,
             "duplicate_warning": duplicate_warning,
             "failure_guidance": failure_guidance,
+            "sheet_workflow": sheet_workflow,
             "uploaded_sources": uploaded_sources,
             "input_event_id": input_event_id,
             "audit_url": f"/tasks/{quote(task_id, safe='')}/audit"
@@ -186,6 +199,112 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             in {"RECEIVED", "QUEUED", "RUNNING", "NEEDS_CLARIFICATION", "AWAITING_APPROVAL"},
         },
     )
+
+
+def _sheet_presentation(session, task: Task | None):
+    """Read linked history only; no task-only proposal is promoted to current."""
+    if task is None:
+        return None
+    origins = list(
+        session.execute(
+            select(InputPayload, Event)
+            .join(Event, Event.id == InputPayload.event_id)
+            .where(InputPayload.task_id == task.id, Event.kind == "input.submit")
+            .limit(2)
+        )
+    )
+    if len(origins) != 1:
+        return None
+    receipt, event = origins[0]
+    if (
+        event.order_id is not None
+        or receipt.body.get("text") != "新建现货订单（表格）"
+        or receipt.body.get("source_ids") != []
+        or type(receipt.body.get("input_sequence")) is not int
+        or receipt.body["input_sequence"] != 1
+    ):
+        return None
+    latest = latest_input(session, task)
+    history = []
+    for plan in session.scalars(select(Plan).where(Plan.task_id == task.id).limit(10)):
+        record = (plan.normalized_changes or {}).get("sheet_order_v1")
+        if not isinstance(record, dict):
+            continue
+        shortage = record.get("shortage")
+        if not isinstance(shortage, dict) or shortage.get("plan_id") != plan.id:
+            continue
+        input_id = shortage.get("input_event_id")
+        if not isinstance(input_id, str):
+            continue
+        owner = session.get(InputPayload, input_id)
+        origin = session.get(Event, input_id)
+        if (
+            owner is None
+            or owner.task_id != task.id
+            or origin is None
+            or origin.kind != "clarify_answer"
+            or owner.body.get("sheet_order_v1") != record
+            or type(shortage.get("intent_revision")) is not int
+            or shortage["intent_revision"] != plan.intent_revision
+        ):
+            continue
+        facts = shortage.get("facts")
+        if not isinstance(facts, list) or len(facts) > 15000:
+            continue
+        current = (
+            latest is not None
+            and latest.event_id == input_id
+            and task.intent_revision == shortage["intent_revision"]
+        )
+        seen = set()
+        for fact in facts:
+            if not isinstance(fact, dict) or not isinstance(fact.get("proposal_id"), str):
+                continue
+            proposal_id = fact["proposal_id"]
+            if proposal_id in seen:
+                continue
+            seen.add(proposal_id)
+            proposal = session.get(PurchaseProposal, proposal_id)
+            if (
+                proposal is None
+                or proposal.task_id != task.id
+                or proposal.sku_id != fact.get("sku_id")
+                or type(fact.get("shortage_qty")) is not int
+                or proposal.shortage_qty != fact["shortage_qty"]
+            ):
+                continue
+            history.append(
+                {
+                    "plan_id": plan.id,
+                    "input_event_id": input_id,
+                    "proposal_id": proposal.id,
+                    "sku_id": proposal.sku_id,
+                    "qty": proposal.shortage_qty,
+                    "status": proposal.status,
+                    "current": current,
+                }
+            )
+    correction_view = None
+    record = latest.body.get("sheet_order_v1") if latest else None
+    correction = record.get("correction") if isinstance(record, dict) else None
+    if isinstance(correction, dict) and latest is not None:
+        if (
+            correction.get("event_id") == latest.event_id
+            and type(correction.get("input_sequence")) is int
+            and correction["input_sequence"] == latest.body.get("input_sequence")
+            and correction.get("text") == latest.body.get("text")
+            and type(correction.get("old_qty")) is int
+            and type(correction.get("new_qty")) is int
+            and isinstance(correction.get("source_id"), str)
+            and session.get(TaskSource, (task.id, correction["source_id"])) is not None
+            and type(correction.get("row_number")) is int
+        ):
+            correction_view = correction
+    return {
+        "history": history,
+        "correction": correction_view,
+        "exhausted": task.error_code == "ATTEMPT_LIMIT",
+    }
 
 
 @router.get("/tasks/{task_id}/audit")

@@ -447,6 +447,7 @@ def test_kernel_aliases_retain_old_call_signatures_and_literal_results():
         "stock_revisions",
         "verdicts",
         "expected_docs",
+        "sheet_order_v1",
     ]
     assert list(signature(kernel._doc_fingerprint).parameters) == ["documents", "verdicts"]
     assert build_plan_payload(**_create_arguments()) == CREATE_PAYLOAD

@@ -55,8 +55,11 @@ def get_task(task_id: str, request: Request):
         plans = list(session.scalars(select(Plan).where(Plan.task_id == task_id)))
         payload = latest_input(session, task)
         questions = list(payload.body.get("questions", [])) if payload else []
-        for plan in plans:
-            questions += plan.normalized_changes.get("outcome", {}).get("questions", [])
+        from app.services.sheet_order import is_sheet_task
+
+        if not is_sheet_task(session, task):
+            for plan in plans:
+                questions += plan.normalized_changes.get("outcome", {}).get("questions", [])
         return {
             "questions": questions,
             "extraction": payload.body.get("extraction") if payload else None,

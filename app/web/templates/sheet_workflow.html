@@ -1,0 +1,19 @@
+{% if sheet_workflow %}
+<section aria-label="固定表格流程">
+<h2>固定表格流程：确定性解析，不调用模型</h2>
+<p>上方 FIXTURE / LIVE 为兼容模式字段；本流程不表示模型理解。原表格证据保持不变；修正答案是独立证据。请核对完整新计划，单独批准后再提交。</p>
+<p>格式示例：「蓝 L 改成 20」。只支持唯一行匹配，不接受否定或额外动作。未选择来源时继承已验证来源；更换文件需新建任务并重新上传。</p>
+<p>默认最多 3 次 worker 尝试，错误答案也占用一次。耗尽后请<a href="/ui/demo/new-stock-sheet">新建固定表格任务</a>，不能在原任务恢复。</p>
+{% if sheet_workflow.exhausted %}<p role="alert">本任务尝试预算已耗尽；之前的计划不能作为新回答的执行依据。</p>{% endif %}
+{% if sheet_workflow.correction %}
+<p>独立修正证据：来源 {{ sheet_workflow.correction.source_id }}，原表第 {{ sheet_workflow.correction.row_number }} 行数量 {{ sheet_workflow.correction.old_qty }} → 本次回答 {{ sheet_workflow.correction.new_qty }}。这不是旧订单修订差量，原表格未改写。</p>
+<p>回答事件 {{ sheet_workflow.correction.event_id }}，任务内输入序号 {{ sheet_workflow.correction.input_sequence }}：{{ sheet_workflow.correction.text }}</p>
+{% endif %}
+{% for item in sheet_workflow.history %}
+<details><summary>{% if item.current %}当前输入的缺货建议（尚未采购）{% else %}历史缺货建议（旧意图，非当前采购指令）{% endif %}</summary>
+<p>{{ item.sku_id }}：原缺货 {{ item.qty }}；状态 {{ item.status }}。</p>
+<p>建议 {{ item.proposal_id }}；来源计划 {{ item.plan_id }}；来源输入 {{ item.input_event_id }}。此历史库存观察不能代替新计划的库存检查。</p>
+</details>
+{% endfor %}
+</section>
+{% endif %}

@@ -181,6 +181,63 @@ async def new_stock_submit(request: Request):
     return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
 
 
+_SHEET_COMMAND = "新建现货订单（表格）"
+
+
+def _new_stock_sheet_page(request: Request, key: str, error=None) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "demo_new_stock_sheet.html",
+        {"command": _SHEET_COMMAND, "client_event_key": key, "error": error},
+        status_code=error.http_status if error else 200,
+    )
+
+
+@router.get("/ui/demo/new-stock-sheet", response_class=HTMLResponse)
+def new_stock_sheet_page(request: Request):
+    return _new_stock_sheet_page(request, str(uuid4()))
+
+
+@router.post("/ui/demo/new-stock-sheet", response_class=HTMLResponse)
+async def new_stock_sheet_submit(request: Request):
+    """Activate the bounded application command through the ordinary inbox only."""
+    key = ""
+    try:
+        if request.headers.get("content-type", "").split(";", 1)[0] != (
+            "application/x-www-form-urlencoded"
+        ):
+            raise AppError("请使用网页表单提交", code="VALIDATION_ERROR")
+        try:
+            fields = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError as exc:
+            raise AppError("表单编码无效", code="VALIDATION_ERROR") from exc
+        key = fields.get("client_event_key", [""])[0]
+        if set(fields) != {"text", "client_event_key"} or any(
+            len(values) != 1 for values in fields.values()
+        ):
+            raise AppError("不接受额外字段、订单号、模式或来源参数", code="VALIDATION_ERROR")
+        if fields["text"][0] != _SHEET_COMMAND:
+            raise AppError("请使用页面上的固定表格入口指令", code="VALIDATION_ERROR")
+        try:
+            if str(UUID(key)) != key:
+                raise ValueError("noncanonical key")
+        except ValueError as exc:
+            raise AppError("提交标识无效，请重新打开页面", code="VALIDATION_ERROR") from exc
+        if not _has_table(request, "task"):
+            raise AppError("请先运行 make init-db && make seed", code="DEMO_NOT_READY")
+        body = InputSubmitRequest(
+            thread_id="demo-new-stock-sheet",
+            client_event_key=key,
+            text=_SHEET_COMMAND,
+            selected_order_id=None,
+            source_ids=[],
+        )
+        result = await run_in_threadpool(receipt, body, request)
+    except AppError as exc:
+        return _new_stock_sheet_page(request, key, error=exc)
+    return RedirectResponse(f"/ui/tasks/{result.task_id}", status_code=303)
+
+
 @router.get("/ui/demo/tasks", response_class=HTMLResponse)
 def recent_tasks(request: Request):
     tasks = []

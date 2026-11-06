@@ -16,8 +16,9 @@ def build_plan_payload(
     stock_revisions: dict[str, int],
     verdicts: list[dict[str, object]] | None = None,
     expected_docs: dict[str, dict[str, object]] | None = None,
+    sheet_order_v1: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "schema_version": "1.0",
         "plan_kind": plan_kind,
         "order_id": order_id,
@@ -40,6 +41,11 @@ def build_plan_payload(
         "downstream": sorted(verdicts or [], key=lambda item: str(item["doc_id"])),
         "expected_doc_revisions": expected_docs or {},
     }
+
+    # Omission deliberately preserves every legacy authorization hash byte.
+    if sheet_order_v1 is not None:
+        payload["sheet_order_v1"] = sheet_order_v1
+    return payload
 
 
 def document_fingerprint(

@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from schemas.common import SourceRef
 from schemas.enums import (
     ApprovalStatus,
     FulfillmentMode,
@@ -314,6 +315,7 @@ def approve_plan(
                 raise AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
             if plan.plan_kind == PlanKind.CREATE:
                 _check_current_create(session, plan)
+                _plan_sheet_provenance(session, plan)
             duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
             if duplicate_of and not acknowledge_duplicate:
                 raise AppError(
@@ -793,6 +795,8 @@ def _plan_new_locked(
             client_event_key=client_event_key,
             now=now,
         )
+        if outcome.status == TaskStatus.NEEDS_CLARIFICATION:
+            return outcome, None
         return outcome, AppError(
             evaluation.message or "缺货，整单拒绝",
             code="SHORTAGE",
@@ -923,6 +927,11 @@ def _commit_locked(
         if balance is None or balance.revision != int(expected):
             _revoke_if_active(approval)
             return None, AppError("库存版本已变化", code="STALE_DEPENDENCY", http_status=409)
+    try:
+        sheet_provenance = _plan_sheet_provenance(session, plan)
+    except AppError as exc:
+        _revoke_if_active(approval)
+        return None, exc
     changes = list((plan.normalized_changes or {}).get("changes") or [])
     evaluation = evaluate_changes(
         lines=base_lines,
@@ -962,6 +971,7 @@ def _commit_locked(
         stock_revisions={sku: balances[sku].revision for sku in balances},
         verdicts=verdicts,
         expected_docs=expected_docs,
+        sheet_order_v1=sheet_provenance,
     )
     recomputed = canonical_hash(payload)
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
@@ -1167,6 +1177,83 @@ def _apply_reservations(
             current.revision = balance.revision
 
 
+def _bound_sheet_provenance(session: Session) -> dict[str, object] | None:
+    from app.services.sheet_order import accepted_provenance
+
+    task_id = bound_task_id.get()
+    task = session.get(Task, task_id) if task_id else None
+    return accepted_provenance(session, task) if task is not None else None
+
+
+def _plan_sheet_provenance(session: Session, plan: Plan) -> dict[str, object] | None:
+    from app.services.sheet_order import accepted_provenance, validate_provenance
+
+    if plan.plan_kind != PlanKind.CREATE:
+        return None
+    task = session.get(Task, plan.task_id)
+    if task is None:
+        raise AppError("任务不存在", code="NOT_FOUND", http_status=404)
+    accepted = accepted_provenance(session, task)
+    normalized = plan.normalized_changes or {}
+    if "sheet_order_v1" not in normalized:
+        if accepted is not None:
+            raise AppError("表格计划缺少来源证明", code="HASH_MISMATCH", http_status=409)
+        return None
+    canonical = validate_provenance(session, task, normalized["sheet_order_v1"])
+    if accepted is None or canonical != accepted:
+        raise AppError("表格计划来源证明不一致", code="HASH_MISMATCH", http_status=409)
+    rows = canonical["rows"]
+    assert isinstance(rows, list)
+    refs = [ref for row in rows for ref in row["refs"]]
+    correction = canonical["correction"]
+    if isinstance(correction, dict):
+        refs.append(
+            SourceRef(
+                source_id="SRC-INPUT",
+                field="quantity",
+                message_index=correction["input_sequence"],
+                text_excerpt=correction["text"],
+            ).model_dump(mode="json")
+        )
+    if canonical_hash({"refs": plan.source_refs}) != canonical_hash({"refs": refs}):
+        raise AppError("表格计划来源引用不一致", code="HASH_MISMATCH", http_status=409)
+    customer, changes = _sheet_business_rows(canonical)
+    if plan.status in {PlanStatus.VALIDATED, PlanStatus.APPROVED} and (
+        normalized.get("customer_id") != customer
+        or canonical_hash({"changes": normalized.get("changes")})
+        != canonical_hash({"changes": changes})
+    ):
+        raise AppError("表格计划业务行与来源证明不一致", code="HASH_MISMATCH", http_status=409)
+    return canonical
+
+
+def _sheet_business_rows(provenance: dict[str, object]) -> tuple[str, list[dict[str, object]]]:
+    """Project already validated provenance without accepting caller business rows."""
+    rows = provenance["rows"]
+    assert isinstance(rows, list) and rows
+    customers = {row["customer_id"] for row in rows}
+    assert len(customers) == 1
+    changes = [
+        {"mode": "increment", "sku_id": row["sku_id"], "qty": row["effective_qty"]} for row in rows
+    ]
+    return str(next(iter(customers))), changes
+
+
+def _check_sheet_evaluation(
+    provenance: dict[str, object] | None,
+    evaluation: ChangeEval,
+    *,
+    customer_id: str | None = None,
+) -> None:
+    if provenance is None:
+        return
+    customer, changes = _sheet_business_rows(provenance)
+    quantities = {str(change["sku_id"]): change["qty"] for change in changes}
+    actual = {sku: line.ordered_qty for sku, line in evaluation.lines.items()}
+    if quantities != actual or (customer_id is not None and customer_id != customer):
+        raise AppError("表格业务行与来源证明不一致", code="HASH_MISMATCH", http_status=409)
+
+
 def _store_validated(
     session: Session,
     *,
@@ -1185,6 +1272,8 @@ def _store_validated(
     verdicts: list[dict[str, object]] | None = None,
     expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> PlanOutcome:
+    sheet_provenance = _bound_sheet_provenance(session) if plan_kind == PlanKind.CREATE else None
+    _check_sheet_evaluation(sheet_provenance, evaluation, customer_id=customer_id)
     stock_revisions = _revisions_for(session, set(evaluation.reservation_delta))
     verdicts = verdicts or []
     expected_docs = expected_docs or {}
@@ -1198,6 +1287,7 @@ def _store_validated(
         stock_revisions=stock_revisions,
         verdicts=verdicts,
         expected_docs=expected_docs,
+        sheet_order_v1=sheet_provenance,
     )
     plan_hash = canonical_hash(payload)
     dependencies = canonical_hash(
@@ -1227,6 +1317,7 @@ def _store_validated(
             "dependencies_hash": dependencies,
             "downstream": verdicts,
             "outcome": {"kind": "validated"},
+            **({"sheet_order_v1": sheet_provenance} if sheet_provenance is not None else {}),
         },
         client_event_key=client_event_key,
         now=now,
@@ -1261,11 +1352,14 @@ def _store_shortage(
     client_event_key: str,
     now: datetime,
 ) -> PlanOutcome:
+    provenance = _bound_sheet_provenance(session) if order_id is None else None
+    bounded = provenance is not None
+    _check_sheet_evaluation(provenance, evaluation)
     task, plan = _new_task_plan(
         session,
         order_id=order_id,
         chain_id=chain_id,
-        task_status=TaskStatus.FAILED,
+        task_status=TaskStatus.NEEDS_CLARIFICATION if bounded else TaskStatus.FAILED,
         plan_kind=PlanKind.CREATE if order_id is None else PlanKind.CHANGE,
         base_revision=base_revision,
         intent_revision=intent_revision,
@@ -1279,6 +1373,8 @@ def _store_shortage(
         error_code="SHORTAGE",
     )
     proposal_ids: list[str] = []
+    facts: list[dict[str, object]] = []
+    balances = _balances_for(session, set(evaluation.shortages)) if bounded else {}
     for sku, qty in sorted(evaluation.shortages.items()):
         proposal = PurchaseProposal(
             id=_id("PP"),
@@ -1290,13 +1386,55 @@ def _store_shortage(
         )
         session.add(proposal)
         proposal_ids.append(proposal.id)
+        if bounded:
+            balance = balances.get(sku)
+            available = balance.on_hand - balance.reserved if balance else 0
+            facts.append(
+                {
+                    "proposal_id": proposal.id,
+                    "sku_id": sku,
+                    "requested_qty": evaluation.lines[sku].ordered_qty,
+                    "available_qty": available,
+                    "shortage_qty": qty,
+                    "warehouse_id": WAREHOUSE_ID,
+                    "stock_revision": balance.revision if balance else 0,
+                }
+            )
+    if provenance is not None:
+        shortage = {
+            "plan_id": plan.id,
+            "input_event_id": provenance["current_event_id"],
+            "intent_revision": intent_revision,
+            "facts": facts,
+        }
+        record = {**provenance, "shortage": shortage}
+        question = (evaluation.message or "库存不足") + (
+            "。仅支持唯一行的有限修改，例如：蓝 L 改成 20。"
+            "仍需单独批准；若尝试次数已用完，请新建表格任务并重新上传。"
+        )
+        receipt = session.get(InputPayload, str(provenance["current_event_id"]))
+        if receipt is None or receipt.task_id != task.id:
+            raise AppError("表格输入来源失效", code="STALE_INTENT", http_status=409)
+        receipt.body = {**receipt.body, "sheet_order_v1": record, "questions": [question]}
+        plan.normalized_changes = {
+            **plan.normalized_changes,
+            "sheet_order_v1": record,
+            "outcome": {"kind": "shortage", "code": "SHORTAGE", "questions": [question]},
+        }
+        plan.plan_hash = canonical_hash(
+            {
+                "kind": "shortage",
+                "shortages": evaluation.shortages,
+                "sheet_order_v1": record,
+            }
+        )
     session.flush()
     return PlanOutcome(
         plan_id=plan.id,
         task_id=task.id,
         chain_id=chain_id,
         order_id=order_id,
-        status="REJECTED",
+        status=TaskStatus.NEEDS_CLARIFICATION if bounded else "REJECTED",
         base_revision=base_revision,
         intent_revision=intent_revision,
         plan_hash=plan.plan_hash,
@@ -1304,6 +1442,7 @@ def _store_shortage(
         requires_human_approval=False,
         issues=evaluation.issues,
         proposal_ids=proposal_ids,
+        questions=[question] if bounded else [],
     )
 
 
@@ -1663,7 +1802,15 @@ def _existing_outcome(
     task = session.get(Task, plan.task_id)
     stored = (plan.normalized_changes or {}).get("outcome") or {}
     kind = stored.get("kind")
-    if kind in {"shortage", "reject"}:
+    bounded_shortage = kind == "shortage" and "sheet_order_v1" in (plan.normalized_changes or {})
+    proposal_ids: list[str] = []
+    if bounded_shortage:
+        proof = _plan_sheet_provenance(session, plan)
+        assert proof is not None
+        shortage = proof["shortage"]
+        assert isinstance(shortage, dict)
+        proposal_ids = [fact["proposal_id"] for fact in shortage["facts"]]
+    if kind in {"shortage", "reject"} and not bounded_shortage:
         return None, AppError(
             str(stored.get("message") or "请求已拒绝"),
             code=str(stored.get("code") or "BUSINESS_CONFLICT"),
@@ -1677,7 +1824,7 @@ def _existing_outcome(
             task_id=plan.task_id,
             chain_id=task.chain_id if task else "",
             order_id=task.order_id if task else None,
-            status=task.status if task and kind == "clarify" else plan.status,
+            status=task.status if task and (kind == "clarify" or bounded_shortage) else plan.status,
             base_revision=plan.base_order_revision,
             intent_revision=plan.intent_revision,
             plan_hash=plan.plan_hash,
@@ -1686,6 +1833,7 @@ def _existing_outcome(
             issues=questions,
             questions=questions,
             candidates=candidates,
+            proposal_ids=proposal_ids,
         ),
         None,
     )

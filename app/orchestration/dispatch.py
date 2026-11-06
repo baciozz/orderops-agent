@@ -121,13 +121,25 @@ def dispatch_text(
     moment = _moment(now)
     registered = registry or build_default_registry()
     router = Router(registered)
-    library = golden_fixtures()
-    if fixtures:
-        library.update(fixtures)
     configured = settings or get_settings()
-    enrich(mode=resolve_mode(configured).mode.value)
-    client: LLMClient = FixtureLLMClient(library)
-    if resolve_mode(configured).mode == "LIVE":
+    task_id = durable_task_id or _open_task(session_factory, moment)
+    from app.services.sheet_order import is_sheet_task
+
+    with session_factory() as read_session:
+        task = read_session.get(Task, task_id)
+        bounded = (
+            durable_guard.get() is not None
+            and task is not None
+            and is_sheet_task(read_session, task)
+        )
+    enrich(mode="FIXTURE" if bounded else resolve_mode(configured).mode.value)
+    client: LLMClient | None = None
+    if not bounded:
+        library = golden_fixtures()
+        if fixtures:
+            library.update(fixtures)
+        client = FixtureLLMClient(library)
+    if not bounded and resolve_mode(configured).mode == "LIVE":
         ledger = BudgetLedger(
             session_factory,
             cap_usd=configured.effective_live_budget_usd,
@@ -136,7 +148,6 @@ def dispatch_text(
         )
         # LiveLLMClient selects/validates llm_provider; all providers share this ledger.
         client = (client_factory or LiveLLMClient)(configured, ledger)
-    task_id = durable_task_id or _open_task(session_factory, moment)
     enrich(**task_fields_from_factory(session_factory, task_id))
     log_event(logger, "dispatch.start", outcome="started", duration_ms=0.0)
     routed = router.plan("unstructured", input_mode=input_mode)
@@ -291,7 +302,7 @@ def _run_planned(
     registry: Registry,
     text: str,
     input_mode: str,
-    client: LLMClient,
+    client: LLMClient | None,
     work: _Work,
     moment: datetime,
     before_step: Callable[[StepContext], None] | None,
@@ -362,7 +373,7 @@ def _one_attempt(
     capability: str,
     text: str,
     input_mode: str,
-    client: LLMClient,
+    client: LLMClient | None,
     work: _Work,
     moment: datetime,
     runner: Callable[[StepContext], AgentRun],
@@ -462,6 +473,11 @@ def _one_attempt(
                     if run.extraction is not None and task.last_event_id:
                         receipt = writer.get(InputPayload, task.last_event_id)
                         assert receipt is not None  # last_event_id refers to persisted input.
+                        if run.sheet_order is not None:
+                            from app.services.sheet_order import validate_provenance
+
+                            provenance = validate_provenance(writer, task, run.sheet_order)
+                            receipt.body = {**receipt.body, "sheet_order_v1": provenance}
                         receipt.body = {
                             **receipt.body,
                             "extraction": run.extraction.model_dump(mode="json"),

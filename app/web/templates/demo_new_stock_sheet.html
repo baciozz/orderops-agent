@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}新建现货订单（固定表格）{% endblock %}
+{% block content %}
+<h1>新建现货订单（固定表格）</h1>
+<p>这是确定性、有限语法的应用流程，不调用模型，也不是自由中文理解或固定数量示例。公开运行模式字段仍兼容 FIXTURE / LIVE。</p>
+<p>提交仅保存首次输入并入队，不自动运行 worker、上传、批准或提交订单。同一页面重试复用回执；重新打开页面会产生新任务。</p>
+<ol>
+<li>保存入口指令，在任务页触发 worker（第 1 次），获得上传提示。</li>
+<li>上传 XLSX，工作表名必须为「订单」，A1:E1 必须依次为「客户」「款」「颜色」「尺码」「数量」。每行完整，同一客户、唯一现货 SKU；不支持合并单元格、其他有内容的表或额外列。</li>
+<li>选中来源，以「按附件新建订单」回答并触发 worker（第 2 次）。多个文件仅支持同一客户、互不重复的 SKU。</li>
+<li>如缺货，可按有限格式回答，例如「蓝 L 改成 20」，再触发 worker（第 3 次）。必须唯一匹配完整表格中的一行；其余行保持不变。核对完整新计划，再单独批准、提交生效。</li>
+</ol>
+<p>修正格式：颜色（黑、白、蓝、藏青） + ASCII 空格 + 尺码（S、M、L、XL、XXL） + ASCII 空格 + 改成 + ASCII 空格 + 正整数。拒绝否定、多动作、标点、换行、单位、前导零和歧义；不猜测意图。</p>
+<p>修正时不选来源可继承已经验证的原始来源；只允许相同来源集合，不支持替换或增删文件。更换表格请新建任务并重新上传。仅上传文件不会改变计划。</p>
+<p>默认最多 3 次 worker 尝试；错误修正也消耗一次，耗尽后不能在本任务恢复，请新建任务。上传、批准、提交及完全相同的回执重放不消耗尝试。</p>
+<p>数量按已保存的单元格文本判断：数字 XML 的 +20 若上传时规范化为 20，可接受；字符串 +20、20.0、布尔值及超出整数范围的文本不接受。不保证保留 Excel 原始数字词法。</p>
+{% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+<form action="/ui/demo/new-stock-sheet" method="post" class="input-form">
+<label for="sheet-command">入口指令（不含数量）</label>
+<textarea id="sheet-command" name="text" readonly>{{ command }}</textarea>
+<input type="hidden" name="client_event_key" value="{{ client_event_key }}">
+<button type="submit">保存入口指令并查看任务</button>
+</form>
+{% endblock %}

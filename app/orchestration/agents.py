@@ -34,7 +34,7 @@ class StepContext:
     text: str
     input_mode: str
     source_id: str
-    llm: LLMClient
+    llm: LLMClient | None
     intent: int
     fence: int
     model_calls: int = 0
@@ -49,6 +49,7 @@ class AgentRun:
     payload: dict[str, object]
     extraction: ExtractionResult | None = None
     tokens: int = 0
+    sheet_order: dict[str, object] | None = None
 
 
 class ParserPromptOptions(TypedDict, total=False):
@@ -59,6 +60,18 @@ class ParserPromptOptions(TypedDict, total=False):
 
 def run_parser(ctx: StepContext) -> AgentRun:
     ctx.call_tool("source.read", source_id=ctx.source_id)
+    # This explicit server workflow never constructs or invokes a model client.
+    from app.services.sheet_order import derive, is_sheet_task
+
+    if durable_guard.get() is not None and is_sheet_task(ctx.session, ctx.task):
+        extracted, record = derive(ctx.session, ctx.task)
+        extracted = _respect_selected_order(ctx, extracted)
+        _accept(ctx, extracted.model_dump(mode="json"), UsageReport(mode="FIXTURE", cost_usd="0"))
+        return AgentRun(
+            payload=extracted.model_dump(mode="json"), extraction=extracted, sheet_order=record
+        )
+    if ctx.llm is None:
+        raise AppError("表格任务上下文已变化", code="STALE_INTENT", http_status=409)
     call_limit = ctx.spec.budget.max_calls_per_task
     if call_limit is not None and ctx.model_calls >= call_limit:
         raise CallLimitExceeded(
