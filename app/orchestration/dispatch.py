@@ -40,10 +40,11 @@ from app.orchestration.agents import RUNNERS, AgentRun, StepContext
 from app.orchestration.defaults import build_default_registry
 from app.orchestration.fixtures import golden_fixtures
 from app.orchestration.intent_receipts import check_acquisition_order
+from app.orchestration.order_scope import conflicting_order
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import Registry, tool_executor
 from app.orchestration.router import PlannedStep, Router
-from app.orchestration.state import enforce, transition
+from app.orchestration.state import enforce, sync_guard, transition, utcnow
 from app.orchestration.state import guard as durable_guard
 from app.orchestration.tools import ToolGateway
 from app.services.kernel import _current_links as current_links
@@ -95,12 +96,7 @@ class _Work:
     source_ids: list[str] = field(default_factory=list)
 
 
-@observed(
-    logger,
-    "dispatch.finish",
-    fields=lambda durable_task_id, **_: {"task_id": durable_task_id},
-)
-def dispatch_text(
+def _dispatch_text(
     session_factory: sessionmaker[Session],
     *,
     text: str,
@@ -115,14 +111,41 @@ def dispatch_text(
     source_ids: list[str] | None = None,
     settings: Settings | None = None,
     client_factory: Callable[[Settings, BudgetLedger], LLMClient] | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> DispatchOutcome:
     """Parse one utterance, run the routed sub-agents, then precheck."""
     validate_text(text, allow_empty=bool(source_ids))
     moment = _moment(now)
+    if durable_task_id is None:
+        from app.orchestration.sync_dispatch import execute
+
+        return execute(
+            session_factory,
+            key=client_event_key,
+            request_hash=canonical_hash(
+                {"text": text, "input_mode": input_mode, "source_ids": source_ids or []}
+            ),
+            clock=clock or ((lambda: moment) if now is not None else utcnow),
+            run=lambda task_id: _dispatch_text(
+                session_factory,
+                text=text,
+                input_mode=input_mode,
+                client_event_key=f"sync:{task_id}",
+                registry=registry,
+                now=moment,
+                fixtures=fixtures,
+                before_step=before_step,
+                timeout_agent=timeout_agent,
+                durable_task_id=task_id,
+                source_ids=source_ids,
+                settings=settings,
+                client_factory=client_factory,
+            ),
+        )
     registered = registry or build_default_registry()
     router = Router(registered)
     configured = settings or get_settings()
-    task_id = durable_task_id or _open_task(session_factory, moment)
+    task_id = durable_task_id
     from app.services.sheet_order import is_sheet_task
 
     with session_factory() as read_session:
@@ -238,6 +261,13 @@ def dispatch_text(
         customer_name=extraction.customer_candidate,
         now=moment,
     )
+
+
+dispatch_text = observed(
+    logger,
+    "dispatch.finish",
+    fields=lambda durable_task_id, **_: {"task_id": durable_task_id},
+)(_dispatch_text)
 
 
 def receive_late_proposal(
@@ -457,12 +487,16 @@ def _one_attempt(
                     try:
                         acquired_intent = _acquire_late_intent(writer, task, input_event_id, run)
                     except AppError as exc:
-                        if exc.code not in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"}:
+                        if exc.code not in {
+                            "STALE_INPUT_ORDER",
+                            "INTENT_ORDER_UNPROVEN",
+                            "ORDER_SCOPE",
+                        }:
                             raise
                         # Chronology rejection occurs before any acquisition mutation.
                         # Finish visibly; do not copy this rejected parse's binding.
                         code, message = exc.code, exc.message
-                if code not in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"}:
+                if code not in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN", "ORDER_SCOPE"}:
                     _copy_step_writes(session, writer)
                 if acquired_intent is not None:
                     # Do not copy the runner's pre-lock revision over the acquired one.
@@ -549,6 +583,8 @@ def _acquire_late_intent(
     extraction = run.extraction
     assert extraction is not None
     event = extraction.business_event
+    if conflicting_order(writer, task, event):
+        raise AppError("输入订单与任务订单范围不一致", code="ORDER_SCOPE", http_status=409)
     origin = writer.get(Event, receipt.event_id)
     binding = receipt.body.get("late_bound_intent")
     if "late_bound_intent" in receipt.body:
@@ -721,42 +757,6 @@ def _route_event(router: Router, session_factory: sessionmaker[Session], event: 
     return router.plan(event.event_type)
 
 
-def _open_task(session_factory: sessionmaker[Session], now: datetime) -> str:
-    session = session_factory()
-    try:
-        with begin_immediate(session):
-            task = Task(
-                id=_new_id("T"),
-                chain_id="CH-UNASSIGNED",
-                order_id=None,
-                status=TaskStatus.RUNNING,
-                intent_revision=0,
-                last_event_id=None,
-                cancel_requested=False,
-                deadline_at=None,
-                result_ref=None,
-                error_code=None,
-            )
-            session.add(task)
-            session.flush()
-            session.add(
-                JobAttempt(
-                    id=_new_id("JA"),
-                    task_id=task.id,
-                    attempt_no=1,
-                    lease_owner="dispatcher",
-                    lease_until=None,
-                    fencing_token=1,
-                    heartbeat_at=now,
-                    last_progress_at=now,
-                    step_count=0,
-                )
-            )
-            return task.id
-    finally:
-        session.close()
-
-
 def _record_skip(
     session_factory: sessionmaker[Session],
     task_id: str,
@@ -803,7 +803,7 @@ def _add_step(
     agent_id: str | None = None,
     agent_version: str | None = None,
 ) -> None:
-    guard = durable_guard.get()
+    guard = durable_guard.get() or sync_guard.get()
     if guard is not None:
         now = guard[2]()
         attempt.heartbeat_at = now

@@ -1738,6 +1738,52 @@ def consistency_problems(session: Session) -> list[str]:
     for reservation in session.scalars(select(Reservation)).all():
         if reservation.sku_id in mto:
             problems.append(f"MTO {reservation.sku_id} 产生了预占")
+    problems.extend(_order_reservation_problems(session))
+    return problems
+
+
+def _order_reservation_problems(session: Session) -> list[str]:
+    """Compare current order obligations, not a historical operation's delta.
+
+    This prototype allocates STOCK only in W1. Aggregate balance checks alone
+    cannot detect reservations moved between orders or an altered order line.
+    """
+    problems: list[str] = []
+    shipped = {
+        (order_id, sku): int(qty)
+        for order_id, sku, qty in session.execute(
+            select(
+                ShipmentRecord.order_id, ShipmentRecord.sku_id, func.sum(ShipmentRecord.qty)
+            ).group_by(ShipmentRecord.order_id, ShipmentRecord.sku_id)
+        )
+    }
+    expected: dict[tuple[str, str, str], int] = {}
+    current = session.execute(
+        select(SalesOrder, OrderRevision).outerjoin(
+            OrderRevision,
+            (OrderRevision.order_id == SalesOrder.id)
+            & (OrderRevision.revision_no == SalesOrder.current_revision),
+        )
+    )
+    for order, revision in current:
+        if revision is None:
+            if order.current_revision > 0:
+                problems.append(f"{order.id} 当前订单版本缺失")
+            continue
+        for line in session.scalars(select(OrderLine).where(OrderLine.revision_id == revision.id)):
+            remaining = line.ordered_qty - shipped.get((order.id, line.sku_id), 0)
+            if remaining < 0:
+                problems.append(f"{order.id}/{line.sku_id} 订单数量低于已发数量")
+            if line.fulfillment_mode == FulfillmentMode.STOCK:
+                expected[(order.id, WAREHOUSE_ID, line.sku_id)] = max(0, remaining)
+    actual = {
+        (row.order_id, row.warehouse_id, row.sku_id): row.qty
+        for row in session.scalars(select(Reservation))
+    }
+    for key in sorted(expected.keys() | actual.keys()):
+        if expected.get(key, 0) != actual.get(key, 0):
+            order_id, warehouse_id, sku = key
+            problems.append(f"{order_id}/{warehouse_id}/{sku} 当前订单未发数量与预占不一致")
     return problems
 
 
@@ -1784,6 +1830,9 @@ def _existing_outcome(
     if event is None:
         return None
     plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    owner = bound_task_id.get()
+    if plan is not None and owner is not None and plan.task_id != owner:
+        raise AppError("事件键属于其他任务", code="PLAN_REQUEST_CONFLICT", http_status=409)
     binding = (plan.normalized_changes or {}).get("direct_request_binding") if plan else None
     if request_hash is not None or binding is not None:
         if (

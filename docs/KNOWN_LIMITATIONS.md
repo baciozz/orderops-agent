@@ -1,5 +1,7 @@
 # 已知限制
 
+2026-11-06 审查修复候选补充：同步 `/dispatch` 现在绑定请求身份并持有租约，但不保存可自动重跑的原文；计划落库前退出须在失败后核对并以新 key 重新提交。输入/回答同键异内容或异任务由静默回放改为 409 冲突，精确重试保留。新增 `sync_dispatch_receipts` 迁移须显式执行，回退迁移会丢失同步请求身份。上传原件丢失/损坏时回放明确失败，受限表格审批视图置灰；生产持久存储、备份和清理策略仍未提供。详见 [API](API.md)。
+
 Stage 5 冻结交接（v1.0.0 候选，1.0.0rc1）：Stage 1–4 已合入 main，支持静态文件切分、安全上传/导出、任务来源隔离、DB 任务视图和可选 OpenAI Responses 解析；尚未发布或打正式 tag，等待 Qi 批准。默认仍为精确 FIXTURE；live 必须由操作者显式启用并配置价格、环境密钥、提供方和模型。库存和下游数字由内核重算。
 
 - Worker 由 `worker-once` / Python 调用或操作者显式启动的 [有界 FIXTURE `worker-loop`](WORKER_LOOP.md) 驱动，没有常驻调度服务；`OOS_WORKER_MAX_ACTIVE` 必须大于等于 1，默认 2。`claim()` 保留 `min(2, limits.active)` 的硬上限，配置大于 2 时，`worker-once` 在 logger `oos.worker` 上记录 WARNING，并按 2 生效，仍限制为 2 条 RUNNING 任务。outbox 默认消费者只写本地去重回执，浏览器实时推送尚未接入。R01–R09、R16 有确定性故障测试。

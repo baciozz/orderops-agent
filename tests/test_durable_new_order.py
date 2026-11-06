@@ -108,6 +108,9 @@ def test_new_stock_receipt_worker_approval_commit_and_replay(
         "text": TEXT_NEW_ORDER,
         "source_ids": [],
         "input_sequence": 1,
+        "request_hash_v1": (
+            "sha256:4e9c3412fbeb20e2eaca71b6bafd74bc829493f60910b2ae79ffcae730f0abf6"
+        ),
         "receipt_ordinal": 1,
         "intent_watermark": {row["id"]: row["intent_revision"] for row in before["sales_order"]},
     }

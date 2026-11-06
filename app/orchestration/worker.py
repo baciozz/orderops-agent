@@ -46,6 +46,17 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
         ) >= min(MAX_ACTIVE, limits.active):
             return None
         for task in session.scalars(select(Task).where(Task.status == "QUEUED").order_by(Task.id)):
+            receipt = session.get(InputPayload, task.last_event_id) if task.last_event_id else None
+            delivery = session.scalar(
+                select(InboxDelivery).where(
+                    InboxDelivery.event_id == task.last_event_id, InboxDelivery.consumer == "worker"
+                )
+            )
+            if receipt is None or receipt.task_id != task.id or delivery is None:
+                transition(task, "FAILED")
+                task.error_code = "INPUT_UNAVAILABLE"
+                task.result_ref = "任务缺少可恢复输入，请核对后重新提交"
+                continue
             previous = session.scalar(
                 select(JobAttempt)
                 .where(JobAttempt.task_id == task.id)

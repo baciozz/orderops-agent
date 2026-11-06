@@ -372,6 +372,16 @@ class TaskSource(Base):
     source_id: Mapped[str] = mapped_column(ForeignKey("input_source.id"), primary_key=True)
 
 
+class SyncDispatchReceipt(Base):
+    """Synchronous retry identity. Never persist the raw dispatch text."""
+
+    __tablename__ = "sync_dispatch_receipt"
+
+    client_event_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), unique=True, nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+
+
 class SourceUploadReceipt(Base):
     """Optional upload identity, committed with the task-owned evidence."""
 

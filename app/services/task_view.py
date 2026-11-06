@@ -40,6 +40,7 @@ from app.services.kernel import (
     _known_skus,
     _load_lines,
     _mentioned,
+    _plan_sheet_provenance,
     _stable,
     current_doc_fingerprint,
 )
@@ -151,6 +152,10 @@ def _approval_block(session, task, plan, now, generated_at):
     ):
         reason = "STALE"
     if reason is None:
+        try:
+            _plan_sheet_provenance(session, plan)
+        except AppError:
+            reason = "STALE"
         balances = _balances_for(session, set(plan.expected_stock_revisions))
         if any(
             sku not in balances or balances[sku].revision != expected

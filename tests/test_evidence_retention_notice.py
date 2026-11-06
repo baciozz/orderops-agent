@@ -15,9 +15,9 @@ from sqlalchemy import inspect, text
 
 NOTICE = (
     "上传成功仅表示当时已解析并保存提取内容，不代表原始文件仍被保留。"
-    "原始文件使用临时存储，本页未检查其是否存在。"
+    "原始文件使用临时存储，已保存的提取内容不证明原件当前可用。"
     "即使原始文件丢失，已保存的提取内容仍可读取；"
-    "使用同一上传键重试不会恢复原始文件。审计摘要不包含原始文件。"
+    "使用同一上传键重试不会恢复原始文件，原件不可用时会拒绝回放。审计摘要不包含原始文件。"
 )
 HEADERS = {"x-request-id": "retention-read", "x-correlation-id": "retention-read"}
 
@@ -115,7 +115,11 @@ def test_retention_disclosure_is_conditional_and_read_only(
         paths[0].unlink()
         assert page(client) == before_page
         assert evidence(client) == before_evidence
-        assert send(client, 0).json() == receipts[0].json()
+        replay = send(client, 0)
+        assert replay.status_code == 409
+        assert replay.json()["error"]["code"] == "SOURCE_UNAVAILABLE"
+        assert str(root) not in replay.text
+        assert send(client, 1).json() == receipts[1].json()
         assert (
             client.get(f"/sources/{source_ids[0]}/spans", params={"task_id": other_id}).status_code
             == 404

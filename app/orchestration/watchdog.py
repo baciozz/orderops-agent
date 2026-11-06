@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from app.db.models import Event, JobAttempt, Operation, OutboxDelivery, Plan, Task
+from app.db.models import Event, InputPayload, JobAttempt, Operation, OutboxDelivery, Plan, Task
 from app.db.session import begin_immediate
 from app.observability import enrich, get_logger, log_event, observed
 from app.orchestration.state import aware, transition, utcnow
@@ -98,14 +98,33 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS, settings=None):
                     outcome="expired",
                     reason="deadline" if deadline else "stalled" if stalled else "lease_expired",
                 )
-                failed = deadline or (
-                    attempt
-                    and (
-                        attempt.attempt_no >= limits.attempts or attempt.step_count >= limits.steps
+                receipt = (
+                    session.get(InputPayload, task.last_event_id) if task.last_event_id else None
+                )
+                missing_input = receipt is None or receipt.task_id != task.id
+                failed = (
+                    missing_input
+                    or deadline
+                    or (
+                        attempt
+                        and (
+                            attempt.attempt_no >= limits.attempts
+                            or attempt.step_count >= limits.steps
+                        )
                     )
                 )
                 transition(task, "FAILED" if failed else "QUEUED")
-                task.error_code = "DEADLINE" if deadline else "ATTEMPT_LIMIT" if failed else None
+                task.error_code = (
+                    "INPUT_UNAVAILABLE"
+                    if missing_input
+                    else "DEADLINE"
+                    if deadline
+                    else "ATTEMPT_LIMIT"
+                    if failed
+                    else None
+                )
+                if missing_input:
+                    task.result_ref = "任务缺少可恢复输入，请核对后重新提交"
                 if attempt:
                     attempt.lease_until = None
                     attempt.lease_owner = None

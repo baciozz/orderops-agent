@@ -34,6 +34,9 @@ ALLOWED = {
     "SUPERSEDED": set(),
 }
 guard: ContextVar[tuple[str, int, Callable, int] | None] = ContextVar("durable_guard", default=None)
+sync_guard: ContextVar[tuple[str, int, Callable, int] | None] = ContextVar(
+    "sync_guard", default=None
+)
 
 
 def transition(task, target):
@@ -77,7 +80,7 @@ def check_fence(session, task_id, token, now):
 
 
 def enforce(session):
-    bound = guard.get()
+    bound = guard.get() or sync_guard.get()
     if bound:
         task_id, token, clock, _lease_seconds = bound
         check_fence(session, task_id, token, clock())

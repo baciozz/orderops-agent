@@ -17,6 +17,7 @@ CHAIN = [
     "budget_price_snapshot",
     "verification_retries",
     "upload_idempotency",
+    "sync_dispatch_receipts",
 ]
 
 
