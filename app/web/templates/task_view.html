@@ -8,14 +8,25 @@
   <h1>任务卡</h1>
   <dl>
     <dt>task_id</dt><dd>{{ view.card.task_id }}</dd>
-    <dt>order_id</dt><dd>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">{{ view.card.order_id }}</a>{% else %}无{% endif %}</dd>
+    <dt>order_id</dt><dd>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">{{ view.card.order_id }}</a>{% else %}尚未关联订单（新单尚未生成）{% endif %}</dd>
     <dt>状态</dt><dd>{{ view.card.status }}</dd>
     <dt>intent_revision</dt><dd>{{ view.card.intent_revision }}</dd>
     <dt>等待对象</dt><dd>{{ view.card.waiting_on }}</dd>
     <dt>模式</dt><dd>{{ view.card.mode }}</dd>
   </dl>
+  {% include "sheet_workflow.html" %}
+  {% include "task_failure_guidance.html" %}
+  {% include "task_input_forms.html" %}
   {% include "worker_form.html" %}
-  <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a></p>
+  {% if view.card.task_id != "T-STUB" %}
+  <p id="task-status-notice" role="status" aria-live="polite">当前显示为页面加载时的状态；可手动刷新核对。</p>
+  <script id="task-status-baseline" type="application/json">{{ {"card": view.card, "approval": view.approval, "result": view.result} | tojson }}</script>
+  <script src="/ui/static/task-status-notice.js" defer></script>
+  {% endif %}
+  <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a>（请先保留未提交内容）</p>
+  {% if audit_url %}
+  <p><a href="{{ audit_url }}">下载任务审计摘要（JSON）</a>：仅含已记录的回执、状态和来源元数据，不含原文或完整历史快照。</p>
+  {% endif %}
   {% if view.conflicts or view.questions %}
   <h1>待确认</h1>
   <ul>
@@ -33,32 +44,7 @@
   {% else %}
   <p>无</p>
   {% endif %}
-  <h1>旧新版对照</h1>
-  {% if view.line_diffs %}
-  <div class="table-scroll"><table>
-    <thead><tr><th scope="col">SKU</th><th scope="col">旧</th><th scope="col">新</th><th scope="col">差量</th><th scope="col">锁定</th><th scope="col">未执行</th></tr></thead>
-    <tbody>
-    {% for line in view.line_diffs %}
-    <tr><td>{{ line.sku_id }}</td><td>{{ line.old_qty }}</td><td>{{ line.new_qty }}</td><td>{{ line.delta }}</td><td>{{ line.locked_qty }}</td><td>{{ line.unexecuted_qty }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}
-  <p>无</p>
-  {% endif %}
-  <h1>下游影响清单</h1>
-  {% if view.downstream %}
-  <div class="table-scroll"><table>
-    <thead><tr><th scope="col">单据</th><th scope="col">类型</th><th scope="col">影响判定</th><th scope="col">原因</th></tr></thead>
-    <tbody>
-    {% for doc in view.downstream %}
-    <tr><td>{{ doc.doc_id }}</td><td>{{ doc.doc_type }}</td><td>{{ doc.verdict }}</td><td>{{ doc.reason or "" }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}
-  <p>无</p>
-  {% endif %}
+  {% include "approval_comparison.html" %}
   <h1>来源定位</h1>
   <p>{{ view.sources | length }} 条</p>
   {% for source in view.sources %}
@@ -78,9 +64,32 @@
   <section id="plan-actions" data-plan-id="{{ plan_id or '' }}" data-task-id="{{ view.card.task_id }}"
     data-plan-hash="{{ view.approval.plan_hash or '' }}" data-intent-revision="{{ view.card.intent_revision }}"
     data-approval-id="{{ approval_id or '' }}">
+  {% if duplicate_warning %}
+  <aside aria-labelledby="duplicate-heading">
+    <h2 id="duplicate-heading">疑似重复新单：需要逐项核对</h2>
+    <p>计划生成时发现关联旧单
+      <a href="{{ duplicate_warning.url }}">{{ duplicate_warning.order_id }}</a>。
+      这是历史计划发现，不保证旧单当前未变化。请打开旧单核对客户与商品行，
+      并逐项核对上方目标行与库存影响；继续创建可能导致重复订单及重复占用库存。</p>
+    {% if view.approval.approvable or renewable %}
+    <label><input type="checkbox" id="acknowledge-duplicate" autocomplete="off"
+      data-task-id="{{ view.card.task_id }}" data-plan-id="{{ plan_id }}"
+      data-plan-hash="{{ view.approval.plan_hash }}">
+      已核对仍要创建</label>
+    <p>仅确认当前任务的当前计划；不代表批准或提交。刷新、返回、操作后须重新核对。
+      未勾选时批准请求仍由服务端拒绝；重新批准也需重新勾选。</p>
+    {% else %}
+    <p>当前计划不可批准。以上仅为历史提示，不能在此确认创建。</p>
+    {% endif %}
+  </aside>
+  {% endif %}
   <p>批准身份：服务端 demo-user。批准后请点击「提交生效」执行当前计划。</p>
   <button type="button" id="approve" {% if not view.approval.approvable %}disabled{% endif %}
     aria-describedby="approval-reason">批准当前计划</button>
+  {% if renewable %}
+  <button type="button" id="renew" aria-describedby="approval-reason">重新批准当前计划</button>
+  <p>上次批准已过期。请重新核对差量与下游影响后批准；不会自动提交。</p>
+  {% endif %}
   <button type="button" id="commit" {% if not approval_id or not view.approval.approvable %}disabled{% endif %}>提交生效</button>
   <p id="approval-reason">{{ view.approval.disabled_reason or "" }}</p>
   <p id="action-message" role="status" aria-live="polite">{% if approval_id %}已批准，可以提交生效。{% endif %}</p>
@@ -91,6 +100,15 @@
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
     <dt>revision</dt><dd>{{ view.result.revision }}</dd>
     <dt>核验</dt><dd>{{ view.result.verification }}</dd>
+    {% if view.result.verification == 'pending' %}
+    <dt>核验进度</dt><dd>业务已提交，请勿重复提交。自动重试已执行 {{ view.result.verification_retry_attempts }} 次。
+      {% if view.result.verification_manual_required %}
+      自动核验已停止，需维护人员人工处理。处理后仅运行只读核验命令 verify-operation，不会修复或重新提交业务数据。
+      {% elif view.result.verification_next_attempt_at %}
+      下次可重试时间：{{ view.result.verification_next_attempt_at }}（由 watchdog 调用执行）。
+      {% else %}等待只读核验。{% endif %}
+    </dd>
+    {% endif %}
     <dt>下载</dt><dd>{% if view.result.download_url %}
       <a href="{{ view.result.download_url }}">下载变更清单（{{ view.card.mode }}）</a>
       {% else %}无{% endif %}</dd>

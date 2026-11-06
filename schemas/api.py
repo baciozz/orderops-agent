@@ -31,6 +31,13 @@ class InputSubmitRequest(ApiModel):
     selected_order_id: str | None = None
 
 
+class AnswerSubmitRequest(InputSubmitRequest):
+    """Backward-compatible answer-only optimistic concurrency extension."""
+
+    expected_intent_revision: int | None = Field(default=None, ge=0, strict=True)
+    expected_input_event_id: str | None = Field(default=None, min_length=1)
+
+
 class InputSubmitResponse(ApiModel):
     request_id: str
     correlation_id: str

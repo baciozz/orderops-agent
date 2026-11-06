@@ -22,6 +22,7 @@ from app import __version__
 from app.adapters.budget import reconcile_reservations
 from app.adapters.llm import resolve_mode
 from app.adapters.uploads import MAX_REQUEST_BYTES
+from app.api.browser_security import browser_request_error
 from app.api.demo_ui import router as demo_ui_router
 from app.api.dispatch import router as dispatch_router
 from app.api.errors import json_error
@@ -96,6 +97,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status_code = 500
         with log_context(request_id=request_id, correlation_id=correlation_id):
             try:
+                security_error = browser_request_error(request)
+                if security_error is not None:
+                    status_code = security_error.http_status
+                    request.state.error_code = security_error.code
+                    response = json_error(security_error, request)
+                    response.headers["x-frame-options"] = "DENY"
+                    response.headers["content-security-policy"] = "frame-ancestors 'none'"
+                    response.headers["x-request-id"] = request_id
+                    response.headers["x-correlation-id"] = correlation_id
+                    return response
                 # Bound actual streamed bytes, including requests without Content-Length.
                 # Starlette's cached Request replays _body to the downstream route.
                 body = bytearray()
@@ -109,6 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             ),
                             request,
                         )
+                        response.headers["x-frame-options"] = "DENY"
+                        response.headers["content-security-policy"] = "frame-ancestors 'none'"
                         response.headers["x-request-id"] = request_id
                         response.headers["x-correlation-id"] = correlation_id
                         return response
@@ -116,6 +129,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request._body = bytes(body)
                 response = await call_next(request)
                 status_code = response.status_code
+                response.headers["x-frame-options"] = "DENY"
+                response.headers["content-security-policy"] = "frame-ancestors 'none'"
                 response.headers["x-request-id"] = request_id
                 response.headers["x-correlation-id"] = correlation_id
                 return response

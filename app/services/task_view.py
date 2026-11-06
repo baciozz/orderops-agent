@@ -37,12 +37,11 @@ from app.orchestration.state import aware
 from app.services.kernel import (
     _available_map,
     _balances_for,
-    _doc_fingerprint_loaded,
     _known_skus,
-    _load_documents,
     _load_lines,
     _mentioned,
     _stable,
+    current_doc_fingerprint,
 )
 from app.services.source_spans import task_spans
 
@@ -125,9 +124,8 @@ def _approval_block(session, task, plan, now, generated_at):
     )
     order = session.get(SalesOrder, task.order_id) if task.order_id else None
     reason = None
-    if approval and (aware(approval.expires_at) <= now or approval.status == "EXPIRED"):
-        reason = "EXPIRED"
-    elif plan.status == "EXPIRED":
+    expired = bool(approval and (aware(approval.expires_at) <= now or approval.status == "EXPIRED"))
+    if plan.status == "EXPIRED":
         reason = "EXPIRED"
     elif plan.status == "COMMITTED" or (approval and approval.status == "CONSUMED"):
         reason = "CONSUMED"
@@ -136,7 +134,12 @@ def _approval_block(session, task, plan, now, generated_at):
         or task.status != "AWAITING_APPROVAL"
         or task.cancel_requested
         or plan.intent_revision != task.intent_revision
-        or (approval and (approval.status != "ACTIVE" or approval.plan_hash != plan.plan_hash))
+        or (
+            approval
+            and (
+                approval.status not in {"ACTIVE", "EXPIRED"} or approval.plan_hash != plan.plan_hash
+            )
+        )
         or (
             order
             and plan.plan_kind != "create"
@@ -157,10 +160,13 @@ def _approval_block(session, task, plan, now, generated_at):
         if (
             order
             and plan.plan_kind != "create"
-            and _stable(_doc_fingerprint_loaded(_load_documents(session, order.id)))
+            and _stable(current_doc_fingerprint(session, order.id, plan.expected_doc_revisions))
             != _stable(plan.expected_doc_revisions)
         ):
             reason = "STALE"
+    renewable = reason is None and expired
+    if renewable:
+        reason = "EXPIRED"
     return ApprovalBlock(
         plan_hash=plan.plan_hash,
         generated_at=generated_at,
@@ -284,6 +290,15 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
                 if operation
                 else None,
             ),
+            verification_manual_required=bool(
+                operation
+                and operation.committed_verification_pending
+                and operation.verification_manual_required
+            ),
+            verification_retry_attempts=operation.verification_retry_attempts if operation else 0,
+            verification_next_attempt_at=aware(operation.verification_next_attempt_at)
+            if operation and operation.verification_next_attempt_at
+            else None,
             download_url=f"/tasks/{task.id}/download" if diffs else None,
         ),
     )

@@ -6,10 +6,10 @@ Downstream documents are relinked in the same commit as the order revision.
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
+from schemas.common import SourceRef
 from schemas.enums import (
     ApprovalStatus,
     FulfillmentMode,
@@ -23,6 +23,7 @@ from seeds.golden import WAREHOUSE_ID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import Settings
 from app.db.models import (
     Approval,
     AuditRecord,
@@ -30,6 +31,7 @@ from app.db.models import (
     DocRevision,
     DownstreamLink,
     Event,
+    InputPayload,
     JobAttempt,
     MaterialUsage,
     Operation,
@@ -60,13 +62,16 @@ from app.domain.downstream import assess_downstream, locked_preview
 from app.domain.hashing import canonical_hash
 from app.domain.inventory import MovementView, rebuild_balances
 from app.domain.orders import derive_order_status
+from app.domain.plan_snapshot import (
+    build_plan_payload as _payload,
+)
+from app.domain.plan_snapshot import (
+    document_fingerprint as _doc_fingerprint,
+)
 from app.errors import AppError
 from app.observability import (
     enrich,
-    exception_code,
     get_logger,
-    log_context,
-    log_event,
     observed,
     task_fields_from_factory,
     task_log_fields,
@@ -133,9 +138,26 @@ def plan_change(
     source_refs: list[dict[str, object]] | None = None,
     client_event_key: str,
     bump_intent: bool = True,
+    bind_request: bool = False,
     now: datetime | None = None,
 ) -> PlanOutcome:
     """Precheck a change. A new event bumps intent and invalidates old approvals."""
+    request_hash = (
+        canonical_hash(
+            {
+                "binding_version": 1,
+                "kind": "direct_change",
+                "order_id": order_id,
+                "base_revision": base_revision,
+                "intent_revision": intent_revision,
+                "changes": [_clean_change(item) for item in changes],
+                "source_refs": source_refs or [],
+                "bump_intent": bump_intent,
+            }
+        )
+        if bind_request
+        else None
+    )
     moment = _now(now)
     session = session_factory()
     error: AppError | None = None
@@ -143,7 +165,7 @@ def plan_change(
     try:
         with begin_immediate(session):
             enforce(session)
-            prior = _existing_outcome(session, client_event_key)
+            prior = _existing_outcome(session, client_event_key, request_hash=request_hash)
             if prior is not None:
                 outcome, error = prior
             else:
@@ -158,6 +180,8 @@ def plan_change(
                     bump_intent=bump_intent,
                     now=moment,
                 )
+                if request_hash is not None:
+                    _store_request_binding(session, client_event_key, request_hash)
     finally:
         session.close()
     if error is not None:
@@ -289,6 +313,9 @@ def approve_plan(
                 )
             if plan.intent_revision != expected_intent_revision:
                 raise AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
+            if plan.plan_kind == PlanKind.CREATE:
+                _check_current_create(session, plan)
+                _plan_sheet_provenance(session, plan)
             duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
             if duplicate_of and not acknowledge_duplicate:
                 raise AppError(
@@ -304,8 +331,12 @@ def approve_plan(
                 )
             ).first()
             if active is not None and active.plan_hash == plan_hash:
-                enrich(approval_id=active.id)
-                return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
+                if _aware(active.expires_at) > moment:
+                    enrich(approval_id=active.id)
+                    return ApprovalOutcome(active.id, plan.id, _aware(active.expires_at))
+                # Renewal is an explicit approval action, not an extension of the
+                # old authorization. Preserve its history and issue a fresh ID.
+                active.status = ApprovalStatus.EXPIRED
             approval = Approval(
                 id=_id("AP"),
                 plan_id=plan.id,
@@ -346,6 +377,7 @@ def commit_plan(
     actor_id: str = DEMO_ACTOR_ID,
     now: datetime | None = None,
     acknowledge: bool = True,
+    verification_settings: Settings | None = None,
 ) -> CommitOutcome:
     moment = _now(now)
     request_hash = canonical_hash(
@@ -379,7 +411,9 @@ def commit_plan(
         replayed=outcome.replayed,
     )
     if outcome.replayed:
-        retry_pending_verification(session_factory, outcome.operation_id)
+        retry_pending_verification(
+            session_factory, outcome.operation_id, now=now, settings=verification_settings
+        )
     else:
         _post_verify(session_factory, outcome.operation_id)
     if acknowledge:
@@ -644,7 +678,7 @@ def _plan_new_locked(
     now: datetime,
 ) -> tuple[PlanOutcome | None, AppError | None]:
     customer, clarify = _resolve_customer(session, customer_code, customer_name)
-    chain_id = _id("CH")
+    chain_id, intent = _create_intent(session, client_event_key)
     if clarify is not None:
         return (
             _store_non_validated(
@@ -652,7 +686,7 @@ def _plan_new_locked(
                 order_id=None,
                 chain_id=chain_id,
                 base_revision=0,
-                intent_revision=1,
+                intent_revision=intent,
                 status=TaskStatus.NEEDS_CLARIFICATION,
                 questions=[clarify[0]],
                 candidates=clarify[1],
@@ -692,7 +726,7 @@ def _plan_new_locked(
                     order_id=None,
                     chain_id=chain_id,
                     base_revision=0,
-                    intent_revision=1,
+                    intent_revision=intent,
                     status=TaskStatus.NEEDS_CLARIFICATION,
                     questions=[f"无法唯一匹配 SKU：{token}"],
                     candidates=found,
@@ -715,7 +749,7 @@ def _plan_new_locked(
                     order_id=None,
                     chain_id=chain_id,
                     base_revision=0,
-                    intent_revision=1,
+                    intent_revision=intent,
                     status=TaskStatus.NEEDS_CLARIFICATION,
                     questions=[f"未知 SKU {sku_id}"],
                     candidates=found,
@@ -755,12 +789,14 @@ def _plan_new_locked(
             order_id=None,
             chain_id=chain_id,
             base_revision=0,
-            intent_revision=1,
+            intent_revision=intent,
             evaluation=evaluation,
             source_refs=line_refs,
             client_event_key=client_event_key,
             now=now,
         )
+        if outcome.status == TaskStatus.NEEDS_CLARIFICATION:
+            return outcome, None
         return outcome, AppError(
             evaluation.message or "缺货，整单拒绝",
             code="SHORTAGE",
@@ -783,7 +819,7 @@ def _plan_new_locked(
             customer_id=customer.id,
             chain_id=chain_id,
             base_revision=0,
-            intent_revision=1,
+            intent_revision=intent,
             changes=changes,
             evaluation=evaluation,
             source_refs=line_refs,
@@ -862,19 +898,23 @@ def _commit_locked(
             return None, AppError("订单版本已变化", code="STALE_DEPENDENCY", http_status=409)
         base_lines = _load_lines(session, order.id)
         customer_id = order.customer_id
-        current_docs = _doc_fingerprint_loaded(_load_documents(session, order.id))
-        for doc_id, expected in (plan.expected_doc_revisions or {}).items():
-            if expected.get("exists") is False:
-                current_docs[doc_id] = {
-                    "doc_type": "purchase_order",
-                    "exists": session.get(PurchaseOrder, doc_id) is not None,
-                }
+        current_docs = current_doc_fingerprint(
+            session, order.id, dict(plan.expected_doc_revisions or {})
+        )
         if _stable(current_docs) != _stable(dict(plan.expected_doc_revisions or {})):
             _revoke_if_active(approval)
             return None, AppError(
                 "下游单据版本或状态已变化", code="STALE_DEPENDENCY", http_status=409
             )
     else:
+        try:
+            _check_current_create(session, plan)
+        except AppError as exc:
+            _revoke_if_active(approval)
+            return None, exc
+        if approval.intent_revision != plan.intent_revision:
+            _revoke_if_active(approval)
+            return _err("意图已更新，旧批准不能提交", "STALE_INTENT", 409)
         order = None
         base_lines = {}
         customer_id = str((plan.normalized_changes or {})["customer_id"])
@@ -887,6 +927,11 @@ def _commit_locked(
         if balance is None or balance.revision != int(expected):
             _revoke_if_active(approval)
             return None, AppError("库存版本已变化", code="STALE_DEPENDENCY", http_status=409)
+    try:
+        sheet_provenance = _plan_sheet_provenance(session, plan)
+    except AppError as exc:
+        _revoke_if_active(approval)
+        return None, exc
     changes = list((plan.normalized_changes or {}).get("changes") or [])
     evaluation = evaluate_changes(
         lines=base_lines,
@@ -926,6 +971,7 @@ def _commit_locked(
         stock_revisions={sku: balances[sku].revision for sku in balances},
         verdicts=verdicts,
         expected_docs=expected_docs,
+        sheet_order_v1=sheet_provenance,
     )
     recomputed = canonical_hash(payload)
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
@@ -1131,6 +1177,83 @@ def _apply_reservations(
             current.revision = balance.revision
 
 
+def _bound_sheet_provenance(session: Session) -> dict[str, object] | None:
+    from app.services.sheet_order import accepted_provenance
+
+    task_id = bound_task_id.get()
+    task = session.get(Task, task_id) if task_id else None
+    return accepted_provenance(session, task) if task is not None else None
+
+
+def _plan_sheet_provenance(session: Session, plan: Plan) -> dict[str, object] | None:
+    from app.services.sheet_order import accepted_provenance, validate_provenance
+
+    if plan.plan_kind != PlanKind.CREATE:
+        return None
+    task = session.get(Task, plan.task_id)
+    if task is None:
+        raise AppError("任务不存在", code="NOT_FOUND", http_status=404)
+    accepted = accepted_provenance(session, task)
+    normalized = plan.normalized_changes or {}
+    if "sheet_order_v1" not in normalized:
+        if accepted is not None:
+            raise AppError("表格计划缺少来源证明", code="HASH_MISMATCH", http_status=409)
+        return None
+    canonical = validate_provenance(session, task, normalized["sheet_order_v1"])
+    if accepted is None or canonical != accepted:
+        raise AppError("表格计划来源证明不一致", code="HASH_MISMATCH", http_status=409)
+    rows = canonical["rows"]
+    assert isinstance(rows, list)
+    refs = [ref for row in rows for ref in row["refs"]]
+    correction = canonical["correction"]
+    if isinstance(correction, dict):
+        refs.append(
+            SourceRef(
+                source_id="SRC-INPUT",
+                field="quantity",
+                message_index=correction["input_sequence"],
+                text_excerpt=correction["text"],
+            ).model_dump(mode="json")
+        )
+    if canonical_hash({"refs": plan.source_refs}) != canonical_hash({"refs": refs}):
+        raise AppError("表格计划来源引用不一致", code="HASH_MISMATCH", http_status=409)
+    customer, changes = _sheet_business_rows(canonical)
+    if plan.status in {PlanStatus.VALIDATED, PlanStatus.APPROVED} and (
+        normalized.get("customer_id") != customer
+        or canonical_hash({"changes": normalized.get("changes")})
+        != canonical_hash({"changes": changes})
+    ):
+        raise AppError("表格计划业务行与来源证明不一致", code="HASH_MISMATCH", http_status=409)
+    return canonical
+
+
+def _sheet_business_rows(provenance: dict[str, object]) -> tuple[str, list[dict[str, object]]]:
+    """Project already validated provenance without accepting caller business rows."""
+    rows = provenance["rows"]
+    assert isinstance(rows, list) and rows
+    customers = {row["customer_id"] for row in rows}
+    assert len(customers) == 1
+    changes = [
+        {"mode": "increment", "sku_id": row["sku_id"], "qty": row["effective_qty"]} for row in rows
+    ]
+    return str(next(iter(customers))), changes
+
+
+def _check_sheet_evaluation(
+    provenance: dict[str, object] | None,
+    evaluation: ChangeEval,
+    *,
+    customer_id: str | None = None,
+) -> None:
+    if provenance is None:
+        return
+    customer, changes = _sheet_business_rows(provenance)
+    quantities = {str(change["sku_id"]): change["qty"] for change in changes}
+    actual = {sku: line.ordered_qty for sku, line in evaluation.lines.items()}
+    if quantities != actual or (customer_id is not None and customer_id != customer):
+        raise AppError("表格业务行与来源证明不一致", code="HASH_MISMATCH", http_status=409)
+
+
 def _store_validated(
     session: Session,
     *,
@@ -1149,6 +1272,8 @@ def _store_validated(
     verdicts: list[dict[str, object]] | None = None,
     expected_docs: dict[str, dict[str, object]] | None = None,
 ) -> PlanOutcome:
+    sheet_provenance = _bound_sheet_provenance(session) if plan_kind == PlanKind.CREATE else None
+    _check_sheet_evaluation(sheet_provenance, evaluation, customer_id=customer_id)
     stock_revisions = _revisions_for(session, set(evaluation.reservation_delta))
     verdicts = verdicts or []
     expected_docs = expected_docs or {}
@@ -1162,6 +1287,7 @@ def _store_validated(
         stock_revisions=stock_revisions,
         verdicts=verdicts,
         expected_docs=expected_docs,
+        sheet_order_v1=sheet_provenance,
     )
     plan_hash = canonical_hash(payload)
     dependencies = canonical_hash(
@@ -1191,6 +1317,7 @@ def _store_validated(
             "dependencies_hash": dependencies,
             "downstream": verdicts,
             "outcome": {"kind": "validated"},
+            **({"sheet_order_v1": sheet_provenance} if sheet_provenance is not None else {}),
         },
         client_event_key=client_event_key,
         now=now,
@@ -1225,11 +1352,14 @@ def _store_shortage(
     client_event_key: str,
     now: datetime,
 ) -> PlanOutcome:
+    provenance = _bound_sheet_provenance(session) if order_id is None else None
+    bounded = provenance is not None
+    _check_sheet_evaluation(provenance, evaluation)
     task, plan = _new_task_plan(
         session,
         order_id=order_id,
         chain_id=chain_id,
-        task_status=TaskStatus.FAILED,
+        task_status=TaskStatus.NEEDS_CLARIFICATION if bounded else TaskStatus.FAILED,
         plan_kind=PlanKind.CREATE if order_id is None else PlanKind.CHANGE,
         base_revision=base_revision,
         intent_revision=intent_revision,
@@ -1243,6 +1373,8 @@ def _store_shortage(
         error_code="SHORTAGE",
     )
     proposal_ids: list[str] = []
+    facts: list[dict[str, object]] = []
+    balances = _balances_for(session, set(evaluation.shortages)) if bounded else {}
     for sku, qty in sorted(evaluation.shortages.items()):
         proposal = PurchaseProposal(
             id=_id("PP"),
@@ -1254,13 +1386,55 @@ def _store_shortage(
         )
         session.add(proposal)
         proposal_ids.append(proposal.id)
+        if bounded:
+            balance = balances.get(sku)
+            available = balance.on_hand - balance.reserved if balance else 0
+            facts.append(
+                {
+                    "proposal_id": proposal.id,
+                    "sku_id": sku,
+                    "requested_qty": evaluation.lines[sku].ordered_qty,
+                    "available_qty": available,
+                    "shortage_qty": qty,
+                    "warehouse_id": WAREHOUSE_ID,
+                    "stock_revision": balance.revision if balance else 0,
+                }
+            )
+    if provenance is not None:
+        shortage = {
+            "plan_id": plan.id,
+            "input_event_id": provenance["current_event_id"],
+            "intent_revision": intent_revision,
+            "facts": facts,
+        }
+        record = {**provenance, "shortage": shortage}
+        question = (evaluation.message or "库存不足") + (
+            "。仅支持唯一行的有限修改，例如：蓝 L 改成 20。"
+            "仍需单独批准；若尝试次数已用完，请新建表格任务并重新上传。"
+        )
+        receipt = session.get(InputPayload, str(provenance["current_event_id"]))
+        if receipt is None or receipt.task_id != task.id:
+            raise AppError("表格输入来源失效", code="STALE_INTENT", http_status=409)
+        receipt.body = {**receipt.body, "sheet_order_v1": record, "questions": [question]}
+        plan.normalized_changes = {
+            **plan.normalized_changes,
+            "sheet_order_v1": record,
+            "outcome": {"kind": "shortage", "code": "SHORTAGE", "questions": [question]},
+        }
+        plan.plan_hash = canonical_hash(
+            {
+                "kind": "shortage",
+                "shortages": evaluation.shortages,
+                "sheet_order_v1": record,
+            }
+        )
     session.flush()
     return PlanOutcome(
         plan_id=plan.id,
         task_id=task.id,
         chain_id=chain_id,
         order_id=order_id,
-        status="REJECTED",
+        status=TaskStatus.NEEDS_CLARIFICATION if bounded else "REJECTED",
         base_revision=base_revision,
         intent_revision=intent_revision,
         plan_hash=plan.plan_hash,
@@ -1268,6 +1442,7 @@ def _store_shortage(
         requires_human_approval=False,
         issues=evaluation.issues,
         proposal_ids=proposal_ids,
+        questions=[question] if bounded else [],
     )
 
 
@@ -1473,52 +1648,17 @@ def _new_task_plan(
 
 
 def retry_pending_verification(
-    session_factory: sessionmaker[Session], operation_id: str | None = None
+    session_factory: sessionmaker[Session],
+    operation_id: str | None = None,
+    *,
+    now: datetime | None = None,
+    clock=None,
+    settings: Settings | None = None,
 ) -> int:
-    """Return readbacks attempted; errors leave the durable flag available for retry."""
-    with session_factory() as session:
-        pending = select(Operation.id).where(
-            Operation.status == "COMMITTED", Operation.committed_verification_pending.is_(True)
-        )
-        if operation_id is not None:
-            pending = pending.where(Operation.id == operation_id)
-        operation_ids = list(session.scalars(pending))
-    for pending_id in operation_ids:
-        started = perf_counter()
-        with log_context(exclude=("mode", "task_id", "attempt_id", "order_id")):
-            try:
-                with session_factory() as session:
-                    operation = session.get(Operation, pending_id)
-                    if operation is not None:
-                        plan = session.get(Plan, operation.plan_id)
-                        if plan is not None:
-                            enrich(**task_log_fields(session, plan.task_id))
-            except Exception:
-                # Optional log identifiers must not prevent the real readback attempt.
-                pass
-            outcome, error_code = "error", None
-            try:
-                _post_verify(session_factory, pending_id)
-                with session_factory() as session:
-                    operation = session.get(Operation, pending_id)
-                    outcome = (
-                        "cleared"
-                        if operation is not None and not operation.committed_verification_pending
-                        else "still_pending"
-                    )
-            except Exception as exc:
-                # Verification must not prevent acknowledgement or other pending retries.
-                # No compensating write: a concurrent successful verification wins.
-                error_code = exception_code(exc)
-            log_event(
-                logger,
-                "verification.retry",
-                operation_id=pending_id,
-                outcome=outcome,
-                error_code=error_code,
-                duration_ms=round((perf_counter() - started) * 1000, 3),
-            )
-    return len(operation_ids)
+    """Retry only due operations within the durable automatic retry budget."""
+    from app.services.verification import retry_pending
+
+    return retry_pending(session_factory, operation_id, now=now, clock=clock, settings=settings)
 
 
 def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
@@ -1543,6 +1683,14 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
                 and operation.committed_verification_pending
             ):
                 operation.committed_verification_pending = bool(problems)
+                if not problems:
+                    # Clear retry metadata atomically with the authoritative pass.
+                    # A crash before the retry wrapper returns cannot leave stale schedules.
+                    operation.verification_manual_required = False
+                    operation.verification_next_attempt_at = None
+                    operation.verification_lease_until = None
+                    operation.verification_lease_token = None
+                    operation.verification_last_error_code = None
     finally:
         session.close()
 
@@ -1593,45 +1741,39 @@ def consistency_problems(session: Session) -> list[str]:
     return problems
 
 
-def _payload(
-    *,
-    plan_kind: str,
-    order_id: str | None,
-    customer_id: str,
-    base_revision: int,
-    intent_revision: int,
-    evaluation: ChangeEval,
-    stock_revisions: dict[str, int],
-    verdicts: list[dict[str, object]] | None = None,
-    expected_docs: dict[str, dict[str, object]] | None = None,
-) -> dict[str, object]:
-    return {
-        "schema_version": "1.0",
-        "plan_kind": plan_kind,
-        "order_id": order_id,
-        "customer_id": customer_id,
-        "base_revision": base_revision,
-        "intent_revision": intent_revision,
-        "lines": [
-            {
-                "sku_id": line.sku_id,
-                "ordered_qty": line.ordered_qty,
-                "fulfillment_mode": line.fulfillment_mode,
-            }
-            for line in sorted(evaluation.lines.values(), key=lambda item: item.sku_id)
-        ],
-        "reservation_delta": [
-            {"sku_id": sku, "qty": evaluation.reservation_delta[sku]}
-            for sku in sorted(evaluation.reservation_delta)
-        ],
-        "stock_revisions": {sku: stock_revisions[sku] for sku in sorted(stock_revisions)},
-        "downstream": sorted(verdicts or [], key=lambda item: str(item["doc_id"])),
-        "expected_doc_revisions": expected_docs or {},
+def _store_request_binding(
+    session: Session,
+    client_event_key: str,
+    request_hash: str,
+) -> None:
+    """Attach request metadata atomically, outside the approval/business hash.
+
+    Validation failures that create no plan/event do not reserve a retry key.
+    Never infer a historical request from its resulting business snapshot.
+    """
+    event = session.scalar(
+        select(Event).where(
+            Event.thread_id == _THREAD,
+            Event.source_event_key == client_event_key,
+        )
+    )
+    if event is None:
+        return
+    plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    if plan is None:
+        # Diagnostic-only failures retain their first error; retry is fail-closed.
+        return
+    plan.normalized_changes = {
+        **(plan.normalized_changes or {}),
+        "direct_request_binding": {
+            "version": 1,
+            "request_hash": request_hash,
+        },
     }
 
 
 def _existing_outcome(
-    session: Session, client_event_key: str
+    session: Session, client_event_key: str, *, request_hash: str | None = None
 ) -> tuple[PlanOutcome | None, AppError | None] | None:
     event = session.scalar(
         select(Event).where(
@@ -1639,15 +1781,36 @@ def _existing_outcome(
             Event.source_event_key == client_event_key,
         )
     )
-    if event is None or not event.payload_ref:
+    if event is None:
         return None
-    plan = session.get(Plan, event.payload_ref)
+    plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    binding = (plan.normalized_changes or {}).get("direct_request_binding") if plan else None
+    if request_hash is not None or binding is not None:
+        if (
+            not isinstance(binding, dict)
+            or binding.get("version") != 1
+            or request_hash is None
+            or binding.get("request_hash") != request_hash
+        ):
+            raise AppError(
+                "事件键已用于其他请求，或历史请求身份无法验证；请使用新的事件键",
+                code="PLAN_REQUEST_CONFLICT",
+                http_status=409,
+            )
     if plan is None:
         return None
     task = session.get(Task, plan.task_id)
     stored = (plan.normalized_changes or {}).get("outcome") or {}
     kind = stored.get("kind")
-    if kind in {"shortage", "reject"}:
+    bounded_shortage = kind == "shortage" and "sheet_order_v1" in (plan.normalized_changes or {})
+    proposal_ids: list[str] = []
+    if bounded_shortage:
+        proof = _plan_sheet_provenance(session, plan)
+        assert proof is not None
+        shortage = proof["shortage"]
+        assert isinstance(shortage, dict)
+        proposal_ids = [fact["proposal_id"] for fact in shortage["facts"]]
+    if kind in {"shortage", "reject"} and not bounded_shortage:
         return None, AppError(
             str(stored.get("message") or "请求已拒绝"),
             code=str(stored.get("code") or "BUSINESS_CONFLICT"),
@@ -1661,7 +1824,7 @@ def _existing_outcome(
             task_id=plan.task_id,
             chain_id=task.chain_id if task else "",
             order_id=task.order_id if task else None,
-            status=task.status if task and kind == "clarify" else plan.status,
+            status=task.status if task and (kind == "clarify" or bounded_shortage) else plan.status,
             base_revision=plan.base_order_revision,
             intent_revision=plan.intent_revision,
             plan_hash=plan.plan_hash,
@@ -1670,9 +1833,106 @@ def _existing_outcome(
             issues=questions,
             questions=questions,
             candidates=candidates,
+            proposal_ids=proposal_ids,
         ),
         None,
     )
+
+
+def invalidate_create_intent(session: Session, task: Task) -> None:
+    """Allocate an unbound task epoch and retire candidates in the receipt transaction."""
+    plans = list(session.scalars(select(Plan).where(Plan.task_id == task.id)))
+    task.intent_revision = max([task.intent_revision, *(p.intent_revision for p in plans)]) + 1
+    for plan in plans:
+        if plan.plan_kind != PlanKind.CREATE or plan.status == PlanStatus.COMMITTED:
+            continue
+        plan.status = PlanStatus.INVALIDATED
+        for approval in session.scalars(
+            select(Approval).where(
+                Approval.plan_id == plan.id, Approval.status == ApprovalStatus.ACTIVE
+            )
+        ):
+            approval.status = ApprovalStatus.REVOKED
+
+
+def _create_intent(session: Session, client_event_key: str) -> tuple[str, int]:
+    """Durable input owns CREATE identity; standalone callers retain their own chain."""
+    from app.orchestration.inbox import latest_input
+
+    bound = bound_task_id.get()
+    task = session.get(Task, bound) if bound else None
+    if task is None or not session.scalar(
+        select(InputPayload.event_id).where(InputPayload.task_id == task.id).limit(1)
+    ):
+        return _id("CH"), 1
+    receipt = latest_input(session, task)
+    if (
+        receipt is None
+        or receipt.task_id != task.id
+        or receipt.event_id != client_event_key
+        or task.intent_revision < 1
+    ):
+        raise AppError("新单输入已失效", code="STALE_INTENT", http_status=409)
+    # First CREATE, or conversion from an inferred existing-order scope, owns a
+    # fresh business chain. Consecutive unbound CREATE corrections retain only a
+    # chain proven by a task-local kernel plan and its owned input receipt.
+    prior = list(
+        session.scalars(
+            select(Plan).where(Plan.task_id == task.id, Plan.plan_kind == PlanKind.CREATE)
+        )
+    )
+    if task.order_id is not None or not prior:
+        return _id("CH"), task.intent_revision
+    proven = session.scalar(
+        select(Event.id)
+        .join(Plan, Plan.id == Event.payload_ref)
+        .join(InputPayload, InputPayload.event_id == Event.source_event_key)
+        .where(
+            Plan.task_id == task.id,
+            Plan.plan_kind == PlanKind.CREATE,
+            InputPayload.task_id == task.id,
+            Event.thread_id == _THREAD,
+            Event.kind == "plan",
+            Event.order_id.is_(None),
+            Event.chain_id == task.chain_id,
+            Event.intent_revision == Plan.intent_revision,
+        )
+        .limit(1)
+    )
+    if not proven:
+        raise AppError("无法验证新单业务链", code="STALE_INTENT", http_status=409)
+    return task.chain_id, task.intent_revision
+
+
+def _check_current_create(session: Session, plan: Plan) -> None:
+    """Check both epoch and server-owned input provenance, including legacy plans."""
+    from app.orchestration.inbox import latest_input
+
+    task = session.get(Task, plan.task_id)
+    if (
+        task is None
+        or task.cancel_requested
+        or task.status != TaskStatus.AWAITING_APPROVAL
+        or plan.status not in {PlanStatus.VALIDATED, PlanStatus.APPROVED}
+        or task.intent_revision != plan.intent_revision
+    ):
+        raise AppError("新单计划已失效", code="STALE_INTENT", http_status=409)
+    receipt = latest_input(session, task)
+    if receipt is None:
+        return  # Standalone kernel/dispatcher tasks have no durable input receipt.
+    origins = list(session.scalars(select(Event).where(Event.payload_ref == plan.id)))
+    if (
+        receipt.task_id != task.id
+        or len(origins) != 1
+        or origins[0].thread_id != _THREAD
+        or origins[0].order_id is not None
+        or origins[0].kind != "plan"
+        or origins[0].source_event_key != receipt.event_id
+        or origins[0].intent_revision != plan.intent_revision
+        or origins[0].chain_id != task.chain_id
+        or task.order_id is not None
+    ):
+        raise AppError("新单输入已更新或无法验证", code="STALE_INTENT", http_status=409)
 
 
 def invalidate_order(
@@ -2038,36 +2298,18 @@ def _load_documents(session: Session, order_id: str) -> dict[str, list[dict[str,
     return {"production": production, "purchase": purchase}
 
 
-def _doc_fingerprint(
-    documents: dict[str, list[dict[str, Any]]],
-    verdicts: list[dict[str, object]] | None = None,
+def current_doc_fingerprint(
+    session: Session, order_id: str, expected_docs: dict[str, dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
-    found: dict[str, dict[str, Any]] = {}
-    for row in documents["production"]:
-        found[str(row["doc_id"])] = {
-            "doc_type": "production_order",
-            "doc_revision": int(row["doc_revision"]),
-            "status": row["status"],
-            "cut_qty": int(row["cut_qty"]),
-            "planned_qty": int(row["planned_qty"]),
-            "sku_id": row["sku_id"],
-        }
-    for row in documents["purchase"]:
-        found[str(row["doc_id"])] = {
-            "doc_type": "purchase_order",
-            "doc_revision": int(row["doc_revision"]),
-            "status": row["status"],
-            "received_qty": int(row["received_qty"]),
-            "ordered_qty": int(row["ordered_qty"]),
-            "change_state": row["change_state"],
-            "material_id": row["material_id"],
-            "supplier_id": row["supplier_id"],
-            "production_order_id": row["production_order_id"],
-        }
-    for verdict in verdicts or []:
-        if verdict["before"] is None:
-            found[str(verdict["doc_id"])] = {"doc_type": "purchase_order", "exists": False}
-    return found
+    """Include planned absent purchase IDs in both preview and commit checks."""
+    current = _doc_fingerprint_loaded(_load_documents(session, order_id))
+    for doc_id, expected in expected_docs.items():
+        if expected.get("exists") is False:
+            current[doc_id] = {
+                "doc_type": "purchase_order",
+                "exists": session.get(PurchaseOrder, doc_id) is not None,
+            }
+    return current
 
 
 def _doc_fingerprint_loaded(

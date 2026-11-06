@@ -1,8 +1,12 @@
 # Changelog
 
+- 将既有迁移资源原样移入 order_ops_migrations 包，修复普通 wheel 安装后的迁移定位；保留源码 CLI 与合成验收指纹。
+
 按 Keep a Changelog 风格记录面向使用者的变更，PR 标题保留原文。
 
 ## [Unreleased]
+
+- 新增操作者显式启动的有界 FIXTURE `worker-loop`：可配置轮间等待和轮数上限、优雅停止、未处理异常非零退出；与原 worker-once 复用单轮函数，不自动批准/提交或随 API 启动。详见 `docs/WORKER_LOOP.md`。
 
 - 新增零依赖、线程安全的 12 个进程内 counter 和 `GET /metrics` JSON 快照；测试自动清零，不跨进程聚合。
 - lease 获取/到期/fencing、durable commit recovery、watchdog 扫描和逐操作 pending 核验重试接入结构化事件；任务终态在事务提交后记录，不记录客户原文。

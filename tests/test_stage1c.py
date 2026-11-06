@@ -62,7 +62,9 @@ def _client(tmp_path) -> TestClient:
     init_db(engine)
     load_seed(make_session_factory(engine), database_url=url)
     engine.dispose()
-    return TestClient(create_app(Settings(_env_file=None, database_url=url)))
+    return TestClient(
+        base_url="http://127.0.0.1", app=create_app(Settings(_env_file=None, database_url=url))
+    )
 
 
 def test_R17_missing_capability_fails_the_task(kernel) -> None:

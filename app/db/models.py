@@ -33,6 +33,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     UniqueConstraint,
@@ -371,6 +372,24 @@ class TaskSource(Base):
     source_id: Mapped[str] = mapped_column(ForeignKey("input_source.id"), primary_key=True)
 
 
+class SourceUploadReceipt(Base):
+    """Optional upload identity, committed with the task-owned evidence."""
+
+    __tablename__ = "source_upload_receipt"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id", "source_id"],
+            ["task_source.task_id", "task_source.source_id"],
+            name="fk_upload_receipt_owner",
+        ),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_upload_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class JobAttempt(Base):
     __tablename__ = "job_attempt"
     __table_args__ = (
@@ -460,6 +479,16 @@ class Operation(Base):
     committed_verification_pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    verification_retry_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    verification_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_lease_token: Mapped[str | None] = mapped_column(String(64))
+    verification_manual_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
 
 
 class PurchaseProposal(Base):

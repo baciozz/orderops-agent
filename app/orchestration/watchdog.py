@@ -27,7 +27,7 @@ logger = get_logger(__name__)
         "pending_retries": 0,
     },
 )
-def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
+def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS, settings=None):
     changed = []
     scanned = outbox_created = 0
     with factory() as session, begin_immediate(session):
@@ -110,7 +110,7 @@ def scan(factory, *, clock=utcnow, limits=DEFAULT_LIMITS):
                     attempt.lease_until = None
                     attempt.lease_owner = None
                 changed.append(task.id)
-    retries = retry_pending_verification(factory)
+    retries = retry_pending_verification(factory, clock=clock, settings=settings)
     enrich(
         scanned_tasks=scanned,
         recovered_tasks=len(changed),

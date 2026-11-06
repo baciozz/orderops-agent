@@ -55,6 +55,7 @@ def create_plan(body: PlanChangeRequest, request: Request) -> PlanPreviewRespons
         base_revision=body.base_revision,
         intent_revision=body.intent_revision,
         changes=_changes(body),
+        bind_request=True,
         source_refs=_refs(body),
         client_event_key=body.client_event_key or f"plan-{body.order_id}-{body.intent_revision}",
     )
@@ -103,6 +104,7 @@ def commit(plan_id: str, body: CommitRequest, request: Request) -> CommitSuccess
         plan_hash=body.plan_hash,
         idempotency_key=body.idempotency_key,
         actor_id=DEMO_ACTOR_ID,
+        verification_settings=request.app.state.settings,
     )
     return CommitSuccess(
         request_id=request.state.request_id,

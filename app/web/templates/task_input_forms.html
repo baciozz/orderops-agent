@@ -1,0 +1,44 @@
+<section id="task-inputs" data-task-id="{{ view.card.task_id }}"
+  data-input-event-id="{{ input_event_id or '' }}"
+  data-intent-revision="{{ view.card.intent_revision }}" data-status="{{ view.card.status }}">
+  <h2>补充证据与澄清</h2>
+  <p>只使用合成数据。上传仅保存证据，不会修改订单；每次回答须重新勾选需要的文件，未勾选的历史证据不会发送。</p>
+  {% if can_answer %}
+  <form id="source-upload" class="input-form">
+    <label for="evidence-file">上传一个文件（.txt / .md / .xlsx，每个最多 5 MiB，每任务最多 3 个）</label>
+    <input id="evidence-file" type="file" accept=".txt,.md,.xlsx" required>
+    <button type="submit">上传证据</button>
+    <p id="upload-message" role="status" aria-live="polite"></p>
+  </form>
+  {% endif %}
+  <ul id="uploaded-sources">
+    {% for source in uploaded_sources %}
+    <li><label>{% if can_answer %}<input type="checkbox" name="answer-source" value="{{ source.id }}">{% endif %}
+      {{ source.name }}（{{ source.size }} 字节） · {{ source.id }}</label></li>
+    {% else %}<li data-empty>暂无上传文件</li>{% endfor %}
+  </ul>
+  {% if uploaded_sources %}
+  <p id="evidence-retention-notice">上传成功仅表示当时已解析并保存提取内容，不代表原始文件仍被保留。原始文件使用临时存储，本页未检查其是否存在。即使原始文件丢失，已保存的提取内容仍可读取；使用同一上传键重试不会恢复原始文件。审计摘要不包含原始文件。</p>
+  {% endif %}
+  {% if can_answer %}
+  <form id="clarification-answer" class="input-form">
+    <label for="answer-text">回答或修订意图</label>
+    <textarea id="answer-text" rows="3" placeholder="例如：只改未开裁"></textarea>
+    <p class="hint">FIXTURE 仅识别内置示例及支持的表格格式。回答会使旧批准失效；提交后另行点击运行 worker，再核对计划、批准与提交生效。</p>
+    <button type="submit">提交回答并入队</button>
+    <p id="answer-message" role="status" aria-live="polite"></p>
+  </form>
+  {% elif not input_event_id %}
+  <p>该历史任务无可核对的输入记录，请从新任务开始。</p>
+  {% else %}
+  <p>当前状态不可回答或上传。排队任务请先运行 worker；已结束的任务不能在此恢复。</p>
+  {% endif %}
+  {% if can_cancel %}
+  <button type="button" id="cancel-task">取消此任务…</button>
+  <p>取消仅终止尚未提交的任务，不会撤销已经生效的订单。</p>
+  {% else %}
+  <p>当前状态不可取消。</p>
+  {% endif %}
+  <p id="task-input-message" role="status" aria-live="polite"></p>
+  <noscript><p>上传、回答与取消需要 JavaScript。页面刷新不会自动提交任何操作。</p></noscript>
+</section>

@@ -84,7 +84,7 @@ def test_default_settings_ignore_live_dotenv(tmp_path, monkeypatch):
     assert Settings().live_enabled is False
     assert resolve_mode(get_settings()).mode == "FIXTURE"
     assert get_settings().llm_api_key_value() is None
-    with TestClient(create_app()) as client:
+    with TestClient(base_url="http://127.0.0.1", app=create_app()) as client:
         assert client.get("/health").json()["mode"] == "FIXTURE"
 
 

@@ -1,0 +1,39 @@
+/workspace/shared/order-ops-venv/bin/python scripts/eval_offline.py
+{"scanned_tasks": 0, "recovered_tasks": 0, "outbox_created": 0, "pending_retries": 0, "outcome": "started", "duration_ms": 0.0, "event": "watchdog.scan", "ts": "2026-11-05T18:09:37.249113+00:00", "level": "INFO", "logger": "oos.orchestration.watchdog", "message": "watchdog.scan"}
+{"scanned_tasks": 0, "recovered_tasks": 0, "outbox_created": 0, "pending_retries": 0, "task_id": "T-6ea7f7a9f9d4", "attempt_id": "JA-060e78b26f3a", "order_id": "SO-1001", "operation_id": "OP-93c0b7269fbf", "outcome": "cleared", "error_code": null, "duration_ms": 14.608, "event": "verification.retry", "ts": "2026-11-05T18:09:37.268900+00:00", "level": "INFO", "logger": "oos.services.kernel", "message": "verification.retry"}
+{"scanned_tasks": 0, "recovered_tasks": 0, "outbox_created": 0, "pending_retries": 1, "outcome": "success", "duration_ms": 20.033, "event": "watchdog.scan", "ts": "2026-11-05T18:09:37.269125+00:00", "level": "INFO", "logger": "oos.orchestration.watchdog", "message": "watchdog.scan"}
+{"task_id": "T-6ea7f7a9f9d4", "attempt_id": "JA-060e78b26f3a", "order_id": "SO-1001", "event_id": "EV-741d7644eb96", "delivery_id": "OB-090aab167790", "consumer": "ui", "outcome": "success", "duration_ms": 4.683, "event": "outbox.delivered", "ts": "2026-11-05T18:09:37.276319+00:00", "level": "INFO", "logger": "oos.orchestration.outbox", "message": "outbox.delivered"}
+{"scanned_tasks": 0, "recovered_tasks": 0, "outbox_created": 0, "pending_retries": 0, "outcome": "started", "duration_ms": 0.0, "event": "watchdog.scan", "ts": "2026-11-05T18:09:37.286169+00:00", "level": "INFO", "logger": "oos.orchestration.watchdog", "message": "watchdog.scan"}
+{"scanned_tasks": 0, "recovered_tasks": 0, "outbox_created": 0, "pending_retries": 0, "outcome": "success", "duration_ms": 3.316, "event": "watchdog.scan", "ts": "2026-11-05T18:09:37.289485+00:00", "level": "INFO", "logger": "oos.orchestration.watchdog", "message": "watchdog.scan"}
+{"task_id": "T-a05baa4c1b0d", "mode": "FIXTURE", "attempt_id": "JA-380e07126d6c", "order_id": null, "outcome": "started", "duration_ms": 0.0, "event": "dispatch.start", "ts": "2026-11-05T18:09:37.307648+00:00", "level": "INFO", "logger": "oos.orchestration.dispatch", "message": "dispatch.start"}
+{"task_id": "T-a05baa4c1b0d", "mode": "FIXTURE", "attempt_id": "JA-380e07126d6c", "order_id": null, "model": "fixture", "prompt_kind": "parser.output", "input_tokens": 0, "output_tokens": 0, "outcome": "success", "duration_ms": 0.027, "event": "model.call", "ts": "2026-11-05T18:09:37.309818+00:00", "level": "INFO", "logger": "oos.adapters.fixture_model", "message": "model.call"}
+{"task_id": "T-a05baa4c1b0d", "mode": "FIXTURE", "attempt_id": "JA-380e07126d6c", "order_id": null, "status": "VALIDATED", "outcome": "success", "error_code": null, "duration_ms": 208.336, "event": "dispatch.finish", "ts": "2026-11-05T18:09:37.510514+00:00", "level": "INFO", "logger": "oos.orchestration.dispatch", "message": "dispatch.finish"}
+{"plan_id": "P-3ae65c1f15be", "actor": "demo-user", "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "base_revision": 1, "intent_revision": 2, "approval_id": "AP-20a53fdae140", "outcome": "success", "duration_ms": 2.626, "event": "approval.granted", "ts": "2026-11-05T18:09:37.514248+00:00", "level": "INFO", "logger": "oos.services.kernel", "message": "approval.granted"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "actor": "demo-user", "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "base_revision": 1, "intent_revision": 2, "revision": 2, "replayed": false, "status": "SUCCEEDED", "error_code": null, "outcome": "success", "event": "task.finished", "ts": "2026-11-05T18:09:37.538527+00:00", "level": "INFO", "logger": "oos.db.session", "message": "task.finished"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "actor": "demo-user", "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "base_revision": 1, "intent_revision": 2, "revision": 2, "replayed": false, "outcome": "success", "duration_ms": 24.335, "event": "commit.applied", "ts": "2026-11-05T18:09:37.538736+00:00", "level": "INFO", "logger": "oos.services.kernel", "message": "commit.applied"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": null, "outcome": "started", "duration_ms": 0.0, "event": "recovery.durable_commit", "ts": "2026-11-05T18:09:37.551800+00:00", "level": "INFO", "logger": "oos.orchestration.recovery", "message": "recovery.durable_commit"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": true, "actor": "demo-user", "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "revision": 2, "outcome": "success", "duration_ms": 1.875, "event": "commit.applied", "ts": "2026-11-05T18:09:37.553881+00:00", "level": "INFO", "logger": "oos.services.kernel", "message": "commit.applied"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": true, "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "outcome": "success", "duration_ms": 3.064, "event": "recovery.durable_commit", "ts": "2026-11-05T18:09:37.554849+00:00", "level": "INFO", "logger": "oos.orchestration.recovery", "message": "recovery.durable_commit"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": null, "outcome": "started", "duration_ms": 0.0, "event": "recovery.durable_commit", "ts": "2026-11-05T18:09:37.558328+00:00", "level": "INFO", "logger": "oos.orchestration.recovery", "message": "recovery.durable_commit"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": true, "actor": "demo-user", "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "revision": 2, "outcome": "success", "duration_ms": 1.109, "event": "commit.applied", "ts": "2026-11-05T18:09:37.559556+00:00", "level": "INFO", "logger": "oos.services.kernel", "message": "commit.applied"}
+{"plan_id": "P-3ae65c1f15be", "approval_id": "AP-20a53fdae140", "replayed": true, "task_id": "T-a05baa4c1b0d", "attempt_id": "JA-380e07126d6c", "order_id": "SO-1001", "outcome": "success", "duration_ms": 2.305, "event": "recovery.durable_commit", "ts": "2026-11-05T18:09:37.560630+00:00", "level": "INFO", "logger": "oos.orchestration.recovery", "message": "recovery.durable_commit"}
+FIXTURE — FIXTURE results measure the pipeline/kernel given explicit structured answers, not model understanding of input wording. No model or HTTP calls are made.
+Total: 53/53
+### 兜底能力（safeguards）
+
+| Category | Pass | Fail | Known issues | Pass rate |
+|---|---:|---:|---:|---:|
+| invalid_qty | 8 | 0 | 0 | 100.0% |
+| unknown_order | 7 | 0 | 0 | 100.0% |
+| injection | 8 | 0 | 0 | 100.0% |
+| 小计 | 23 | 0 | 0 | 100.0% |
+
+### 管道回归（pipeline regression）：不代表模型理解准确率
+
+| Category | Pass | Fail | Known issues | Pass rate |
+|---|---:|---:|---:|---:|
+| alias | 9 | 0 | 0 | 100.0% |
+| ambiguous_wording | 9 | 0 | 0 | 100.0% |
+| multi_line_change | 8 | 0 | 0 | 100.0% |
+| golden | 4 | 0 | 0 | 100.0% |
+| 小计 | 30 | 0 | 0 | 100.0% |

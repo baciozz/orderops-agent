@@ -1,0 +1,114 @@
+/workspace/shared/order-ops-venv/bin/python -m ruff check .
+All checks passed!
+/workspace/shared/order-ops-venv/bin/python -m ruff format --check .
+127 files already formatted
+/workspace/shared/order-ops-venv/bin/python -m mypy
+Success: no issues found in 64 source files
+/workspace/shared/order-ops-venv/bin/python -m pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=xml
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /workspace/shared/order-ops-baseline
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.1.0, anyio-4.16.0
+collected 922 items
+
+tests/test_acceptance_placeholders.py ...                                [  0%]
+tests/test_architecture_doc.py ...                                       [  0%]
+tests/test_budget.py ............                                        [  1%]
+tests/test_budget_reconciliation.py ................                     [  3%]
+tests/test_cleanup_wiring.py .....                                       [  4%]
+tests/test_commit_verification_pending.py .........                      [  5%]
+tests/test_compat_provider.py .......................................... [  9%]
+........................................................................ [ 17%]
+................                                                         [ 19%]
+tests/test_contracts.py ...                                              [ 19%]
+tests/test_db_session.py .....                                           [ 20%]
+tests/test_demo_ui.py ..........                                         [ 21%]
+tests/test_domain.py ...                                                 [ 21%]
+tests/test_domain_coverage.py .......................................... [ 26%]
+...................                                                      [ 28%]
+tests/test_env_isolation.py ..                                           [ 28%]
+tests/test_eval_offline.py ............                                  [ 29%]
+tests/test_health.py .........                                           [ 30%]
+tests/test_multiprocess.py ...                                           [ 31%]
+tests/test_observability.py ...........................................  [ 35%]
+tests/test_qi_received_po_supplement.py ..............                   [ 37%]
+tests/test_qi_supplement_boundaries.py ................                  [ 38%]
+tests/test_qi_uncut_mo_expand.py ..........                              [ 40%]
+tests/test_qi_verification_retry.py ..................                   [ 41%]
+tests/test_qi_zero_qty_not_cancel.py .....                               [ 42%]
+tests/test_registry.py .....                                             [ 43%]
+tests/test_review_customer_hash.py .                                     [ 43%]
+tests/test_review_order_cut_scope.py .                                   [ 43%]
+tests/test_review_po_reduce_to_received.py .                             [ 43%]
+tests/test_robust_errors.py ............................................ [ 48%]
+..........                                                               [ 49%]
+tests/test_seed.py ...                                                   [ 49%]
+tests/test_stage1a.py ........................                           [ 52%]
+tests/test_stage1b.py .........                                          [ 53%]
+tests/test_stage1c.py ........                                           [ 54%]
+tests/test_stage2.py ...............................                     [ 57%]
+tests/test_stage3.py .....................................               [ 61%]
+tests/test_stage3_review_fixes.py ...................................... [ 65%]
+........................................................................ [ 73%]
+........................................................................ [ 81%]
+........................................................................ [ 88%]
+...............................                                          [ 92%]
+tests/test_stage4_live.py .............................................. [ 97%]
+.............                                                            [ 98%]
+tests/test_task_view.py ..                                               [ 98%]
+tests/test_uploads.py ..........                                         [100%]
+
+=============================== warnings summary ===============================
+../order-ops-venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /workspace/shared/order-ops-venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name                                          Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------
+app/adapters/budget.py                           95      3    97%   57, 71, 221
+app/adapters/live_model.py                       89      1    99%   41
+app/adapters/live_prompts.py                    108      8    93%   172, 179-180, 182, 184, 187, 191, 193
+app/adapters/llm.py                              46      1    98%   87
+app/adapters/providers/openai_compatible.py      55      4    93%   40, 42, 81, 91
+app/adapters/providers/openai_responses.py       45      3    93%   39, 41, 71
+app/adapters/providers/schema.py                 97     10    90%   41, 86, 88, 92, 97, 105-108, 114, 127
+app/adapters/uploads.py                         121      4    97%   74, 104, 121, 174
+app/api/demo_ui.py                               76      3    96%   68, 81, 108
+app/api/inputs.py                                51      4    92%   49, 74, 78, 90
+app/api/orders.py                                55      2    96%   181, 204
+app/api/sources.py                              110     11    90%   60, 64, 70, 76, 84, 90, 92, 96, 143, 153-154
+app/api/tasks.py                                 54      1    98%   123
+app/cli.py                                       48      3    94%   30-31, 64
+app/config.py                                    70      2    97%   59, 67
+app/db/session.py                                61      3    95%   100, 111, 114
+app/db/types.py                                  18      1    94%   24
+app/domain/changes.py                           155      2    99%   101, 106
+app/domain/inventory.py                          42      2    95%   31, 60
+app/errors.py                                    67      2    97%   116-122
+app/observability.py                            179     12    93%   86-87, 96, 124, 157-158, 252-254, 303-304, 311-312
+app/orchestration/agents.py                     117      6    95%   61, 156, 160, 177, 180-181
+app/orchestration/dispatch.py                   388     19    95%   248, 272, 310, 318, 347, 547, 554, 557, 561, 575, 610-612, 747, 816, 886, 896, 904, 946
+app/orchestration/fixtures.py                    82      3    96%   125, 132, 193
+app/orchestration/inbox.py                       51      1    98%   66
+app/orchestration/outbox.py                      60      3    95%   25-26, 67
+app/orchestration/registry.py                    53      5    91%   35, 53, 75, 114-115
+app/orchestration/router.py                      65      6    91%   63, 73, 85, 93, 100-101
+app/orchestration/tools.py                      121      6    95%   73, 102, 121, 145, 179, 284
+app/orchestration/watchdog.py                    46      1    98%   80
+app/orchestration/worker.py                      94      4    96%   91-94
+app/services/kernel.py                          867     63    93%   185-189, 233, 283, 285, 307-308, 395, 410, 417, 455, 457, 460, 462, 509, 511, 552, 604-615, 687-689, 733, 771-776, 841, 843, 852, 882, 899-900, 917-918, 1088, 1092, 1387, 1496-1498, 1573, 1575, 1584, 1592, 1646, 1651, 1715, 1772, 1785, 1788, 1799, 1818, 1837, 1874, 1897, 2008, 2023, 2134, 2145, 2156, 2263, 2266
+app/services/seed.py                            154     30    81%   52, 79-80, 85, 90-91, 93, 98, 100, 110, 112, 117, 119, 128, 140, 144, 147, 156, 162, 164, 174, 181, 188, 192, 195, 197, 201, 204, 208, 215
+app/services/task_view.py                        92      8    91%   57, 93, 131, 149, 156, 163, 176, 206
+---------------------------------------------------------------------------
+TOTAL                                          4868    237    95%
+
+30 files skipped due to complete coverage.
+Coverage XML written to file coverage.xml
+Required test coverage of 90.0% reached. Total coverage: 95.13%
+================== 922 passed, 1 warning in 140.65s (0:02:20) ==================

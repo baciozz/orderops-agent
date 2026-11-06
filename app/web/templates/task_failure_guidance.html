@@ -1,0 +1,27 @@
+{% if failure_guidance %}
+<section aria-labelledby="task-failure-heading" id="task-failure-guidance">
+  <h2 id="task-failure-heading">任务失败：原因与下一步</h2>
+  {% if failure_guidance.fixture_not_found %}
+  <p>FIXTURE_NOT_FOUND：输入未匹配演示的精确示例，系统不会因此改为调用 live 模型。</p>
+  {% elif failure_guidance.intent_order %}
+  <p>订单已有较新输入，或无法可靠确定输入先后。本次解析未取得订单意图，也未撤销目标批准。
+    请人工核对订单当前状态和最新要求，<a href="/ui/demo/submit">明确选择订单后使用新的提交标识重新提交</a>；不要重试原失败输入。
+    新任务仍需核对计划、批准并提交。</p>
+  {% else %}
+  <p>暂无法提供此失败的安全说明。请向维护人员提供任务编号及任务审计摘要，核对原因后再决定下一步。</p>
+  {% endif %}
+  <p>此任务已结束，不能在这里回答、上传或恢复；刷新不会重新执行任务。</p>
+  {% if failure_guidance.has_operation %}
+  <p>已找到关联执行记录，请勿重复提交或直接重建任务。请先查看下方结果与核验状态；若结果不完整，请由维护人员核对执行记录。</p>
+  {% else %}
+  <p>未找到此任务的关联执行记录。再次操作前仍请核对订单当前状态，避免重复业务。</p>
+    {% if failure_guidance.fixture_not_found %}
+  <p>如需继续合成演示，请按业务选择
+    <a href="/ui/demo/submit">提交改单（预填精确示例）</a>或
+    <a href="/ui/demo/new-stock">新建库存订单（精确示例）</a>。
+    保留入口的完整示例文本并使用新提交标识创建新任务；不要复用原失败任务的提交标识。
+    新任务仍需手动运行 worker、核对计划、批准并提交，不保证当前订单状态适用。</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}

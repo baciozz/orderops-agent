@@ -201,7 +201,7 @@ def test_R23_live_without_price_or_key_stays_fixture() -> None:
     assert price_mode.mode == "FIXTURE"
     assert price_mode.live_block_reason == "PRICES_NOT_CONFIGURED"
     app = create_app(missing_price)
-    health = TestClient(app).get("/health")
+    health = TestClient(base_url="http://127.0.0.1", app=app).get("/health")
     assert health.status_code == 200
     body = health.json()
     assert body["mode"] == "FIXTURE"
@@ -217,7 +217,9 @@ def test_R23_live_without_price_or_key_stays_fixture() -> None:
     key_mode = resolve_mode(missing_key)
     assert key_mode.mode == "FIXTURE"
     assert key_mode.live_block_reason == "KEY_NOT_CONFIGURED"
-    page = TestClient(create_app(missing_key)).get("/ui/tasks/T-STUB")
+    page = TestClient(base_url="http://127.0.0.1", app=create_app(missing_key)).get(
+        "/ui/tasks/T-STUB"
+    )
     assert page.status_code == 200
     assert "FIXTURE" in page.text
     assert "LIVE" not in page.text.split("运行模式：", 1)[1]

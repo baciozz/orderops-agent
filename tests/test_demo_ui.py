@@ -41,7 +41,7 @@ def web(session_factory, database_url, monkeypatch):
 
     monkeypatch.setattr(LiveLLMClient, "__init__", forbidden)
     app = create_app(Settings(_env_file=None, database_url=database_url))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield client, session_factory, app
 
 
@@ -226,10 +226,113 @@ def test_fresh_database_has_friendly_empty_task_list(tmp_path, existing_file):
     if existing_file:
         path.touch()
     app = create_app(Settings(_env_file=None, database_url=f"sqlite:///{path}"))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         assert client.get("/ui").status_code == 200
         response = client.get("/ui/demo/tasks")
         assert response.status_code == 200 and "暂无任务" in response.text
         assert client.post("/ui/demo/worker-once").json()["error"]["code"] == "DEMO_NOT_READY"
         assert "disabled" in Page(client.get("/ui/tasks/T-STUB").text).buttons["approve"]
     assert path.exists() == existing_file
+
+
+def test_evidence_refresh_and_answer_workflow(web):
+    from app.orchestration.fixtures import TEXT_ALL_NAVY, TEXT_ONLY_UNCUT
+
+    client, factory, _ = web
+    task_id, url, _ = submit(client, text=TEXT_ALL_NAVY)
+    client.post("/ui/demo/worker-once")
+    assert 'id="clarification-answer"' in client.get(url).text
+    uploaded = client.post(
+        "/sources", data={"task_id": task_id}, files={"file": ("note.md", b"synthetic note")}
+    )
+    assert uploaded.status_code == 200
+    source_id = uploaded.json()["source_id"]
+    for _ in range(2):
+        html = client.get(url).text
+        assert "note.md" in html
+        assert f'name="answer-source" value="{source_id}"' in html
+        assert "checked" not in html
+    body = {
+        "thread_id": f"demo-answer-{task_id}",
+        "client_event_key": "answer-1",
+        "text": TEXT_ONLY_UNCUT,
+        "source_ids": [],
+    }
+    answer = client.post(f"/tasks/{task_id}/answers", json=body)
+    assert answer.status_code == 202
+    repeat = client.post(f"/tasks/{task_id}/answers", json=body)
+    assert repeat.json()["event_id"] == answer.json()["event_id"]
+    queued_page = client.get(url).text
+    assert 'id="clarification-answer"' not in queued_page
+    assert 'id="source-upload"' not in queued_page
+    assert source_id in queued_page
+    result = client.post("/ui/demo/worker-once").json()["result"]
+    assert result["status"] == "AWAITING_APPROVAL"
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(Approval)) == 0
+
+
+def test_evidence_selection_reaches_existing_answer_contract(web):
+    from app.db.models import InputPayload
+    from app.orchestration.fixtures import TEXT_ALL_NAVY, TEXT_ONLY_UNCUT
+
+    client, factory, _ = web
+    task_id, url, _ = submit(client, text=TEXT_ALL_NAVY)
+    client.post("/ui/demo/worker-once")
+    source_id = client.post(
+        "/sources", data={"task_id": task_id}, files={"file": ("answer.txt", b"synthetic")}
+    ).json()["source_id"]
+    result = client.post(
+        f"/tasks/{task_id}/answers",
+        json={
+            "thread_id": f"demo-answer-{task_id}",
+            "client_event_key": "selected-evidence",
+            "text": TEXT_ONLY_UNCUT,
+            "source_ids": [source_id],
+        },
+    )
+    assert result.status_code == 202
+    with factory() as session:
+        payload = session.get(InputPayload, result.json()["event_id"])
+        assert payload.body["source_ids"] == [source_id]
+    assert 'name="answer-source"' not in client.get(url).text
+
+
+def test_cancel_and_terminal_controls(web):
+    client, _, _ = web
+    task_id, url, _ = submit(client)
+    page = client.get(url)
+    assert 'id="cancel-task"' in page.text
+    revision = client.get(f"/tasks/{task_id}/view").json()["card"]["intent_revision"]
+    stale = client.post(f"/tasks/{task_id}/cancel", json={"expected_intent_revision": revision - 1})
+    assert stale.status_code == 409
+    body = {"expected_intent_revision": revision}
+    assert client.post(f"/tasks/{task_id}/cancel", json=body).json()["status"] == "CANCELLED"
+    assert client.post(f"/tasks/{task_id}/cancel", json=body).json()["status"] == "CANCELLED"
+    page = client.get(url).text
+    for control in ("cancel-task", "clarification-answer", "source-upload"):
+        assert f'id="{control}"' not in page
+    answer = client.post(
+        f"/tasks/{task_id}/answers",
+        json={"thread_id": task_id, "client_event_key": "late", "text": TEXT_BLACK_TO_WHITE},
+    )
+    assert answer.status_code == 409
+    assert client.post("/ui/demo/worker-once").json()["result"] is None
+
+
+def test_upload_rejection_and_escaped_filename(web):
+    client, _, _ = web
+    task_id, url, _ = submit(client)
+    client.post("/ui/demo/worker-once")
+    bad = client.post(
+        "/sources", data={"task_id": task_id}, files={"file": ("bad.exe", b"not supported")}
+    )
+    assert bad.status_code == 400
+    assert bad.json()["parser_status"] == "rejected"
+    assert "bad.exe" not in client.get(url).text
+    name = "<img onerror=alert(1)>.txt"
+    good = client.post("/sources", data={"task_id": task_id}, files={"file": (name, b"synthetic")})
+    assert good.status_code == 200
+    html = client.get(url).text
+    assert "<img onerror" not in html
+    assert "&lt;img onerror=alert(1)&gt;.txt" in html

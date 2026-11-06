@@ -111,11 +111,11 @@ mode 只记录可靠事实，不从 ModelUsage 是否存在推断：
 | `lease.expired_or_fenced` | `app/orchestration/state.py::check_fence` 拒绝旧 attempt；`watchdog.py::scan` 发现 deadline、停滞或 lease 到期 |
 | `recovery.durable_commit` | `app/orchestration/recovery.py::durable_commit`，started / success / failed，含 replayed；异常原样抛出 |
 | `watchdog.scan` | `app/orchestration/watchdog.py::scan`，started 与 success（完成）或 failed；完成时含扫描、恢复、补建 outbox 和 pending 重试数 |
-| `verification.retry` | `app/services/kernel.py::retry_pending_verification`，每个待核验操作一次：cleared / still_pending / error；异常仅记录错误码，继续其它操作 |
+| `verification.retry` | `app/services/kernel.py::retry_pending_verification`，每个实际领取的到期重试一次：cleared / still_pending / error；异常仅记录错误码，继续其它操作 |
 
 ## 进程内指标
 
-`GET /metrics` 返回 JSON 对象，12 个 counter 始终存在（无事件时为 0），例如
+`GET /metrics` 返回 JSON 对象，13 个 counter 始终存在（无事件时为 0），例如
 `{"tasks_enqueued":1,"worker_claims":1,...}`。这是演示用 JSON，**不是 Prometheus 文本格式**。
 不访问数据库、不调用模型、不新增依赖；`/health` 响应保持原契约。
 
@@ -131,6 +131,7 @@ fixture 每个测试前后清零。所有计数经 `log_event()` 的事件入口
 | `commits_applied` / `commits_replayed` | commit.applied 成功，按 replayed 分流；recovery 包装事件不会再次累加 |
 | `verification_pending_retries` | 每个 verification.retry，无论 cleared / still_pending / error |
 | `verification_pending_cleared` | verification.retry 的 outcome=cleared；表示重试后观察到已通过（含并发重试通过） |
+| `verification_manual_required` | 自动核验预算耗尽后转人工的事件 |
 | `watchdog_scans` | watchdog.scan 的 started；空扫描和最终失败的调用也算一次 |
 | `worker_claims` | lease.acquired；只有 worker 成功领取才计数 |
 | `model_calls` | 每个 model.call，含 fixture、成功、失败和调用前拒绝 |
@@ -141,7 +142,7 @@ fixture 每个测试前后清零。所有计数经 `log_event()` 的事件入口
 这些指标是尽力而为的进程观测，不是可用于结算的持久账本；进程在数据库提交与事件输出
 之间退出可能漏计。commit.applied 在回读/ack 返回后发出，后续异常可能已提交业务但没有
 成功事件，须结合 operation、task.finished 和 recovery 日志判断。
-没有常驻调度器、重试上限/退避/告警、OTel、Prometheus exporter 或分布式 tracing。
+已提供持久化核验重试上限/退避和转人工日志；操作者显式启动的有界循环另有 `worker_loop.started/cycle/wait/stopped/failed` 和 CLI 边界 `worker_loop.cli_failed` 事件，字段与限制见 [WORKER_LOOP](WORKER_LOOP.md)。没有常驻托管调度器、外部推送告警、OTel、Prometheus exporter 或分布式 tracing。
 
 ## 示例
 
@@ -186,3 +187,11 @@ fixture 每个测试前后清零。所有计数经 `log_event()` 的事件入口
   commit.failed，订单事务可能已经提交，需要结合既有 operation/recovery 状态判断。
 - 摘要不是加密，短文本可能被猜测；不用于身份验证。脱敏按字段和模式匹配，不识别所有
   个人信息或任意编码后的凭据。业务新增日志仍需坚持只记录安全元数据。
+
+### 有限核验重试
+
+`verification.retry` 仅在实际领取预算并开始只读核验时发出；未到期/有效租约/已转人工不计重试。
+`verification.manual_required` 在自动预算耗尽转人工时发出（operation_id，无原始异常文本），
+并累计进程内 `verification_manual_required` 计数；持久状态以 Operation 和任务视图为准。
+`verification.manual` 记录操作者触发的单次只读核验，outcome 为 cleared/still_pending/error。
+这些日志不等同于向维护人员发送通知；未配置外部告警。

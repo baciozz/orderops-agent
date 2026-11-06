@@ -62,7 +62,7 @@ def stage3(session_factory, database_url, tmp_path, monkeypatch):
         pytest.fail("Stage 3 must never call a live model")
 
     monkeypatch.setattr(LiveLLMClient, "structured_call", forbidden)
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield client, session_factory, clock, app
     app.state.engine.dispose()
 

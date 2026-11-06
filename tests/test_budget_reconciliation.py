@@ -2,16 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from app.adapters.budget import BudgetLedger, reconcile_reservations
 from app.cli import main
 from app.config import Settings
 from app.db.models import ModelUsage
-from app.db.schema import init_db
+from app.db.schema import _migration_config, init_db
 from app.db.session import make_engine
 from app.errors import BudgetExceeded, CallLimitExceeded
 from app.main import create_app
@@ -155,19 +153,19 @@ def test_startup_reconciles_existing_ledger(session_factory, database_url):
     app = create_app(Settings(_env_file=None, database_url=database_url))
     with session_factory() as session:
         assert session.get(ModelUsage, old).status == "RESERVED"
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app, raise_server_exceptions=False) as client:
         assert client.get("/health").status_code == 200
         with session_factory() as session:
             assert session.get(ModelUsage, old).status == "ORPHANED"
     assert book.spent() == Decimal("0.009000")
-    with TestClient(app):
+    with TestClient(base_url="http://127.0.0.1", app=app):
         assert book.spent() == Decimal("0.009000")
 
 
 def test_startup_does_not_create_uninitialized_database(tmp_path):
     path = tmp_path / "absent.db"
     app = create_app(Settings(_env_file=None, database_url=f"sqlite:///{path}"))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         assert client.get("/health").status_code == 200
     assert not path.exists()
 
@@ -202,10 +200,8 @@ def test_reconciliation_rejects_nonpositive_ttl(session_factory):
 
 
 def test_migration_backfills_historical_usage_as_settled(tmp_path):
-    root = Path(__file__).resolve().parents[1]
     engine = make_engine(f"sqlite:///{tmp_path / 'historical.db'}")
-    cfg = Config(str(root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg = _migration_config()
     try:
         with engine.connect() as connection:
             cfg.attributes["connection"] = connection
@@ -236,10 +232,8 @@ def test_migration_backfills_historical_usage_as_settled(tmp_path):
 
 
 def test_price_snapshot_migration_backfills_versions_and_downgrades(tmp_path):
-    root = Path(__file__).resolve().parents[1]
     engine = make_engine(f"sqlite:///{tmp_path / 'historical-prices.db'}")
-    cfg = Config(str(root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(root / "alembic"))
+    cfg = _migration_config()
     versions = [
         "in=1.25;out=10.5",
         "in=0;out=2e-2",

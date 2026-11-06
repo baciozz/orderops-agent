@@ -92,18 +92,21 @@ Qi 已确认：未取消且未开裁（`cut_qty == 0`，由生产单 CHECK 约�
 
 `watchdog.scan` 检查 Operation、outbox、有效租约、截止时间及进展，决定对账或
 重新排队；不统一判失败。现有 BEGIN IMMEDIATE 事务结束后，通过内核的
-`retry_pending_verification` 对所有 COMMITTED 且 pending 的操作重试回读，包括
+`retry_pending_verification` 对到期、未转人工的 COMMITTED 且 pending 操作限批重试回读，包括
 任务已经 SUCCEEDED 的操作；scan 返回值仍只包含本次恢复的任务 ID。业务提交和取消共用 SQLite 写序列。回执丢失可由
 `recovery.durable_commit` 故障钩子模拟，再以原幂等键读取同一 Operation。
 首次提交仍只调用一次 `_post_verify`；`commit_plan` 的幂等重放（包括 durable_commit）
-仅重试本次操作的 pending 核验，已通过的操作跳过。重试不重新提交，不新增审计、
+仅按同一持久计划重试本次操作的 pending 核验，已通过、未到期或已转人工的操作跳过。重试不重新提交，不新增审计、
 事件或业务修订；失败或异常保留 pending。写标记前在独立写事务中重新读取其值，
 若并发核验已通过，则保留 False，避免较慢的失败结果覆盖成功结果。
+`app/services/verification.py` 持久化自动重试计数、下次时间、租约和唯一 token。
+默认最多 5 次自动重试（不含首次提交的读回），失败指数退避，耗尽后只转人工。
+`verify-operation` 只允许对已转人工操作执行一次只读核验，不重置预算、不改业务数据。
 提交事务已有 outbox；投递先发送再确认，失败退避重试。消费者 `consume` 在同一
 事务执行效果并写唯一 `(event_id, consumer)` receipt，支持重复发送后的去重。
 这是 at-least-once，不宣称 exactly-once。
 
 `python -m app.cli worker-once` 执行恢复扫描、一条任务及 outbox 投递，可由本地
-调度器重复运行；没有常驻调度器，watchdog 仅在被调用时扫描和重试。回读核验当前
+调度器重复运行，或显式使用 [有界 FIXTURE worker-loop](WORKER_LOOP.md)。没有常驻托管调度器，watchdog 仅在被调用时扫描和重试。回读核验当前
 库存流水及下游一致性，不修复数据，也不重建历史快照。API 只负责入库，不在 HTTP 请求中执行 worker。新迁移保存
 InputPayload 与 ConsumerReceipt，`init-db` 继续执行 Alembic upgrade head。

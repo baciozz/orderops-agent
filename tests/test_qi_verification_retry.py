@@ -156,8 +156,8 @@ def test_watchdog_retries_pending_verification_without_recommit(
         assert scan(kernel, clock=lambda: NOW) == expected_tasks
         assert _snapshot(kernel) == before
         _assert_operation(kernel, original, pending=still_failing)
-        # Pending must cause a real attempt on each scan; passed must be skipped.
-        expected_checks = run + 1 if still_failing else 1
+        # Repeated scans at the same instant cannot bypass durable backoff.
+        expected_checks = 1
         assert consistency.call_count == expected_checks
         assert downstream.call_count == (0 if still_failing else 1)
 
@@ -174,12 +174,12 @@ def test_commit_replay_retries_pending_verification_without_recommit(
     before = _snapshot(kernel)
     consistency, downstream = _verification_spies(monkeypatch, still_failing=still_failing)
 
-    for run in range(2):
+    for _run in range(2):
         outcome = replay(kernel, **request)
         assert outcome == replace(original, replayed=True)
         assert _snapshot(kernel) == before
         _assert_operation(kernel, original, pending=still_failing)
-        expected_checks = run + 1 if still_failing else 1
+        expected_checks = 1
         assert consistency.call_count == expected_checks
         assert downstream.call_count == (0 if still_failing else 1)
 

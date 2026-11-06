@@ -9,8 +9,9 @@ from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
 from app.observability import enrich, get_logger, observed, text_digest
+from app.orchestration.intent_receipts import receipt_metadata
 from app.orchestration.state import transition, utcnow
-from app.services.kernel import invalidate_order
+from app.services.kernel import invalidate_create_intent, invalidate_order
 
 logger = get_logger(__name__)
 
@@ -43,6 +44,8 @@ def accept_input(
     source_ids=None,
     selected_order_id=None,
     task_id=None,
+    expected_intent_revision=None,
+    expected_input_event_id=None,
     clock=utcnow,
     fault=lambda _: None,
 ):
@@ -62,6 +65,18 @@ def accept_input(
             raise AppError("订单不存在", code="NOT_FOUND", http_status=404)
         if task_id:
             task = session.get(Task, task_id)
+            # Receipt replay above deliberately precedes this fence: a lost ACK
+            # must not append again or fail merely because the task has advanced.
+            if (
+                task is not None
+                and expected_intent_revision is not None
+                and task.intent_revision != expected_intent_revision
+            ):
+                raise AppError("意图已更新", code="STALE_INTENT", http_status=409)
+            if task is not None and expected_input_event_id is not None:
+                current_input = latest_input(session, task)
+                if current_input is None or current_input.event_id != expected_input_event_id:
+                    raise AppError("输入已更新", code="STALE_INTENT", http_status=409)
             if task is None or task.status not in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"}:
                 raise AppError("任务不能恢复", code="ILLEGAL_TRANSITION", http_status=409)
         else:
@@ -74,11 +89,14 @@ def accept_input(
             )
             session.add(task)
             session.flush()
+        order = None
         if task.order_id:
             order = session.get(SalesOrder, task.order_id)
             invalidate_order(session, order.id, exclude_task_id=task.id)
             order.intent_revision += 1
             task.intent_revision = order.intent_revision
+        else:
+            invalidate_create_intent(session, task)
         event = Event(
             id=str(uuid4()),
             source_event_key=client_event_key,
@@ -106,7 +124,12 @@ def accept_input(
             InputPayload(
                 event_id=event.id,
                 task_id=task.id,
-                body={"text": text, "source_ids": source_ids or [], "input_sequence": sequence},
+                body={
+                    "text": text,
+                    "source_ids": source_ids or [],
+                    "input_sequence": sequence,
+                    **receipt_metadata(session, order),
+                },
             )
         )
         session.add(

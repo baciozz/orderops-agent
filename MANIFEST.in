@@ -1,0 +1,6 @@
+include alembic.ini Makefile requirements.lock requirements-dev.lock
+include ARCHITECTURE.md README.md LICENSE
+include scripts/accept_fixture.py scripts/check_distribution.py
+include docs/FIXTURE_ACCEPTANCE.md docs/HANDOFF.md
+include requirements-build.lock scripts/check_wheel.py scripts/probe_installed_wheel.py
+include docs/NEW_USER_DEMO.zh-CN.md docs/FUTURE_ACCEPTANCE.zh-CN.md docs/BOUNDED_SHEET_ORDER.md

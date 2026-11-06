@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     budget_reservation_ttl_s: int | None = Field(default=None, gt=0)
     model_max_tokens: int = 1000
     model_max_calls_per_task: int = 3
+    verification_max_retries: int = Field(default=5, ge=0, le=100)
+    verification_base_delay_seconds: int = Field(default=30, ge=1, le=86400)
+    verification_max_delay_seconds: int = Field(default=3600, ge=1, le=86400)
+    verification_lease_seconds: int = Field(default=120, ge=1, le=3600)
+    verification_batch_size: int = Field(default=100, ge=1, le=1000)
 
     @field_validator("worker_max_active")
     @classmethod

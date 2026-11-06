@@ -8,7 +8,7 @@
     <thead><tr><th scope="col">任务 ID</th><th scope="col">订单</th><th scope="col">状态</th><th scope="col">intent_revision</th></tr></thead>
     <tbody>{% for task in tasks %}
       <tr><td><a href="/ui/tasks/{{ task.id }}">{{ task.id }}</a></td>
-        <td>{% if task.order_id %}<a href="/ui/demo/orders/{{ task.order_id }}">{{ task.order_id }}</a>{% else %}未选订单{% endif %}</td>
+        <td>{% if task.order_id %}<a href="/ui/demo/orders/{{ task.order_id }}">{{ task.order_id }}</a>{% else %}尚未关联订单（新单尚未生成）{% endif %}</td>
         <td>{{ task.status }}</td><td>{{ task.intent_revision }}</td></tr>
     {% endfor %}</tbody>
   </table></div>

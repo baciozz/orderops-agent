@@ -16,7 +16,7 @@ NOW = datetime(2026, 6, 1, tzinfo=UTC)
 def orders_client(session_factory, database_url):
     load_seed(session_factory, database_url=database_url)
     app = create_app(Settings(_env_file=None, database_url=database_url))
-    with TestClient(app) as client:
+    with TestClient(base_url="http://127.0.0.1", app=app) as client:
         yield client, session_factory
 
 
