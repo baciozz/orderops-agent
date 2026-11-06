@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.adapters.budget import BudgetLedger
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
-from app.adapters.llm import LLMClient, resolve_mode
+from app.adapters.llm import LLMClient, resolve_mode, validated_live_provider
 from app.adapters.uploads import validate_text
 from app.config import Settings, get_settings
 from app.db.models import (
@@ -120,6 +120,7 @@ def _dispatch_text(
     if durable_task_id is None:
         from app.orchestration.sync_dispatch import execute
 
+        mode = resolve_mode(configured).mode.value
         return execute(
             session_factory,
             key=client_event_key,
@@ -127,7 +128,8 @@ def _dispatch_text(
                 {"text": text, "input_mode": input_mode, "source_ids": source_ids or []}
             ),
             clock=clock or ((lambda: moment) if now is not None else utcnow),
-            runtime_mode=resolve_mode(configured).mode.value,
+            runtime_mode=mode,
+            before_create=(lambda: validated_live_provider(configured)) if mode == "LIVE" else None,
             run=lambda task_id: _dispatch_text(
                 session_factory,
                 text=text,

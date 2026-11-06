@@ -127,9 +127,9 @@ def run_once(
     fault=lambda _: None,
     **dispatch_options,
 ):
-    # Keep preflight and dispatch on the same private settings snapshot. A caller
-    # changing its Settings object after this point cannot invalidate the check.
-    configured = (dispatch_options.get("settings") or get_settings()).model_copy(deep=True)
+    # Settings rejects in-place field edits. Keep one complete configuration
+    # reference for this call; a deepcopy of a mutable object is not atomic.
+    configured = dispatch_options.get("settings") or get_settings()
     dispatch_options["settings"] = configured
     allow_live = False
     if configured.live_enabled:

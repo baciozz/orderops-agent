@@ -32,6 +32,7 @@ def execute(
     clock: Callable[[], datetime],
     run: Callable[[str], "DispatchOutcome"],
     runtime_mode: str = "FIXTURE",
+    before_create: Callable[[], object] | None = None,
 ) -> "DispatchOutcome":
     with factory() as session, begin_immediate(session):
         receipt = session.get(SyncDispatchReceipt, key)
@@ -51,6 +52,11 @@ def execute(
                 code="DISPATCH_REQUEST_CONFLICT",
                 http_status=409,
             )
+        # Replays/conflicts above do not need a usable model configuration.
+        # Only a new request is checked, before any durable identity or lease.
+        # This callback must perform local validation only: no model I/O/billing.
+        if before_create is not None:
+            before_create()
         task = Task(
             id=str(uuid4()),
             chain_id="CH-UNASSIGNED",

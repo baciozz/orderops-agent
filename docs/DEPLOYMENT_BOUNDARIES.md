@@ -37,10 +37,21 @@ HTTP 输入模型拒绝客户端传入 `runtime_mode`；`GET /tasks/{id}` 提供
 `resolve_mode` 保持原接收/回退策略，只表示名义模式，不能单独证明 provider 已就绪。
 若完整校验拒绝，记录 `worker.live_unavailable` 和固定 reason；该消费者继续处理 FIXTURE，
 LIVE 保持排队，不产生新 JobAttempt、fencing token 或投递尝试，也不降级或更改任务模式。
-`run_once` 在校验前复制 Settings，校验和本轮 dispatch 使用同一私有快照；调用者后续修改原 Settings
-只影响下一轮。此校验不探测网络连通性或上游认证有效性，真实运行的网络/认证失败仍遵守已有调用计费和恢复规则。
+`Settings` 实例禁止普通字段赋值和删除；`run_once` 捕获一个完整配置引用，校验和本轮 dispatch 使用同一对象。
+可变对象的 `deepcopy` 不是原子快照，旧方式可能在并发修改时混合端点 B 和密钥 A，现已移除该保证。
+不支持原地热更新；受信调用方需用 `Settings(...)` 构造并验证完整新对象，再替换持有者的单一引用。
+已开始的调用继续使用旧对象，后续调用可取得新对象。标准 API/CLI 没有自动热更新接口，改变部署配置须重启
+并协调数据库、registry 与其他资源；只更换 `app.state.settings` 不构成整应用热更新协议。
+`model_copy(update=...)` 不验证更新值，仅用于内部已验证/定型的覆盖，不是外部配置装载接口。
+frozen 约束防止正常 API 误用，不防御可修改 `__dict__`、私有 SecretStr、类配置或执行任意 Python 的代码。
+此校验不探测网络连通性或上游认证有效性，真实运行的网络/认证失败仍遵守已有调用计费和恢复规则。
 直接持久调度若遇 LIVE 任务但配置不可用，会失败 `TASK_MODE_UNAVAILABLE`，不降级为 fixture。
 未知/不可验证模式不会构造 LIVE 客户端。固定表格路径继续使用已有有界解析规则。
+
+同步 `/dispatch` 对新 LIVE 请求在写事务中执行同一个纯本地校验，先于 Task、回执和 JobAttempt/租约创建。
+配置错误不消耗该幂等键，修正配置后原键可正常提交。已有回执的同请求重放、不同请求冲突优先于配置校验，
+因此已完成计划在当前配置不可用时仍可回读；在途请求仍返回 `DISPATCH_IN_PROGRESS`，不能创建第二次执行。
+配置验证不调用客户端、不发送网络请求、不预留预算；后续传输阶段故障保留原有恢复语义。
 
 这改变了旧行为：不能把演示任务通过重启 LIVE worker 升级，也不能依靠 `worker-once` 消费 LIVE 队列。
 要继续 LIVE，操作者必须审查输入和所用提供方配置，使用新提交键新建明确 LIVE 任务。
@@ -77,6 +88,11 @@ Responses URL 都会先领取再拒绝；重复恢复可用完三次尝试并变
 已经因旧行为 FAILED 的任务不会自动重置次数、恢复批准或重提业务，须人工核对后使用新键创建任务。
 回退此修复会重新暴露错误配置消耗尝试的问题，即使保留 runtime_mode 迁移也不能避免。
 
+同步前置校验与 frozen Settings 修复同样没有 schema 变更或回填。旧同步请求已产生 RUNNING 回执但无计划时，
+仅凭零 ModelUsage 不能证明没有其他效果，不能自动删除回执或重置幂等键。租约存活时保持 IN_PROGRESS，
+过期后仍按原协议报告 INPUT_UNAVAILABLE，人工核对后新键提交；已持久化计划则仍能恢复原结果。
+回退代码会恢复同步配置错误占用幂等键和可变配置混合风险，不需数据库回滚。
+
 ## HTTP 日志、启动错误与端点 URL
 
 - `configure_logging` 与直接构造 `LiveLLMClient` 均屏蔽锁定依赖使用的 httpx/httpcore logger：
@@ -101,6 +117,8 @@ Responses URL 都会先领取再拒绝；重复恢复可用完三次尝试并变
 重复输入/回答/同步重放、租约恢复、并发竞争、独立解释器消费者、旧 schema 升降级、外键/历史证据保留、
 默认/非法模式及 UPDATE 限制、传输 logger 自带 handler、配置/启动/清理/CLI 故障和 URL 凭据拒绝。
 `tests/test_live_worker_preflight.py` 另覆盖错误配置反复恢复、标准 worker 各入口、有效/无效消费者竞争、
-过期任务修正配置后恢复、配置快照、校验故障先于领取、固定日志 reason，以及 SQL REPLACE 的实际边界。
+过期任务修正配置后恢复、配置引用一致性、校验故障先于领取、固定日志 reason，以及 SQL REPLACE 的实际边界。
+`tests/test_sync_config_consistency.py` 覆盖 HTTP 新配置重启后原键恢复、有效/无效配置并发竞争、重放/冲突、
+响应丢失、旧中断回执、校验中断回滚，以及确定性交错下禁止原地修改、整体替换后端点/密钥成对一致。
 原有 LIVE/provider/预算/来源测试明确在创建时选择 LIVE；手工 smoke 入口也显式建 LIVE 任务，
 本轮只执行它的离线 mock 测试。没有真实浏览器、真实模型自由语言质量或真实部署验收。

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         hide_input_in_errors=True,
+        frozen=True,
     )
 
     log_json: bool = True

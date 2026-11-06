@@ -17,6 +17,7 @@ from app.orchestration import dispatch, watchdog, worker, worker_cycle
 from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE
 from app.orchestration.inbox import accept_input
 from app.orchestration.worker_loop import LoopOptions, run_loop
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from tests.test_deployment_boundaries import input_request, mock_client, seeded  # noqa: F401
@@ -209,16 +210,21 @@ def test_original_settings_mutation_after_claim_cannot_invalidate_preflight(seed
     calls = []
 
     def mutate_source(_):
-        configured.llm_model = None
-        configured.llm_provider = "unknown"
-        configured.live_enabled = False
+        for name, value in (
+            ("llm_model", None),
+            ("llm_provider", "unknown"),
+            ("live_enabled", False),
+        ):
+            with pytest.raises(ValidationError) as exc:
+                setattr(configured, name, value)
+            assert exc.value.errors()[0]["type"] == "frozen_instance"
 
     outcome = worker.run_once(
         seeded, settings=configured, fault=mutate_source, client_factory=mock_client(calls)
     )
     assert outcome.task_id == task_id and outcome.status == "AWAITING_APPROVAL"
     assert len(calls) == 1
-    assert configured.live_enabled is False
+    assert configured.live_enabled is True
 
 
 def test_preflight_is_local_and_unexpected_validation_fault_precedes_claim(seeded, monkeypatch):
