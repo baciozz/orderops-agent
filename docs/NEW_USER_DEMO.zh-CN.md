@@ -59,7 +59,7 @@ demo_python -m app.cli seed
 demo_python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-打开 http://127.0.0.1:8000/ui/demo/new-stock-sheet，启用 JavaScript。端口占用时先确认占用者，不随意杀掉其他服务。本指南未执行服务器或浏览器启动。另一个终端不会自动继承上述函数；本轮优先用网页 worker 按钮，不另开消费者。
+打开 http://127.0.0.1:8000/ui/demo/new-stock-sheet，启用 JavaScript。端口占用时先确认占用者，不随意杀掉其他服务。服务器启动及 HTTP 重启恢复已按本指南实测，见[上手记录](ONBOARDING_HTTP.md)；浏览器交互仍未验收。另一个终端不会自动继承上述函数；本轮优先用网页 worker 按钮，不另开消费者。
 
 ## 3. 三次处理，批准与提交分开
 

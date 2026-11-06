@@ -53,11 +53,11 @@ make init-db && make seed && make run
 SO-1001 把未发的 40 件黑色 M 改成白色 M
 ```
 
-点击「提交并查看任务」→「触发 worker 一次」→ 查看任务差量与下游影响 →「批准当前计划」→「提交生效」→ 查看 `operation_id`、`revision` 和核验结果。新初始化的合成库应得到 `SUCCEEDED`、revision `2`、核验 `passed`；点击订单号可查看当前行明细。首页也提供最近任务、示例订单和 `T-STUB` 桩任务入口。
+点击「提交并查看任务」→「触发 worker 一次」→ 查看任务差量与下游影响 →「批准当前计划」→「提交生效」→ 查看 `operation_id`、`revision` 和核验结果。新初始化的合成库应得到 `SUCCEEDED`、revision `2`、核验 `partial`（限定字段一致，整单来源仍不确定）；这不是全库通过。点击订单号可查看当前行明细。首页也提供最近任务、示例订单和 `T-STUB` 桩任务入口。
 
 默认 **FIXTURE**；网页 worker 端点强制使用 FIXTURE，未知文本不会触发 live。批准身份固定为服务端 `DEMO_ACTOR_ID`（`demo-user`），客户端不能指定 actor。仅用于 `127.0.0.1` 本机合成数据演示，非生产、不接真实 ERP。提交表单使用服务端渲染；批准、提交与 worker 交互需要浏览器启用 JavaScript。worker 每次只处理一条任务，不会自动批准或提交；已有其他任务时可重复点击。
 
-已用 TestClient 验证表单、worker、批准/提交与结果回读。尚未在真实浏览器完成点选或截图，也未做完整无障碍、移动端及跨浏览器验证。
+已在全新虚拟环境按隔离安装指南执行安装、初始化、真实 Uvicorn HTTP 演示及重启恢复，见[新用户上手实测记录](docs/ONBOARDING_HTTP.md)。另有 TestClient 回归。尚未在真实浏览器完成点选或截图，也未做完整无障碍、移动端及跨浏览器验证。
 
 ### 离线演示（FIXTURE）
 
