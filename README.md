@@ -12,6 +12,8 @@ OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分�
 
 首次演示优先按[隔离安装与固定表格演示](docs/NEW_USER_DEMO.zh-CN.md)操作：源码 editable 与普通 wheel 路径分开，使用全新合成目录、绝对数据库地址和清空环境。固定表格入口为 `/ui/demo/new-stock-sheet`，契约见[固定表格说明](docs/BOUNDED_SHEET_ORDER.md)。[浏览器与 LIVE 待验收计划](docs/FUTURE_ACCEPTANCE.zh-CN.md)尚未执行。
 
+求职作品讲解可用[五分钟 FIXTURE 风险改单演示](docs/FIVE_MINUTE_DEMO.zh-CN.md)：以“已裁 120 件、只改未裁 180 件”展示澄清、下游影响、人工批准、提交及有限范围结果；安装准备不计入五分钟，真实浏览器和语言模型效果仍未验收。
+
 下面 Makefile 命令仅供源码开发环境，读取当前目录配置及继承环境，不能保证全新演示库；`seed` 幂等但不重置库存，重演缺5路径须使用上述新目录流程。普通 wheel 请使用指南中的 `python -m app.cli` 命令。
 
 需要 Python 3.11 及以上。本机演示只绑定 `127.0.0.1`，无需创建 `.env`。
