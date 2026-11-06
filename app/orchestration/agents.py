@@ -8,18 +8,21 @@ from schemas.business import ExtractionResult
 from schemas.catalog import lookup_schema
 from schemas.common import UsageReport
 from schemas.downstream import DocCheckOutput
+from schemas.enums import BusinessEventType
 from schemas.inventory import InventoryCheckOutput
 from schemas.subagent import AgentProposal, SubAgentSpec
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
 from app.adapters.llm import LLMClient, StructuredCallRequest
-from app.db.models import SalesOrder, Task
+from app.db.models import Event, InputPayload, SalesOrder, Task
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, CallLimitExceeded, SchemaInvalid
 from app.orchestration.fixtures import compare_sheet_quantities
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import invoke_tool
+from app.orchestration.state import guard as durable_guard
 from app.services.source_spans import task_spans
 
 
@@ -98,6 +101,7 @@ def run_parser(ctx: StepContext) -> AgentRun:
         intent=ctx.intent,
         mode=ctx.input_mode,
     )
+    extracted = _respect_selected_order(ctx, extracted)
     event = extracted.business_event
     if event is not None and event.order_id:
         order = ctx.session.get(SalesOrder, event.order_id)
@@ -118,6 +122,51 @@ def run_parser(ctx: StepContext) -> AgentRun:
     _accept(ctx, extracted.model_dump(mode="json"), result.usage)
     tokens = result.usage.input_tokens + result.usage.output_tokens
     return AgentRun(payload=extracted.model_dump(mode="json"), extraction=extracted, tokens=tokens)
+
+
+def _respect_selected_order(ctx: StepContext, extracted: ExtractionResult) -> ExtractionResult:
+    """An initial selected receipt is scope, not permission to create a new order.
+
+    Answers inherit this initial scope. An answer's own order_id (or a mutable
+    Task binding) may instead come from an inferred change or a completed new
+    order, so neither establishes an explicit selection. No new schema marker
+    or model-provided field is trusted here.
+    """
+    event = extracted.business_event
+    if (
+        durable_guard.get() is None
+        or event is None
+        or event.event_type != BusinessEventType.NEW_ORDER
+    ):
+        return extracted
+    selected = ctx.session.scalar(
+        select(Event.order_id)
+        .join(InputPayload, InputPayload.event_id == Event.id)
+        .where(
+            InputPayload.task_id == ctx.task.id,
+            Event.kind == "input.submit",
+            Event.order_id.is_not(None),
+        )
+    )
+    if selected is None:
+        return extracted
+    # Before any parser rebinding or proposal: do not dirty the Task, acquire a
+    # different intent, or leave CREATE details in the clarification view.
+    return extracted.model_copy(
+        update={
+            "business_event": None,
+            "order_candidates": [selected],
+            "customer_candidate": None,
+            "line_changes": [],
+            "new_lines": [],
+            "missing_fields": [],
+            "conflicts": [],
+            "questions": [
+                f"本任务最初提交时选择了已有订单 {selected}，但本次输入被解析为新单。"
+                "请补充该订单的修改要求；如需新建订单，请另行提交不选择已有订单的新输入。"
+            ],
+        }
+    )
 
 
 def run_inventory(ctx: StepContext) -> AgentRun:
