@@ -978,6 +978,11 @@ def _commit_locked(
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
         _revoke_if_active(approval)
         return None, AppError("计划内容与批准哈希不一致", code="HASH_MISMATCH", http_status=409)
+    from app.services.execution_audit import capture_payload, retain_execution
+
+    # Preserve exactly the payload validated above, before effects can mutate
+    # their inputs. This is evidence of retained fields, not parent provenance.
+    approved_execution = capture_payload(payload)
     transition(task, TaskStatus.COMMITTING)
     _hit_failpoint("before_write")
     operation_id = _id("OP")
@@ -1079,17 +1084,16 @@ def _commit_locked(
         "chain_id": task.chain_id,
         "plan_id": plan.id,
     }
-    session.add(
-        Operation(
-            id=operation_id,
-            idempotency_key=idempotency_key,
-            request_hash=request_hash,
-            plan_id=plan.id,
-            status="COMMITTED",
-            result_json=result,
-            committed_verification_pending=True,
-        )
+    operation = Operation(
+        id=operation_id,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+        plan_id=plan.id,
+        status="COMMITTED",
+        result_json=result,
+        committed_verification_pending=True,
     )
+    session.add(operation)
     session.add(
         AuditRecord(
             id=audit_id,
@@ -1104,6 +1108,11 @@ def _commit_locked(
             at=now,
         )
     )
+    session.flush()  # Evidence FK references this same transaction's operation.
+    _hit_failpoint("before_execution_evidence")
+    retain_execution(session, operation=operation, approval=approval, payload=approved_execution)
+    session.flush()
+    _hit_failpoint("after_execution_evidence")
     _hit_failpoint("after_audit")
     return (
         CommitOutcome(

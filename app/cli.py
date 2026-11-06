@@ -67,7 +67,17 @@ def _main(argv: list[str] | None = None) -> int:
     verify.add_argument("operation_id", help="已提交的 Operation ID")
     audit = sub.add_parser("audit-links", help="只读审计一个提交的历史关联证据，不放行业务")
     audit.add_argument("operation_id", help="需要审计的 Operation ID")
+    execution = sub.add_parser("audit-execution", help="只读核对保留的批准执行字段，明确未覆盖范围")
+    execution.add_argument("operation_id", help="需要核对的 Operation ID")
     args = parser.parse_args(argv)
+    if args.command == "audit-execution":
+        from app.services.execution_audit import audit_execution
+
+        execution_report = audit_execution(get_settings().database_url, args.operation_id)
+        print(execution_report.model_dump_json())
+        return {"consistent_for_retained_fields": 0, "findings": 1, "uncertain": 2}[
+            execution_report.status
+        ]
     if args.command == "audit-links":
         from app.services.link_audit import audit_operation_links
 

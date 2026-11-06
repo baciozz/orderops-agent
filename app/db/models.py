@@ -508,6 +508,16 @@ class Operation(Base):
     verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
 
 
+class ExecutionEvidence(Base):
+    """Retained approved fields for one commit, never a complete ownership graph."""
+
+    __tablename__ = "execution_evidence"
+
+    operation_id: Mapped[str] = mapped_column(ForeignKey("operation.id"), primary_key=True)
+    body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    digest: Mapped[str] = mapped_column(String(80), nullable=False)
+
+
 class PurchaseProposal(Base):
     __tablename__ = "purchase_proposal"
     __table_args__ = (
