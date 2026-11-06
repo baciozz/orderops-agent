@@ -1791,6 +1791,22 @@ def consistency_problems(session: Session) -> list[str]:
     return problems
 
 
+def _current_order_lines(session: Session) -> dict[str, dict[str, OrderLine]]:
+    """Load only current revision lines in one query, in this transaction's snapshot."""
+    result: dict[str, dict[str, OrderLine]] = {}
+    for order_id, line in session.execute(
+        select(OrderRevision.order_id, OrderLine)
+        .join(OrderLine, OrderLine.revision_id == OrderRevision.id)
+        .join(
+            SalesOrder,
+            (SalesOrder.id == OrderRevision.order_id)
+            & (SalesOrder.current_revision == OrderRevision.revision_no),
+        )
+    ):
+        result.setdefault(order_id, {})[line.sku_id] = line
+    return result
+
+
 def _order_reservation_problems(session: Session) -> list[str]:
     """Compare current order obligations, not a historical operation's delta.
 
@@ -1806,6 +1822,7 @@ def _order_reservation_problems(session: Session) -> list[str]:
     ):
         shipped.setdefault(order_id, {})[sku] = int(qty)
     expected: dict[tuple[str, str, str], int] = {}
+    lines_by_order = _current_order_lines(session)
     current = session.execute(
         select(SalesOrder, OrderRevision).outerjoin(
             OrderRevision,
@@ -1817,16 +1834,7 @@ def _order_reservation_problems(session: Session) -> list[str]:
         if revision is None:
             if order.current_revision > 0:
                 problems.append(f"{order.id} 当前订单版本缺失")
-        lines = (
-            {
-                line.sku_id: line
-                for line in session.scalars(
-                    select(OrderLine).where(OrderLine.revision_id == revision.id)
-                )
-            }
-            if revision is not None
-            else {}
-        )
+        lines = lines_by_order.get(order.id, {})
         order_shipped = shipped.get(order.id, {})
         for sku in sorted(lines.keys() | order_shipped.keys()):
             line = lines.get(sku)
@@ -2543,8 +2551,51 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
     findings: list[dict[str, object]] = []
     orders = list(session.scalars(select(SalesOrder)).all())
     usage = _usage_map(session)
+    lines_by_order = _current_order_lines(session)
+    # Preserve _current_links(order_id)'s per-order latest-link rule. A newer
+    # link in another order must not hide a stale association in this order.
+    links_by_order: dict[str, dict[tuple[str, str], DownstreamLink]] = {}
+    for link in session.scalars(select(DownstreamLink)):
+        best = links_by_order.setdefault(link.order_id, {})
+        key = (link.doc_type, link.doc_id)
+        previous = best.get(key)
+        if previous is None or link.link_seq > previous.link_seq:
+            best[key] = link
+    linked_production_ids = select(DownstreamLink.doc_id).where(
+        DownstreamLink.doc_type == "production_order"
+    )
+    production = {
+        row.id: row
+        for row in session.scalars(
+            select(ProductionOrder).where(ProductionOrder.id.in_(linked_production_ids))
+        )
+    }
+    purchase = {
+        row.id: row
+        for row in session.scalars(
+            select(PurchaseOrder).where(
+                PurchaseOrder.id.in_(
+                    select(DownstreamLink.doc_id).where(DownstreamLink.doc_type == "purchase_order")
+                )
+            )
+        )
+    }
+    # Join current document revisions; do not materialize historical JSON snapshots.
+    snapshots = {
+        row.doc_id: row
+        for row in session.scalars(
+            select(DocRevision)
+            .join(
+                ProductionOrder,
+                (DocRevision.doc_type == "production_order")
+                & (DocRevision.doc_id == ProductionOrder.id)
+                & (DocRevision.rev_no == ProductionOrder.doc_revision),
+            )
+            .where(ProductionOrder.id.in_(linked_production_ids))
+        )
+    }
     for order in orders:
-        links = _current_links(session, order.id)
+        links = list(links_by_order.get(order.id, {}).values())
         for link in links:
             if link.order_revision != order.current_revision:
                 findings.append(
@@ -2562,14 +2613,8 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                     }
                 )
             if link.doc_type == "production_order":
-                row = session.get(ProductionOrder, link.doc_id)
-                snapshot = session.scalar(
-                    select(DocRevision).where(
-                        DocRevision.doc_type == "production_order",
-                        DocRevision.doc_id == link.doc_id,
-                        DocRevision.rev_no == (row.doc_revision if row else -1),
-                    )
-                )
+                row = production.get(link.doc_id)
+                snapshot = snapshots.get(link.doc_id)
                 if row is not None and snapshot is not None:
                     recorded = snapshot.snapshot_json or {}
                     if (
@@ -2587,7 +2632,8 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                                 },
                             }
                         )
-        line_map = _load_lines(session, order.id)
+        # This check needs only quantity/mode, not _load_lines' shipment/cut enrichment.
+        line_map = lines_by_order.get(order.id, {})
         for sku, line in line_map.items():
             if line.fulfillment_mode != "MTO":
                 continue
@@ -2595,7 +2641,7 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
             for link in links:
                 if link.doc_type != "production_order":
                     continue
-                row = session.get(ProductionOrder, link.doc_id)
+                row = production.get(link.doc_id)
                 if row is None or row.status == "CANCELLED" or row.sku_id != sku:
                     continue
                 planned += row.planned_qty
@@ -2611,7 +2657,7 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
         actual: dict[tuple[str, str], int] = {}
         for link in links:
             if link.doc_type == "production_order":
-                row = session.get(ProductionOrder, link.doc_id)
+                row = production.get(link.doc_id)
                 if row is None or row.status == "CANCELLED":
                     continue
                 material = usage.get(row.sku_id)
@@ -2621,7 +2667,7 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                 key = (row.id, material_id)
                 expected[key] = row.planned_qty * per_piece
             else:
-                row_po = session.get(PurchaseOrder, link.doc_id)
+                row_po = purchase.get(link.doc_id)
                 if row_po is None or row_po.status == "CANCELLED":
                     continue
                 key = (row_po.production_order_id, row_po.material_id)
