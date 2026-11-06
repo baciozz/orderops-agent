@@ -2,17 +2,20 @@
 {% block title %}提交改单 · 演示{% endblock %}
 {% block content %}
   <h1>提交改单</h1>
-  <p>黄金文案已预填。提交只保存输入并入队，随后在任务页触发 worker。</p>
+  <p>示例已预填。提交后保存输入并入队，随后可在任务页运行演示 worker。</p>
   {% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
   <form action="/ui/demo/submit" method="post" class="input-form">
     <label for="selected-order">订单号</label>
     <input id="selected-order" name="selected_order_id" value="{{ values.selected_order_id }}" required list="demo-orders">
     <datalist id="demo-orders"><option value="SO-1001"><option value="SO-1002"></datalist>
-    <label for="change-text">自然语言改单</label>
+    <p class="hint">内置改单示例固定对应 {{ example_orders | join('、') }}，不能通过选择其他订单改换目标。已知精确示例与所选订单不一致时，本页会拒绝提交。</p>
+    <label for="change-text">改单演示文本（精确示例）</label>
+    <p class="hint">演示 worker 使用 FIXTURE 精确匹配；修改文字、空格、标点或数量可能导致匹配失败。本页不解析任意文本的订单归属，也不限制其他 worker 的运行模式。</p>
+    <p class="hint">提交入队会更新所选订单的意图版本，可能使之前的审批失效，即使随后解析失败。请先核对订单和文本。</p>
     <textarea id="change-text" name="text" rows="4" required>{{ values.text }}</textarea>
     <label for="event-key">提交标识（client_event_key）</label>
     <input id="event-key" name="client_event_key" value="{{ values.client_event_key }}">
-    <p class="hint">自动生成；同一 thread 内相同标识返回原任务，避免重复入队。</p>
+    <p class="hint">自动生成；通过本页校验后，同一会话内相同标识返回原任务，避免重复入队。</p>
     <label for="thread">会话（thread_id）</label>
     <input id="thread" name="thread_id" value="{{ values.thread_id }}">
     <button type="submit">提交并查看任务</button>
