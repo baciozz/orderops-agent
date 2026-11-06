@@ -318,6 +318,16 @@ def approve_plan(
             if plan.plan_kind == PlanKind.CREATE:
                 _check_current_create(session, plan)
                 _plan_sheet_provenance(session, plan)
+            balances = _balances_for(session, set(plan.expected_stock_revisions))
+            if any(
+                sku not in balances or balances[sku].revision != expected
+                for sku, expected in plan.expected_stock_revisions.items()
+            ):
+                raise AppError(
+                    "库存版本已变化，请核对可用库存后重新规划，再批准新计划",
+                    code="STALE_DEPENDENCY",
+                    http_status=409,
+                )
             duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
             if duplicate_of and not acknowledge_duplicate:
                 raise AppError(

@@ -16,6 +16,15 @@
   </dl>
   {% include "sheet_workflow.html" %}
   {% include "task_failure_guidance.html" %}
+  {% if not view.result.operation_id and (view.card.status == 'SUPERSEDED' or (view.card.status == 'AWAITING_APPROVAL' and view.approval.disabled_reason == 'STALE')) %}
+  <section id="stale-plan-guidance" aria-labelledby="stale-plan-heading">
+    <h2 id="stale-plan-heading">旧计划已不能继续批准或提交</h2>
+    <p>订单意图、版本、库存或来源可能已有变化。请核对当前订单与库存和
+      <a href="/ui/demo/tasks">最近任务</a>，确认目标是否已由其他任务完成；已经完成时不要重复执行。</p>
+    <p>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">查看当前订单</a> · {% endif %}<a href="/stock">查看当前可用库存（JSON）</a></p>
+    <p>确需继续时，请基于最新数据重新规划，核对新计划并重新批准后再提交；不要反复重试旧批准或更换提交标识盲目提交。刷新不会自动重新规划。</p>
+  </section>
+  {% endif %}
   {% include "task_input_forms.html" %}
   {% include "worker_form.html" %}
   {% if view.card.task_id != "T-STUB" %}
