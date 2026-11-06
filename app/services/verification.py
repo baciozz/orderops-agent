@@ -37,9 +37,9 @@ def _escalate(operation):
 
 def _claim(factory, operation_id, moment, settings, *, manual=False, clock=None):
     with factory() as session, begin_immediate(session):
+        operation = session.get(Operation, operation_id)
         if clock is not None:
             moment = aware(clock())  # Lock waits must not consume a newly issued lease.
-        operation = session.get(Operation, operation_id)
         if (
             operation is None
             or operation.status != "COMMITTED"
@@ -92,7 +92,7 @@ def _attempt(factory, operation_id, token, moment, settings, *, manual=False, cl
         except Exception:
             pass  # Optional log fields never block readback.
         try:
-            _post_verify(factory, operation_id)
+            _post_verify(factory, operation_id, lease_token=token, clock=clock or (lambda: moment))
             with factory() as session:
                 operation = session.get(Operation, operation_id)
                 outcome = (
@@ -104,10 +104,16 @@ def _attempt(factory, operation_id, token, moment, settings, *, manual=False, cl
             error_code = exception_code(exc)
         with factory() as session, begin_immediate(session):
             operation = session.get(Operation, operation_id)
+            completed_at = aware(clock()) if clock else moment
             if operation and not operation.committed_verification_pending:
                 outcome = "cleared"  # A concurrent pass is authoritative, even after our exception.
             # An expired worker must not overwrite a newer attempt's schedule or lease.
-            if operation and operation.verification_lease_token == token:
+            if (
+                operation
+                and operation.verification_lease_token == token
+                and operation.verification_lease_until is not None
+                and aware(operation.verification_lease_until) > completed_at
+            ):
                 operation.verification_lease_until = None
                 operation.verification_lease_token = None
                 if not operation.committed_verification_pending:
@@ -128,7 +134,6 @@ def _attempt(factory, operation_id, token, moment, settings, *, manual=False, cl
                             settings.verification_base_delay_seconds
                             * 2 ** (operation.verification_retry_attempts - 1),
                         )
-                        completed_at = aware(clock()) if clock else moment
                         operation.verification_next_attempt_at = completed_at + timedelta(
                             seconds=delay
                         )

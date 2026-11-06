@@ -212,6 +212,8 @@ def test_slower_failed_verification_preserves_concurrent_pass(
         kernel_service.verify_failpoint.reset(token)
     before = _contents_except_verification_flag(kernel)
     real_consistency = kernel_service.consistency_problems
+    current = [NOW]
+    config = Settings(_env_file=None, verification_lease_seconds=10)
 
     def slower_failure(session):
         # Keep a stale ORM instance in the reader while another retry passes.
@@ -219,14 +221,19 @@ def test_slower_failed_verification_preserves_concurrent_pass(
         assert stale.committed_verification_pending is True
         with monkeypatch.context() as patch:
             patch.setattr(kernel_service, "consistency_problems", real_consistency)
-            kernel_service._post_verify(kernel, original.operation_id)
+            current[0] += timedelta(seconds=11)
+            retry_pending_verification(
+                kernel, original.operation_id, settings=config, clock=lambda: current[0]
+            )
         assert stale.committed_verification_pending is True
         if raises:
             raise RuntimeError("合成回读异常")
         return ["合成回读核验失败"]
 
     monkeypatch.setattr(kernel_service, "consistency_problems", slower_failure)
-    retry_pending_verification(kernel, original.operation_id)
+    retry_pending_verification(
+        kernel, original.operation_id, settings=config, clock=lambda: current[0]
+    )
     with kernel() as session:
         assert session.get(Operation, original.operation_id).committed_verification_pending is False
     assert _contents_except_verification_flag(kernel) == before
@@ -269,7 +276,7 @@ def test_manual_escalation_and_recovery_preserve_committed_receipt_and_business_
         kernel_service.verify_failpoint.reset(token)
     before = _contents_except_verification_flag(kernel)
     with monkeypatch.context() as patch:
-        patch.setattr(kernel_service, "_post_verify", lambda *_: None)
+        patch.setattr(kernel_service, "_post_verify", lambda *_, **__: None)
         assert retry_pending(kernel, now=NOW, settings=settings) == 1
         result = client.get(f"/tasks/{original.task_id}/view").json()
         assert result["card"]["status"] == "SUCCEEDED"
@@ -296,7 +303,7 @@ def test_pending_retry_timestamp_is_explicit_utc_in_api(
         original = commit_plan(kernel, **approved_commit[1])
     finally:
         kernel_service.verify_failpoint.reset(token)
-    monkeypatch.setattr(kernel_service, "_post_verify", lambda *_: None)
+    monkeypatch.setattr(kernel_service, "_post_verify", lambda *_, **__: None)
     assert retry_pending(kernel, now=NOW) == 1
     payload = client.get(f"/tasks/{original.task_id}/view").json()["result"]
     timestamp = payload["verification_next_attempt_at"]

@@ -1,6 +1,7 @@
 """Readback detects per-order corruption even when SKU aggregates still balance."""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from threading import Barrier
 
 import pytest
@@ -126,6 +127,21 @@ def test_pending_old_operation_and_concurrent_valid_revision(kernel, approved_co
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(action, ["verify", "commit"]))
+    # A concurrent valid commit can invalidate the read snapshot conservatively.
+    # A later quiescent readback must recover without repeating business writes.
+    with kernel() as session:
+        due = [
+            (
+                row.id,
+                aware(row.verification_next_attempt_at)
+                if row.verification_next_attempt_at
+                else datetime.now(UTC),
+            )
+            for row in session.scalars(select(Operation))
+            if row.committed_verification_pending
+        ]
+    for operation_id, moment in due:
+        retry_pending_verification(kernel, operation_id, now=moment)
     with kernel() as session:
         assert consistency_problems(session) == []
         assert session.get(SalesOrder, "SO-1001").current_revision == old.revision + 1

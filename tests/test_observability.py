@@ -765,7 +765,7 @@ def test_verification_retry_event_and_watchdog_counts(web, caplog, monkeypatch, 
         monkeypatch.setattr(kernel_service, "consistency_problems", lambda _: ["PRIVATE_READBACK"])
     elif retry_outcome == "error":
 
-        def fail(*_):
+        def fail(*_, **__):
             raise AppError("PRIVATE_READBACK", code="READBACK_TEST")
 
         monkeypatch.setattr(kernel_service, "_post_verify", fail)

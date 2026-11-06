@@ -126,7 +126,7 @@ def test_recursive_concurrent_caller_cannot_claim_same_lease(session_factory, mo
     add_operation(session_factory)
     config = settings()
 
-    def concurrent(*args):
+    def concurrent(*args, **kwargs):
         assert verification.retry_pending(session_factory, now=NOW, settings=config) == 0
 
     attempt = Mock(side_effect=concurrent)
@@ -321,12 +321,12 @@ def test_manual_escalation_metric_counts_transition_not_repeated_scans(session_f
 def test_slow_batch_uses_fresh_claim_time_and_backoff_from_completion(session_factory, monkeypatch):
     add_operation(session_factory, "a")
     add_operation(session_factory, "b")
-    config = settings(verification_lease_seconds=10)
+    config = settings(verification_lease_seconds=60)
     clock = [NOW]
 
-    def slow_readback(factory, operation_id):
+    def slow_readback(factory, operation_id, **kwargs):
         lease = read(factory, operation_id).verification_lease_until
-        assert aware(lease) == clock[0] + timedelta(seconds=10)
+        assert aware(lease) == clock[0] + timedelta(seconds=60)
         clock[0] += timedelta(seconds=20)
 
     monkeypatch.setattr(kernel, "_post_verify", slow_readback)
@@ -372,8 +372,8 @@ def test_crash_after_success_cannot_leave_stale_retry_metadata(session_factory, 
     verification.retry_pending(session_factory, now=NOW, settings=config)
     original = kernel._post_verify
 
-    def crash_after_pass(factory, operation_id):
-        original(factory, operation_id)
+    def crash_after_pass(factory, operation_id, **kwargs):
+        original(factory, operation_id, **kwargs)
         raise ProcessExit()
 
     monkeypatch.setattr(kernel, "_post_verify", crash_after_pass)

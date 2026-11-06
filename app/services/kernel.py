@@ -3,6 +3,7 @@
 Downstream documents are relinked in the same commit as the order revision.
 """
 
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -20,7 +21,7 @@ from schemas.enums import (
     TaskStatus,
 )
 from seeds.golden import WAREHOUSE_ID
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -1661,9 +1662,49 @@ def retry_pending_verification(
     return retry_pending(session_factory, operation_id, now=now, clock=clock, settings=settings)
 
 
-def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
-    session = session_factory()
-    try:
+def _verification_owned(
+    operation: Operation | None, lease_token: str | None, moment: datetime
+) -> bool:
+    if (
+        operation is None
+        or operation.status != "COMMITTED"
+        or not operation.committed_verification_pending
+    ):
+        return False
+    if lease_token is not None:
+        return (
+            operation.verification_lease_token == lease_token
+            and operation.verification_lease_until is not None
+            and _aware(operation.verification_lease_until) > _aware(moment)
+        )
+    # Initial commit readback is unleased and does not consume the retry budget.
+    # Once any retry/manual owner has started, it cannot publish an initial result.
+    return (
+        operation.verification_lease_token is None
+        and operation.verification_lease_until is None
+        and operation.verification_retry_attempts == 0
+        and not operation.verification_manual_required
+        and operation.verification_next_attempt_at is None
+        and operation.verification_last_error_code is None
+    )
+
+
+def _post_verify(
+    session_factory: sessionmaker[Session],
+    operation_id: str,
+    *,
+    lease_token: str | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> None:
+    clock = clock or (lambda: datetime.now(UTC))
+    with session_factory() as unbound:
+        engine = unbound.get_bind().engine
+    # SQLite data_version is comparable only on the SAME physical connection.
+    # Pin it across rollback: a pooled session alone may switch connections.
+    with engine.connect() as connection, session_factory(bind=connection) as session:
+        read_version = session.scalar(text("PRAGMA main.data_version"))
+        if not _verification_owned(session.get(Operation, operation_id), lease_token, clock()):
+            return
         problems: list[str] = []
         try:
             if verify_failpoint.get():
@@ -1675,24 +1716,23 @@ def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> N
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
-            # Re-read under the write lock after ending the readback transaction.
-            # Passed is sticky: a slower failed readback must not undo a concurrent pass.
+            # The SELECT acquires the actual write lock; read the clock afterward.
+            # Ownership, snapshot freshness, and the result update are one transaction.
+            # Other-connection commits invalidate even a still-owned successful readback.
             if (
-                operation is not None
-                and operation.status == "COMMITTED"
-                and operation.committed_verification_pending
+                _verification_owned(operation, lease_token, clock())
+                and read_version is not None
+                and session.scalar(text("PRAGMA main.data_version")) == read_version
+                and not problems
             ):
-                operation.committed_verification_pending = bool(problems)
-                if not problems:
-                    # Clear retry metadata atomically with the authoritative pass.
-                    # A crash before the retry wrapper returns cannot leave stale schedules.
-                    operation.verification_manual_required = False
-                    operation.verification_next_attempt_at = None
-                    operation.verification_lease_until = None
-                    operation.verification_lease_token = None
-                    operation.verification_last_error_code = None
-    finally:
-        session.close()
+                assert operation is not None
+                operation.committed_verification_pending = False
+                # A crash before the wrapper returns cannot leave stale schedules.
+                operation.verification_manual_required = False
+                operation.verification_next_attempt_at = None
+                operation.verification_lease_until = None
+                operation.verification_lease_token = None
+                operation.verification_last_error_code = None
 
 
 def consistency_problems(session: Session) -> list[str]:
@@ -1749,14 +1789,13 @@ def _order_reservation_problems(session: Session) -> list[str]:
     cannot detect reservations moved between orders or an altered order line.
     """
     problems: list[str] = []
-    shipped = {
-        (order_id, sku): int(qty)
-        for order_id, sku, qty in session.execute(
-            select(
-                ShipmentRecord.order_id, ShipmentRecord.sku_id, func.sum(ShipmentRecord.qty)
-            ).group_by(ShipmentRecord.order_id, ShipmentRecord.sku_id)
-        )
-    }
+    shipped: dict[str, dict[str, int]] = {}
+    for order_id, sku, qty in session.execute(
+        select(
+            ShipmentRecord.order_id, ShipmentRecord.sku_id, func.sum(ShipmentRecord.qty)
+        ).group_by(ShipmentRecord.order_id, ShipmentRecord.sku_id)
+    ):
+        shipped.setdefault(order_id, {})[sku] = int(qty)
     expected: dict[tuple[str, str, str], int] = {}
     current = session.execute(
         select(SalesOrder, OrderRevision).outerjoin(
@@ -1769,9 +1808,23 @@ def _order_reservation_problems(session: Session) -> list[str]:
         if revision is None:
             if order.current_revision > 0:
                 problems.append(f"{order.id} 当前订单版本缺失")
-            continue
-        for line in session.scalars(select(OrderLine).where(OrderLine.revision_id == revision.id)):
-            remaining = line.ordered_qty - shipped.get((order.id, line.sku_id), 0)
+        lines = (
+            {
+                line.sku_id: line
+                for line in session.scalars(
+                    select(OrderLine).where(OrderLine.revision_id == revision.id)
+                )
+            }
+            if revision is not None
+            else {}
+        )
+        order_shipped = shipped.get(order.id, {})
+        for sku in sorted(lines.keys() | order_shipped.keys()):
+            line = lines.get(sku)
+            if line is None:
+                problems.append(f"{order.id}/{sku} 存在发货事实但当前订单行缺失")
+                continue
+            remaining = line.ordered_qty - order_shipped.get(sku, 0)
             if remaining < 0:
                 problems.append(f"{order.id}/{line.sku_id} 订单数量低于已发数量")
             if line.fulfillment_mode == FulfillmentMode.STOCK:
