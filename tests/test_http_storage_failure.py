@@ -26,7 +26,7 @@ uvicorn.run(app, fd=int(sys.argv[1]), access_log=False)
 
 
 @contextmanager
-def real_http(database_url, tmp_path):
+def real_http(database_url, tmp_path, *, env_overrides=None):
     log = tmp_path / "uvicorn.log"
     with socket.socket() as sock, log.open("wb") as stream:
         sock.bind(("127.0.0.1", 0))
@@ -39,6 +39,7 @@ def real_http(database_url, tmp_path):
             "OOS_LIVE_ENABLED": "false",
             "PYTHONUNBUFFERED": "1",
         }
+        env.update(env_overrides or {})
         proc = subprocess.Popen(
             [sys.executable, "-c", SERVER, str(sock.fileno())],
             cwd=tmp_path,

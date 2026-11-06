@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     llm_json_schema_supported: bool = False
     model_reasoning_effort: str = "none"
     database_url: str = "sqlite:///./data/oos.db"
+    source_storage_dir: Path | None = None
     approval_ttl_seconds: int = 600
     worker_max_active: int = 2
     model_timeout_s: int = 60
@@ -48,6 +50,22 @@ class Settings(BaseSettings):
     verification_max_delay_seconds: int = Field(default=3600, ge=1, le=86400)
     verification_lease_seconds: int = Field(default=120, ge=1, le=3600)
     verification_batch_size: int = Field(default=100, ge=1, le=1000)
+
+    @field_validator("source_storage_dir", mode="before")
+    @classmethod
+    def parse_source_storage_dir(cls, value: object) -> object:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
+    @field_validator("source_storage_dir")
+    @classmethod
+    def validate_source_storage_dir(cls, value: Path | None) -> Path | None:
+        if value is not None and (
+            not value.is_absolute() or value == Path("/") or ".." in value.parts
+        ):
+            raise ValueError("原件目录须为不含上级跳转的绝对路径，不能是根目录")
+        return value
 
     @field_validator("worker_max_active")
     @classmethod

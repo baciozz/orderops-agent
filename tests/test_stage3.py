@@ -53,7 +53,7 @@ def stage3(session_factory, database_url, tmp_path, monkeypatch):
     load_seed(session_factory, database_url=database_url)
     app = create_app(Settings(_env_file=None, database_url=database_url))
     root = tmp_path / "sources"
-    root.mkdir()
+    root.mkdir(mode=0o700)
     app.state.source_storage_dir = root
     clock = [NOW]
     monkeypatch.setattr("app.api.tasks.utcnow", lambda: clock[0])

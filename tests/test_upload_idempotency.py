@@ -35,7 +35,7 @@ def upload_env(session_factory, database_url, tmp_path):
     )
     app = create_app(Settings(_env_file=None, database_url=database_url))
     root = tmp_path / "uploads"
-    root.mkdir()
+    root.mkdir(mode=0o700)
     app.state.source_storage_dir = root
     with TestClient(app, base_url="http://127.0.0.1") as client:
         yield client, app, task_id
@@ -399,7 +399,10 @@ def test_xb_collision_never_deletes_preexisting_file(upload_env, session_factory
     sentinel = app.state.source_storage_dir / "SRC-fixed"
     sentinel.write_bytes(b"preexisting evidence must survive")
     response = send(client, task_id)
-    assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert (
+        response.status_code == 503
+        and response.json()["error"]["code"] == "SOURCE_STORAGE_UNAVAILABLE"
+    )
     assert "SRC-fixed" not in response.text
     assert sentinel.read_bytes() == b"preexisting evidence must survive"
     assert not any(counts(session_factory).values())

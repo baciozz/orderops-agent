@@ -38,6 +38,7 @@ from app.errors import AppError, SchemaNotReadyError
 from app.metrics import snapshot
 from app.observability import configure_logging, exception_code, get_logger, log_context, log_event
 from app.orchestration.defaults import build_default_registry
+from app.services.source_storage import prepare_source_storage
 
 logger = get_logger(__name__)
 
@@ -105,7 +106,7 @@ def _create_app(settings: Settings | None = None) -> FastAPI:
     application.state.engine = engine
     application.state.session_factory = make_session_factory(engine)
     application.state.settings = settings
-    application.state.source_storage_dir = None
+    application.state.source_storage_dir = prepare_source_storage(settings.source_storage_dir)
     application.state.registry = registry
     application.state.mode_resolution = resolution
 

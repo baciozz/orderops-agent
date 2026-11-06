@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 def error_app(session_factory, database_url, tmp_path):
     app = create_app(Settings(_env_file=None, database_url=database_url))
     storage = tmp_path / "sources"
-    storage.mkdir()
+    storage.mkdir(mode=0o700)
     app.state.source_storage_dir = storage
     task_id = accept_input(
         session_factory, thread_id="uploads", client_event_key="initial", text="保存输入"

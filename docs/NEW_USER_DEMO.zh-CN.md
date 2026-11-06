@@ -45,6 +45,7 @@ cd "$DEMO"
 demo_python() {
   env -i PATH=/usr/bin:/bin HOME="$DEMO/home" TMPDIR="$DEMO/tmp" \
     OOS_DATABASE_URL="sqlite:///$DEMO/demo.db" OOS_LIVE_ENABLED=false \
+    OOS_SOURCE_STORAGE_DIR="$DEMO/originals" \
     "$PY" -I -B "$@"
 }
 demo_python -m app.cli init-db
