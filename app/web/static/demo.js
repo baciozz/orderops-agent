@@ -1,8 +1,19 @@
 "use strict";
 
 let existingActionBusy = false;
+const renderedDuplicate = document.getElementById("acknowledge-duplicate");
+
+function clearDuplicateConfirmation() {
+  const checkbox = document.getElementById("acknowledge-duplicate");
+  if (renderedDuplicate) renderedDuplicate.checked = false;
+  if (checkbox) checkbox.checked = false;
+}
+
+// UX only: server plan/hash/revision checks remain authoritative.
+clearDuplicateConfirmation();
 
 async function postJSON(url, body) {
+  clearDuplicateConfirmation();
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -18,6 +29,7 @@ async function postJSON(url, body) {
 }
 
 function showMessage(element, text, failed = false) {
+  if (failed) clearDuplicateConfirmation();
   element.textContent = text;
   element.classList.toggle("error", failed);
   element.setAttribute("role", failed ? "alert" : "status");
@@ -30,20 +42,36 @@ if (actions) {
   const message = document.getElementById("action-message");
   const data = actions.dataset;
   let approvalId = data.approvalId;
+  const identity = [data.taskId, data.planId, data.planHash, data.intentRevision];
   const planURL = `/plans/${encodeURIComponent(data.planId)}`;
 
   approve.addEventListener("click", async () => {
-    if (existingActionBusy) return;
+    if (existingActionBusy || approve.disabled) return;
     existingActionBusy = true;
     const couldCommit = !commit.disabled;
     approve.disabled = true;
     commit.disabled = true;
     showMessage(message, "正在批准…");
     try {
-      const result = await postJSON(`${planURL}/approve`, {
+      if ([data.taskId, data.planId, data.planHash, data.intentRevision]
+          .some((value, index) => value !== identity[index])) {
+        throw new Error("任务或计划已变化，请刷新后重新核对");
+      }
+      const body = {
         plan_hash: data.planHash,
         expected_intent_revision: Number(data.intentRevision),
-      });
+      };
+      const duplicate = document.getElementById("acknowledge-duplicate");
+      if (duplicate && duplicate === renderedDuplicate && duplicate.isConnected &&
+          actions.isConnected && document.getElementById("plan-actions") === actions &&
+          duplicate.closest("#plan-actions") === actions &&
+          duplicate.checked && !duplicate.disabled &&
+          duplicate.dataset.taskId === identity[0] &&
+          duplicate.dataset.planId === identity[1] &&
+          duplicate.dataset.planHash === identity[2]) {
+        body.acknowledge_duplicate = true;
+      }
+      const result = await postJSON(`${planURL}/approve`, body);
       approvalId = result.approval_id;
       commit.disabled = false;
       showMessage(message, `批准成功（${result.status}），请点击「提交生效」。有效期至 ${result.expires_at}`);
@@ -53,12 +81,13 @@ if (actions) {
       commit.disabled = !couldCommit;
       showMessage(message, error.message, true);
     } finally {
+      clearDuplicateConfirmation();
       existingActionBusy = false;
     }
   });
 
   commit.addEventListener("click", async () => {
-    if (!approvalId || existingActionBusy) return;
+    if (!approvalId || existingActionBusy || commit.disabled) return;
     existingActionBusy = true;
     const couldApprove = !approve.disabled;
     approve.disabled = true;
@@ -78,6 +107,7 @@ if (actions) {
       commit.disabled = false;
       showMessage(message, error.message, true);
     } finally {
+      clearDuplicateConfirmation();
       existingActionBusy = false;
     }
   });
@@ -108,6 +138,7 @@ document.querySelectorAll("form[data-worker]").forEach((form) => {
     } catch (error) {
       showMessage(message, error.message, true);
     } finally {
+      clearDuplicateConfirmation();
       existingActionBusy = false;
       button.disabled = false;
     }
@@ -128,6 +159,7 @@ if (taskInputs) {
       return;
     }
     busy = true;
+    clearDuplicateConfirmation();
     const controls = [...document.querySelectorAll("button, input, textarea")];
     const disabled = controls.map((control) => control.disabled);
     controls.forEach((control) => { control.disabled = true; });
@@ -275,6 +307,7 @@ if (taskInputs) {
 
 // Browsers can restore checkbox state or a stale task page through Back/Forward.
 window.addEventListener("pageshow", (event) => {
+  clearDuplicateConfirmation();
   document.querySelectorAll('input[name="answer-source"]').forEach((input) => {
     input.checked = false;
   });

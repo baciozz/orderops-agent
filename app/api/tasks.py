@@ -105,6 +105,7 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
     view = _view(task_id, request)
     plan_id = approval_id = None
     renewable = False
+    duplicate_warning = None
     uploaded_sources = []
     if task_id != STUB_TASK_ID:
         with request.app.state.session_factory() as session:
@@ -127,6 +128,12 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             )
             if plan:
                 plan_id = plan.id
+                duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
+                if plan.plan_kind == "create" and isinstance(duplicate_of, str) and duplicate_of:
+                    duplicate_warning = {
+                        "order_id": duplicate_of,
+                        "url": f"/ui/demo/orders/{quote(duplicate_of, safe='')}",
+                    }
                 # EXPIRED is projected only after the ordinary task and
                 # dependency checks. A plan expiry itself cannot be renewed.
                 renewable = (
@@ -148,6 +155,7 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
             "plan_id": plan_id,
             "approval_id": approval_id,
             "renewable": renewable,
+            "duplicate_warning": duplicate_warning,
             "uploaded_sources": uploaded_sources,
             "input_event_id": input_event_id,
             "audit_url": f"/tasks/{quote(task_id, safe='')}/audit"

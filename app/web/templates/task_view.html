@@ -57,6 +57,25 @@
   <section id="plan-actions" data-plan-id="{{ plan_id or '' }}" data-task-id="{{ view.card.task_id }}"
     data-plan-hash="{{ view.approval.plan_hash or '' }}" data-intent-revision="{{ view.card.intent_revision }}"
     data-approval-id="{{ approval_id or '' }}">
+  {% if duplicate_warning %}
+  <aside aria-labelledby="duplicate-heading">
+    <h2 id="duplicate-heading">疑似重复新单：需要逐项核对</h2>
+    <p>计划生成时发现关联旧单
+      <a href="{{ duplicate_warning.url }}">{{ duplicate_warning.order_id }}</a>。
+      这是历史计划发现，不保证旧单当前未变化。请打开旧单核对客户与商品行，
+      并逐项核对上方目标行与库存影响；继续创建可能导致重复订单及重复占用库存。</p>
+    {% if view.approval.approvable or renewable %}
+    <label><input type="checkbox" id="acknowledge-duplicate" autocomplete="off"
+      data-task-id="{{ view.card.task_id }}" data-plan-id="{{ plan_id }}"
+      data-plan-hash="{{ view.approval.plan_hash }}">
+      已核对仍要创建</label>
+    <p>仅确认当前任务的当前计划；不代表批准或提交。刷新、返回、操作后须重新核对。
+      未勾选时批准请求仍由服务端拒绝；重新批准也需重新勾选。</p>
+    {% else %}
+    <p>当前计划不可批准。以上仅为历史提示，不能在此确认创建。</p>
+    {% endif %}
+  </aside>
+  {% endif %}
   <p>批准身份：服务端 demo-user。批准后请点击「提交生效」执行当前计划。</p>
   <button type="button" id="approve" {% if not view.approval.approvable %}disabled{% endif %}
     aria-describedby="approval-reason">批准当前计划</button>
