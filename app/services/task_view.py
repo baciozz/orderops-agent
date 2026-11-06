@@ -267,6 +267,19 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
     elif task.status in {"QUEUED", "RUNNING"}:
         waiting = "subagent"
     result = operation.result_json or {} if operation else {}
+    questions = list(receipt.body.get("questions", [])) if receipt else []
+    # Kernel risk checks persist their questions on the draft plan, rather than
+    # the parser receipt. Show only the current clarification, never an invalidated
+    # plan's questions after a new answer or a successful commit.
+    if (
+        plan
+        and task.status == "NEEDS_CLARIFICATION"
+        and plan.status == "DRAFT"
+        and plan.intent_revision == task.intent_revision
+    ):
+        for question in plan.normalized_changes.get("outcome", {}).get("questions", []):
+            if question not in questions:
+                questions.append(question)
     return TaskView(
         request_id=request_id,
         correlation_id=correlation_id,
@@ -285,7 +298,7 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
         downstream=downstream,
         sources=list({ref.model_dump_json(): ref for ref in sources}.values()),
         conflicts=extraction.get("conflicts", []),
-        questions=receipt.body.get("questions", []) if receipt else [],
+        questions=questions,
         approval=approval,
         result=TaskResultBlock(
             operation_id=operation.id if operation else None,

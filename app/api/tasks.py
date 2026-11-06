@@ -304,6 +304,9 @@ def _sheet_presentation(session, task: Task | None):
         "history": history,
         "correction": correction_view,
         "exhausted": task.error_code == "ATTEMPT_LIMIT",
+        "answer_placeholder": "蓝 L 改成 20"
+        if history or (isinstance(record, dict) and record.get("rows"))
+        else "按附件新建订单",
     }
 
 
