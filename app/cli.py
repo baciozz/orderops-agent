@@ -56,7 +56,15 @@ def main(argv: list[str] | None = None) -> int:
         "verify-operation", help="对已转人工的操作执行一次只读核验，不重提或修复业务"
     )
     verify.add_argument("operation_id", help="已提交的 Operation ID")
+    audit = sub.add_parser("audit-links", help="只读审计一个提交的历史关联证据，不放行业务")
+    audit.add_argument("operation_id", help="需要审计的 Operation ID")
     args = parser.parse_args(argv)
+    if args.command == "audit-links":
+        from app.services.link_audit import audit_operation_links
+
+        link_report = audit_operation_links(get_settings().database_url, args.operation_id)
+        print(link_report.model_dump_json())
+        return {"consistent_for_operation": 0, "findings": 1, "uncertain": 2}[link_report.status]
     loop_options = None
     if args.command == "worker-loop":
         try:
