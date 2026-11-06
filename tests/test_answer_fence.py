@@ -143,10 +143,10 @@ def test_worker_consumes_successive_fenced_answers(durable, bound):  # noqa: F81
         }
         receipt = accept_input(factory, task_id=task_id, clock=clock, **request)
         with factory() as session:
-            assert session.get(Task, task_id).intent_revision == revision + int(bound)
+            assert session.get(Task, task_id).intent_revision == revision + 1
         assert run_once(factory, clock=clock).status == "NEEDS_CLARIFICATION"
         with factory() as session:
-            assert session.get(Task, task_id).intent_revision == revision + int(bound)
+            assert session.get(Task, task_id).intent_revision == revision + 1
         before = snapshot(factory)
         assert accept_input(factory, task_id=task_id, **request)[:2] == receipt[:2]
         with pytest.raises(AppError) as exc:
@@ -171,13 +171,13 @@ def test_input_fence_blocks_unbound_cycles_and_binding_collision(durable):  # no
         factory, **{**body("initial"), "text": TEXT_ATTACH_SHEET}, clock=clock
     )
     assert run_once(factory, clock=clock).status == "NEEDS_CLARIFICATION"
-    old_request = {**body("stale-tab", 0), "expected_input_event_id": event_id}
+    old_request = {**body("stale-tab", 1), "expected_input_event_id": event_id}
     accepted = accept_input(
         factory,
         task_id=task_id,
         clock=clock,
         **{
-            **body("unbound-cycle", 0),
+            **body("unbound-cycle", 1),
             "text": TEXT_ATTACH_SHEET,
             "expected_input_event_id": event_id,
         },
@@ -190,19 +190,19 @@ def test_input_fence_blocks_unbound_cycles_and_binding_collision(durable):  # no
     assert snapshot(factory) == before
     # Start the target at the unbound revision; acquisition must advance it.
     with factory() as session, begin_immediate(session):
-        session.get(SalesOrder, "SO-1001").intent_revision = 0
+        session.get(SalesOrder, "SO-1001").intent_revision = 2
     accept_input(
         factory,
         task_id=task_id,
         clock=clock,
-        **{**body("bind", 0), "text": TEXT_ONLY_UNCUT, "expected_input_event_id": accepted[0]},
+        **{**body("bind", 2), "text": TEXT_ONLY_UNCUT, "expected_input_event_id": accepted[0]},
     )
     assert run_once(factory, clock=clock).status == "AWAITING_APPROVAL"
     with factory() as session:
-        assert session.get(Task, task_id).intent_revision == 1
+        assert session.get(Task, task_id).intent_revision == 3
     before = snapshot(factory)
     # Even a matching revision cannot rescue an obsolete input-event fence.
-    old_request["expected_intent_revision"] = 1
+    old_request["expected_intent_revision"] = 3
     with pytest.raises(AppError) as exc:
         accept_input(factory, task_id=task_id, **old_request)
     assert exc.value.code == "STALE_INTENT"
@@ -250,7 +250,7 @@ def test_unbound_concurrent_input_fences_and_duplicate_replays(durable, same_key
                 factory,
                 task_id=task_id,
                 **{
-                    **body("same" if same_key else f"answer-{index}", 0),
+                    **body("same" if same_key else f"answer-{index}", 1),
                     "expected_input_event_id": input_id,
                 },
             )

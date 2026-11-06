@@ -30,6 +30,7 @@ from app.db.models import (
     DocRevision,
     DownstreamLink,
     Event,
+    InputPayload,
     JobAttempt,
     MaterialUsage,
     Operation,
@@ -311,6 +312,8 @@ def approve_plan(
                 )
             if plan.intent_revision != expected_intent_revision:
                 raise AppError("意图版本已变化", code="STALE_INTENT", http_status=409)
+            if plan.plan_kind == PlanKind.CREATE:
+                _check_current_create(session, plan)
             duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
             if duplicate_of and not acknowledge_duplicate:
                 raise AppError(
@@ -673,7 +676,7 @@ def _plan_new_locked(
     now: datetime,
 ) -> tuple[PlanOutcome | None, AppError | None]:
     customer, clarify = _resolve_customer(session, customer_code, customer_name)
-    chain_id = _id("CH")
+    chain_id, intent = _create_intent(session, client_event_key)
     if clarify is not None:
         return (
             _store_non_validated(
@@ -681,7 +684,7 @@ def _plan_new_locked(
                 order_id=None,
                 chain_id=chain_id,
                 base_revision=0,
-                intent_revision=1,
+                intent_revision=intent,
                 status=TaskStatus.NEEDS_CLARIFICATION,
                 questions=[clarify[0]],
                 candidates=clarify[1],
@@ -721,7 +724,7 @@ def _plan_new_locked(
                     order_id=None,
                     chain_id=chain_id,
                     base_revision=0,
-                    intent_revision=1,
+                    intent_revision=intent,
                     status=TaskStatus.NEEDS_CLARIFICATION,
                     questions=[f"无法唯一匹配 SKU：{token}"],
                     candidates=found,
@@ -744,7 +747,7 @@ def _plan_new_locked(
                     order_id=None,
                     chain_id=chain_id,
                     base_revision=0,
-                    intent_revision=1,
+                    intent_revision=intent,
                     status=TaskStatus.NEEDS_CLARIFICATION,
                     questions=[f"未知 SKU {sku_id}"],
                     candidates=found,
@@ -784,7 +787,7 @@ def _plan_new_locked(
             order_id=None,
             chain_id=chain_id,
             base_revision=0,
-            intent_revision=1,
+            intent_revision=intent,
             evaluation=evaluation,
             source_refs=line_refs,
             client_event_key=client_event_key,
@@ -812,7 +815,7 @@ def _plan_new_locked(
             customer_id=customer.id,
             chain_id=chain_id,
             base_revision=0,
-            intent_revision=1,
+            intent_revision=intent,
             changes=changes,
             evaluation=evaluation,
             source_refs=line_refs,
@@ -900,6 +903,14 @@ def _commit_locked(
                 "下游单据版本或状态已变化", code="STALE_DEPENDENCY", http_status=409
             )
     else:
+        try:
+            _check_current_create(session, plan)
+        except AppError as exc:
+            _revoke_if_active(approval)
+            return None, exc
+        if approval.intent_revision != plan.intent_revision:
+            _revoke_if_active(approval)
+            return _err("意图已更新，旧批准不能提交", "STALE_INTENT", 409)
         order = None
         base_lines = {}
         customer_id = str((plan.normalized_changes or {})["customer_id"])
@@ -1678,6 +1689,102 @@ def _existing_outcome(
         ),
         None,
     )
+
+
+def invalidate_create_intent(session: Session, task: Task) -> None:
+    """Allocate an unbound task epoch and retire candidates in the receipt transaction."""
+    plans = list(session.scalars(select(Plan).where(Plan.task_id == task.id)))
+    task.intent_revision = max([task.intent_revision, *(p.intent_revision for p in plans)]) + 1
+    for plan in plans:
+        if plan.plan_kind != PlanKind.CREATE or plan.status == PlanStatus.COMMITTED:
+            continue
+        plan.status = PlanStatus.INVALIDATED
+        for approval in session.scalars(
+            select(Approval).where(
+                Approval.plan_id == plan.id, Approval.status == ApprovalStatus.ACTIVE
+            )
+        ):
+            approval.status = ApprovalStatus.REVOKED
+
+
+def _create_intent(session: Session, client_event_key: str) -> tuple[str, int]:
+    """Durable input owns CREATE identity; standalone callers retain their own chain."""
+    from app.orchestration.inbox import latest_input
+
+    bound = bound_task_id.get()
+    task = session.get(Task, bound) if bound else None
+    if task is None or not session.scalar(
+        select(InputPayload.event_id).where(InputPayload.task_id == task.id).limit(1)
+    ):
+        return _id("CH"), 1
+    receipt = latest_input(session, task)
+    if (
+        receipt is None
+        or receipt.task_id != task.id
+        or receipt.event_id != client_event_key
+        or task.intent_revision < 1
+    ):
+        raise AppError("新单输入已失效", code="STALE_INTENT", http_status=409)
+    # First CREATE, or conversion from an inferred existing-order scope, owns a
+    # fresh business chain. Consecutive unbound CREATE corrections retain only a
+    # chain proven by a task-local kernel plan and its owned input receipt.
+    prior = list(
+        session.scalars(
+            select(Plan).where(Plan.task_id == task.id, Plan.plan_kind == PlanKind.CREATE)
+        )
+    )
+    if task.order_id is not None or not prior:
+        return _id("CH"), task.intent_revision
+    proven = session.scalar(
+        select(Event.id)
+        .join(Plan, Plan.id == Event.payload_ref)
+        .join(InputPayload, InputPayload.event_id == Event.source_event_key)
+        .where(
+            Plan.task_id == task.id,
+            Plan.plan_kind == PlanKind.CREATE,
+            InputPayload.task_id == task.id,
+            Event.thread_id == _THREAD,
+            Event.kind == "plan",
+            Event.order_id.is_(None),
+            Event.chain_id == task.chain_id,
+            Event.intent_revision == Plan.intent_revision,
+        )
+        .limit(1)
+    )
+    if not proven:
+        raise AppError("无法验证新单业务链", code="STALE_INTENT", http_status=409)
+    return task.chain_id, task.intent_revision
+
+
+def _check_current_create(session: Session, plan: Plan) -> None:
+    """Check both epoch and server-owned input provenance, including legacy plans."""
+    from app.orchestration.inbox import latest_input
+
+    task = session.get(Task, plan.task_id)
+    if (
+        task is None
+        or task.cancel_requested
+        or task.status != TaskStatus.AWAITING_APPROVAL
+        or plan.status not in {PlanStatus.VALIDATED, PlanStatus.APPROVED}
+        or task.intent_revision != plan.intent_revision
+    ):
+        raise AppError("新单计划已失效", code="STALE_INTENT", http_status=409)
+    receipt = latest_input(session, task)
+    if receipt is None:
+        return  # Standalone kernel/dispatcher tasks have no durable input receipt.
+    origins = list(session.scalars(select(Event).where(Event.payload_ref == plan.id)))
+    if (
+        receipt.task_id != task.id
+        or len(origins) != 1
+        or origins[0].thread_id != _THREAD
+        or origins[0].order_id is not None
+        or origins[0].kind != "plan"
+        or origins[0].source_event_key != receipt.event_id
+        or origins[0].intent_revision != plan.intent_revision
+        or origins[0].chain_id != task.chain_id
+        or task.order_id is not None
+    ):
+        raise AppError("新单输入已更新或无法验证", code="STALE_INTENT", http_status=409)
 
 
 def invalidate_order(

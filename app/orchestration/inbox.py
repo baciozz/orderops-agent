@@ -11,7 +11,7 @@ from app.errors import AppError
 from app.observability import enrich, get_logger, observed, text_digest
 from app.orchestration.intent_receipts import receipt_metadata
 from app.orchestration.state import transition, utcnow
-from app.services.kernel import invalidate_order
+from app.services.kernel import invalidate_create_intent, invalidate_order
 
 logger = get_logger(__name__)
 
@@ -95,6 +95,8 @@ def accept_input(
             invalidate_order(session, order.id, exclude_task_id=task.id)
             order.intent_revision += 1
             task.intent_revision = order.intent_revision
+        else:
+            invalidate_create_intent(session, task)
         event = Event(
             id=str(uuid4()),
             source_event_key=client_event_key,
