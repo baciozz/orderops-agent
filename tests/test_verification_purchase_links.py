@@ -291,9 +291,12 @@ def test_cancelled_links_remain_historical_across_later_stock_commits(kernel):
     # A legal old link does not excuse a missing current snapshot of the cancelled PO.
     with kernel() as session, begin_immediate(session):
         session.delete(current_snapshot(session, "PUR-3002"))
-    assert [r["problem"] for r in service.inspect_downstream(kernel)] == [
-        "PUR-3002 当前单据修订 2 缺失"
-    ]
+    report = service.inspect_downstream(kernel)
+    assert {r["problem"] for r in report} == {
+        "PUR-3002 仍链接到修订 2，当前修订是 4",
+        "PUR-3002 当前单据修订 2 缺失",
+    }
+    assert all(r["repair"]["action"] == "manual_review" for r in report)
 
 
 def test_status_flip_alone_cannot_exempt_stale_links_from_verification(mto):
@@ -308,7 +311,11 @@ def test_status_flip_alone_cannot_exempt_stale_links_from_verification(mto):
             link.order_revision = 1
     report = service.inspect_downstream(mto)
     assert {r["doc_id"] for r in report} == {"BM-0", "BP-0-0", "BP-0-1"}
-    assert all("当前取消状态" in r["problem"] for r in report)
+    assert {r["doc_id"] for r in report if "当前取消状态" in r["problem"]} == {
+        "BM-0",
+        "BP-0-0",
+        "BP-0-1",
+    }
     assert all(r["repair"]["action"] == "manual_review" for r in report)
 
 

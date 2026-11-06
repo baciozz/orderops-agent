@@ -21,7 +21,7 @@ from schemas.enums import (
     TaskStatus,
 )
 from seeds.golden import WAREHOUSE_ID
-from sqlalchemy import func, literal, select, text
+from sqlalchemy import case, func, literal, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -2555,7 +2555,44 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
     # Preserve _current_links(order_id)'s per-order latest-link rule. A newer
     # link in another order must not hide a stale association in this order.
     links_by_order: dict[str, dict[tuple[str, str], DownstreamLink]] = {}
-    for link in session.scalars(select(DownstreamLink)):
+    verified_link_origins: set[str] = set()
+    existing_link_revisions: set[str] = set()
+    # Project only receipt identity, in the existing batch. A cancelled document
+    # may retain its actual cancellation link, never an arbitrary old/future one.
+    receipt = case((func.json_valid(Operation.result_json), Operation.result_json), else_="{}")
+    link_query = (
+        select(
+            DownstreamLink,
+            OrderRevision.id,
+            Operation.status,
+            func.json_extract(receipt, "$.order_id"),
+            func.json_extract(receipt, "$.revision"),
+            func.json_type(receipt, "$.revision"),
+        )
+        .outerjoin(
+            OrderRevision,
+            (OrderRevision.order_id == DownstreamLink.order_id)
+            & (OrderRevision.revision_no == DownstreamLink.order_revision),
+        )
+        .outerjoin(Operation, Operation.id == DownstreamLink.operation_id)
+    )
+    for (
+        link,
+        revision_id,
+        status,
+        receipt_order,
+        receipt_revision,
+        revision_type,
+    ) in session.execute(link_query):
+        if revision_id is not None:
+            existing_link_revisions.add(link.id)
+            if (
+                status == "COMMITTED"
+                and receipt_order == link.order_id
+                and revision_type == "integer"
+                and receipt_revision == link.order_revision
+            ):
+                verified_link_origins.add(link.id)
         best = links_by_order.setdefault(link.order_id, {})
         key = (link.doc_type, link.doc_id)
         previous = best.get(key)
@@ -2613,10 +2650,20 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                 if link.doc_type == "production_order"
                 else purchase.get(link.doc_id)
             )
-            # Cancelled documents keep their cancellation link: later commits
-            # relink only active documents. Still validate their current snapshots.
-            if link.order_revision != order.current_revision and (
-                document is None or document.status != "CANCELLED"
+            snapshot = snapshots.get((link.doc_type, link.doc_id))
+            cancelled = document is not None and document.status == "CANCELLED"
+            # Require an existing past revision and the matching cancellation
+            # operation receipt. The snapshot's cancellation status is checked below.
+            cancelled_history = (
+                cancelled
+                and link.order_revision < order.current_revision
+                and link.id in verified_link_origins
+                and snapshot is not None
+                and snapshot.operation_id is not None
+                and snapshot.operation_id == link.operation_id
+            )
+            if (link.order_revision != order.current_revision and not cancelled_history) or (
+                cancelled and link.id not in existing_link_revisions
             ):
                 findings.append(
                     {
@@ -2626,13 +2673,12 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                             f"当前修订是 {order.current_revision}"
                         ),
                         "repair": {
-                            "action": "relink",
+                            "action": "manual_review" if cancelled else "relink",
                             "order_id": order.id,
                             "order_revision": order.current_revision,
                         },
                     }
                 )
-            snapshot = snapshots.get((link.doc_type, link.doc_id))
             if document is not None and snapshot is None:
                 # Cancellation also records a current revision. Old snapshots
                 # or the live row cannot replace missing revision evidence.
