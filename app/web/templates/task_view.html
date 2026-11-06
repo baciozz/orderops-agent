@@ -17,7 +17,12 @@
   {% include "task_failure_guidance.html" %}
   {% include "task_input_forms.html" %}
   {% include "worker_form.html" %}
-  <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a></p>
+  {% if view.card.task_id != "T-STUB" %}
+  <p id="task-status-notice" role="status" aria-live="polite">当前显示为页面加载时的状态；可手动刷新核对。</p>
+  <script id="task-status-baseline" type="application/json">{{ {"card": view.card, "approval": view.approval, "result": view.result} | tojson }}</script>
+  <script src="/ui/static/task-status-notice.js" defer></script>
+  {% endif %}
+  <p><a href="/ui/tasks/{{ view.card.task_id }}">刷新任务</a>（请先保留未提交内容）</p>
   {% if audit_url %}
   <p><a href="{{ audit_url }}">下载任务审计摘要（JSON）</a>：仅含已记录的回执、状态和来源元数据，不含原文或完整历史快照。</p>
   {% endif %}
