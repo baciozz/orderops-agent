@@ -156,6 +156,13 @@ def assess(db, requested, witnesses, *, limit=64):
     )
     dependencies = {key for t in targets for key in t.closure} - {"order:" + r for r in requested}
     assessed_orders = {key[6:] for t in targets for key in t.closure if key.startswith("order:")}
+    # A failed closure cannot prove that an unvisited object is unrelated. It
+    # may be waiting in the worklist, or hidden behind missing declarations.
+    unassessed_reason = (
+        "NOT_ASSESSED_CLOSURE_INCOMPLETE"
+        if any(t.reasons for t in targets)
+        else "OUTSIDE_REQUEST_AND_DEPENDENCIES"
+    )
     return Report(
         requested,
         tuple(targets),
@@ -163,10 +170,7 @@ def assess(db, requested, witnesses, *, limit=64):
         coverage,
         tuple(sorted(catalog - set(requested))),
         tuple(sorted(dependencies)),
-        tuple(
-            (order, "OUTSIDE_REQUEST_AND_DEPENDENCIES")
-            for order in sorted(catalog - assessed_orders)
-        ),
+        tuple((order, unassessed_reason) for order in sorted(catalog - assessed_orders)),
     )
 
 

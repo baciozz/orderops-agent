@@ -152,6 +152,19 @@ def test_bound_limit_reports_incomplete_closure(scoped):
     assert "CLOSURE_LIMIT" in result.targets[0].reasons
 
 
+def test_unvisited_objects_are_not_declared_unrelated_when_closure_is_incomplete(scoped):
+    path, witnesses = scoped
+    with lineage.connection(path) as db:
+        db.execute("INSERT INTO member VALUES ('stock:S-A','B')")
+    witnesses.members["stock:S-A"].add("B")
+    witnesses.dependencies["B"].add("stock:S-A")
+    limited = report(scoped, limit=1)
+    assert ("B", "NOT_ASSESSED_CLOSURE_INCOMPLETE") in limited.unassessed_objects
+    del witnesses.dependencies["A"]
+    unknown = report(scoped)
+    assert ("LEGACY", "NOT_ASSESSED_CLOSURE_INCOMPLETE") in unknown.unassessed_objects
+
+
 def test_same_snapshot_old_success_is_rechecked_before_publication(scoped):
     path, witnesses = scoped
     with lineage.connection(path) as reader:
