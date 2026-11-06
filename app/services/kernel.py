@@ -21,7 +21,7 @@ from schemas.enums import (
     TaskStatus,
 )
 from seeds.golden import WAREHOUSE_ID
-from sqlalchemy import func, select, text
+from sqlalchemy import func, literal, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -2564,6 +2564,9 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
     linked_production_ids = select(DownstreamLink.doc_id).where(
         DownstreamLink.doc_type == "production_order"
     )
+    linked_purchase_ids = select(DownstreamLink.doc_id).where(
+        DownstreamLink.doc_type == "purchase_order"
+    )
     production = {
         row.id: row
         for row in session.scalars(
@@ -2573,31 +2576,48 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
     purchase = {
         row.id: row
         for row in session.scalars(
-            select(PurchaseOrder).where(
-                PurchaseOrder.id.in_(
-                    select(DownstreamLink.doc_id).where(DownstreamLink.doc_type == "purchase_order")
-                )
-            )
+            select(PurchaseOrder).where(PurchaseOrder.id.in_(linked_purchase_ids))
         )
     }
     # Join current document revisions; do not materialize historical JSON snapshots.
-    snapshots = {
-        row.doc_id: row
-        for row in session.scalars(
-            select(DocRevision)
-            .join(
-                ProductionOrder,
-                (DocRevision.doc_type == "production_order")
-                & (DocRevision.doc_id == ProductionOrder.id)
-                & (DocRevision.rev_no == ProductionOrder.doc_revision),
+    current_revisions = (
+        select(
+            literal("production_order").label("doc_type"),
+            ProductionOrder.id.label("doc_id"),
+            ProductionOrder.doc_revision.label("rev_no"),
+        )
+        .where(ProductionOrder.id.in_(linked_production_ids))
+        .union_all(
+            select(literal("purchase_order"), PurchaseOrder.id, PurchaseOrder.doc_revision).where(
+                PurchaseOrder.id.in_(linked_purchase_ids)
             )
-            .where(ProductionOrder.id.in_(linked_production_ids))
+        )
+        .subquery()
+    )
+    snapshots = {
+        (row.doc_type, row.doc_id): row
+        for row in session.scalars(
+            select(DocRevision).join(
+                current_revisions,
+                (DocRevision.doc_type == current_revisions.c.doc_type)
+                & (DocRevision.doc_id == current_revisions.c.doc_id)
+                & (DocRevision.rev_no == current_revisions.c.rev_no),
+            )
         )
     }
     for order in orders:
         links = list(links_by_order.get(order.id, {}).values())
         for link in links:
-            if link.order_revision != order.current_revision:
+            document = (
+                production.get(link.doc_id)
+                if link.doc_type == "production_order"
+                else purchase.get(link.doc_id)
+            )
+            # Cancelled documents keep their cancellation link: later commits
+            # relink only active documents. Still validate their current snapshots.
+            if link.order_revision != order.current_revision and (
+                document is None or document.status != "CANCELLED"
+            ):
                 findings.append(
                     {
                         "doc_id": link.doc_id,
@@ -2612,42 +2632,94 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                         },
                     }
                 )
-            if link.doc_type == "production_order":
-                row = production.get(link.doc_id)
-                snapshot = snapshots.get(link.doc_id)
-                if row is not None and snapshot is None:
-                    # Cancellation also records a current revision. Old snapshots
-                    # or the live row cannot replace missing revision evidence.
+            snapshot = snapshots.get((link.doc_type, link.doc_id))
+            if document is not None and snapshot is None:
+                # Cancellation also records a current revision. Old snapshots
+                # or the live row cannot replace missing revision evidence.
+                findings.append(
+                    {
+                        "doc_id": document.id,
+                        "problem": f"{document.id} 当前单据修订 {document.doc_revision} 缺失",
+                        "repair": {
+                            "action": "manual_review",
+                            "doc_type": link.doc_type,
+                            "doc_id": document.id,
+                            "doc_revision": document.doc_revision,
+                            "order_id": order.id,
+                        },
+                    }
+                )
+            elif (
+                document is not None
+                and document.status == "CANCELLED"
+                and snapshot is not None
+                and (
+                    not isinstance(snapshot.snapshot_json, dict)
+                    or snapshot.snapshot_json.get("status") != "CANCELLED"
+                )
+            ):
+                # Exempting an old order link requires current cancellation evidence,
+                # not just a changed status on the live document row.
+                findings.append(
+                    {
+                        "doc_id": document.id,
+                        "problem": (
+                            f"{document.id} 当前取消状态与单据修订 {document.doc_revision} 不一致"
+                        ),
+                        "repair": {
+                            "action": "manual_review",
+                            "doc_type": link.doc_type,
+                            "doc_id": document.id,
+                            "doc_revision": document.doc_revision,
+                            "order_id": order.id,
+                        },
+                    }
+                )
+            elif isinstance(document, ProductionOrder) and snapshot is not None:
+                recorded = snapshot.snapshot_json or {}
+                if (
+                    recorded.get("planned_qty") != document.planned_qty
+                    or recorded.get("sku_id") != document.sku_id
+                ):
                     findings.append(
                         {
-                            "doc_id": row.id,
-                            "problem": f"{row.id} 当前单据修订 {row.doc_revision} 缺失",
+                            "doc_id": document.id,
+                            "problem": (
+                                f"{document.id} 当前内容与单据修订 {document.doc_revision} 不一致"
+                            ),
+                            "repair": {
+                                "action": "draft",
+                                "sku_id": recorded.get("sku_id"),
+                                "planned_qty": recorded.get("planned_qty"),
+                            },
+                        }
+                    )
+            elif isinstance(document, PurchaseOrder) and snapshot is not None:
+                recorded = snapshot.snapshot_json or {}
+                # Receipt progress is a separate execution fact. Compare only
+                # the material and ordered quantity written by every PO revision.
+                if (
+                    not isinstance(recorded, dict)
+                    or recorded.get("material_id") != document.material_id
+                    or type(recorded.get("ordered_qty")) is not int
+                    or recorded.get("ordered_qty") != document.ordered_qty
+                ):
+                    findings.append(
+                        {
+                            "doc_id": document.id,
+                            "problem": (
+                                f"{document.id} 当前采购内容与单据修订 "
+                                f"{document.doc_revision} 不一致"
+                            ),
                             "repair": {
                                 "action": "manual_review",
-                                "doc_type": "production_order",
-                                "doc_id": row.id,
-                                "doc_revision": row.doc_revision,
+                                "doc_type": "purchase_order",
+                                "doc_id": document.id,
+                                "doc_revision": document.doc_revision,
                                 "order_id": order.id,
                             },
                         }
                     )
-                elif row is not None and snapshot is not None:
-                    recorded = snapshot.snapshot_json or {}
-                    if (
-                        recorded.get("planned_qty") != row.planned_qty
-                        or recorded.get("sku_id") != row.sku_id
-                    ):
-                        findings.append(
-                            {
-                                "doc_id": row.id,
-                                "problem": f"{row.id} 当前内容与单据修订 {row.doc_revision} 不一致",
-                                "repair": {
-                                    "action": "draft",
-                                    "sku_id": recorded.get("sku_id"),
-                                    "planned_qty": recorded.get("planned_qty"),
-                                },
-                            }
-                        )
         # This check needs only quantity/mode, not _load_lines' shipment/cut enrichment.
         line_map = lines_by_order.get(order.id, {})
         active_by_sku: dict[str, list[ProductionOrder]] = {}

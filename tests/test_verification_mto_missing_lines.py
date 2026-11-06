@@ -31,6 +31,8 @@ def mto(kernel):
         revision.snapshot_json = {"sku_id": SKU, "planned_qty": 2}
         for i in range(2):
             session.get(PurchaseOrder, f"BP-0-{i}").ordered_qty = 2
+            snapshot = session.get(DocRevision, f"BD-BP-0-{i}-3")
+            snapshot.snapshot_json = {**snapshot.snapshot_json, "ordered_qty": 2}
     return kernel
 
 
@@ -195,9 +197,12 @@ def test_cancelled_documents_do_not_resurrect_old_demand(mto, planned):
         session.get(DocRevision, "BD-BM-0-3").snapshot_json = {
             "sku_id": SKU,
             "planned_qty": planned,
+            "status": "CANCELLED",
         }
         for i in range(2):
             session.get(PurchaseOrder, f"BP-0-{i}").status = "CANCELLED"
+            snapshot = session.get(DocRevision, f"BD-BP-0-{i}-3")
+            snapshot.snapshot_json = {**snapshot.snapshot_json, "status": "CANCELLED"}
     assert service.inspect_downstream(mto) == []
 
 
@@ -205,6 +210,8 @@ def test_cancelled_production_does_not_hide_active_purchase(mto):
     remove_line(mto)
     with mto() as session, begin_immediate(session):
         session.get(ProductionOrder, "BM-0").status = "CANCELLED"
+        snapshot = session.get(DocRevision, "BD-BM-0-3")
+        snapshot.snapshot_json = {**snapshot.snapshot_json, "status": "CANCELLED"}
     report = service.inspect_downstream(mto)
     assert len(report) == 1 and "面料采购" in report[0]["problem"]
 
@@ -216,6 +223,8 @@ def test_zero_quantity_documents_without_demand_do_not_create_an_obligation(mto)
         session.get(DocRevision, "BD-BM-0-3").snapshot_json = {"sku_id": SKU, "planned_qty": 0}
         for i in range(2):
             session.get(PurchaseOrder, f"BP-0-{i}").ordered_qty = 0
+            snapshot = session.get(DocRevision, f"BD-BP-0-{i}-3")
+            snapshot.snapshot_json = {**snapshot.snapshot_json, "ordered_qty": 0}
     assert service.inspect_downstream(mto) == []
 
 
@@ -349,7 +358,7 @@ def test_readback_keeps_pending_until_fault_is_restored_after_restart(
 
 
 @pytest.mark.parametrize("takeover", [False, True])
-@pytest.mark.parametrize("fault", ["line", "snapshot"])
+@pytest.mark.parametrize("fault", ["line", "snapshot", "purchase_snapshot", "purchase_content"])
 def test_missing_fact_after_success_cannot_be_cleared_by_stale_result(
     mto, approved_commit, monkeypatch, takeover, fault
 ):
@@ -382,9 +391,17 @@ def test_missing_fact_after_success_cannot_be_cleared_by_stale_result(
             assert arrived.wait(10)
             if fault == "line":
                 remove_line(mto)
-            else:
+            elif fault == "snapshot":
                 with mto() as session, begin_immediate(session):
                     session.delete(session.get(DocRevision, "BD-BM-0-3"))
+            elif fault == "purchase_snapshot":
+                with mto() as session, begin_immediate(session):
+                    session.delete(session.get(DocRevision, "BD-BP-0-0-3"))
+            else:
+                with mto() as session, begin_immediate(session):
+                    # Aggregate material quantity stays valid; both individual snapshots drift.
+                    session.get(PurchaseOrder, "BP-0-0").ordered_qty = 3
+                    session.get(PurchaseOrder, "BP-0-1").ordered_qty = 1
             before = facts(mto)
             if takeover:
                 current[0] += timedelta(seconds=11)

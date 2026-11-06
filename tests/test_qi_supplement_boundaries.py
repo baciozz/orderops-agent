@@ -272,6 +272,8 @@ def test_verification_does_not_offset_one_mos_shortfall_with_anothers_surplus(ke
         second.ordered_qty += 2
         session.commit()
         problems = downstream_problems(session)
-        assert len(problems) == 2
+        assert len(problems) == 4
+        assert "PUR-3001 当前采购内容与单据修订 1 不一致" in problems
+        assert "PUR-3002 当前采购内容与单据修订 1 不一致" in problems
         assert any("MO-2001 面料采购" in problem for problem in problems)
         assert any("MO-2002 面料采购" in problem for problem in problems)

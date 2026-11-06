@@ -147,10 +147,17 @@ def add_orders(factory, count, kind, *, history=3):
                                 doc_type=doc_type,
                                 doc_id=doc_id,
                                 rev_no=rev,
-                                snapshot_json={
-                                    "sku_id": sku,
-                                    "planned_qty": 1 if rev == history else 999,
-                                },
+                                snapshot_json=(
+                                    {"sku_id": sku, "planned_qty": 1 if rev == history else 999}
+                                    if doc_type == "production_order"
+                                    else {
+                                        "material_id": "FAB-BLACK",
+                                        "ordered_qty": 1 if rev == history else 999,
+                                        "received_qty": 0,
+                                        "status": "PLACED",
+                                        "change_state": "NONE",
+                                    }
+                                ),
                             )
                         )
                         session.add(

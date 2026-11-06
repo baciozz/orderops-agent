@@ -159,9 +159,12 @@ def test_shared_purchase_demand_and_missing_docs_remain_checked(kernel, missing)
             row.ordered_qty += 1
     with kernel() as session:
         expected_actual = 1 if missing else 3
-        assert service.downstream_problems(session) == [
+        expected = [
             f"BM-3 面料采购 {{'FAB-BLACK': {expected_actual}}} 与单耗 {{'FAB-BLACK': 2}} 不一致"
         ]
+        if not missing:
+            expected.insert(0, "BP-3-1 当前采购内容与单据修订 3 不一致")
+        assert service.downstream_problems(session) == expected
 
 
 @pytest.mark.parametrize("takeover", [False, True])
