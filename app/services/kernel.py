@@ -2615,7 +2615,23 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
             if link.doc_type == "production_order":
                 row = production.get(link.doc_id)
                 snapshot = snapshots.get(link.doc_id)
-                if row is not None and snapshot is not None:
+                if row is not None and snapshot is None:
+                    # Cancellation also records a current revision. Old snapshots
+                    # or the live row cannot replace missing revision evidence.
+                    findings.append(
+                        {
+                            "doc_id": row.id,
+                            "problem": f"{row.id} 当前单据修订 {row.doc_revision} 缺失",
+                            "repair": {
+                                "action": "manual_review",
+                                "doc_type": "production_order",
+                                "doc_id": row.id,
+                                "doc_revision": row.doc_revision,
+                                "order_id": order.id,
+                            },
+                        }
+                    )
+                elif row is not None and snapshot is not None:
                     recorded = snapshot.snapshot_json or {}
                     if (
                         recorded.get("planned_qty") != row.planned_qty
@@ -2634,17 +2650,37 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                         )
         # This check needs only quantity/mode, not _load_lines' shipment/cut enrichment.
         line_map = lines_by_order.get(order.id, {})
-        for sku, line in line_map.items():
-            if line.fulfillment_mode != "MTO":
-                continue
-            planned = 0
-            for link in links:
-                if link.doc_type != "production_order":
-                    continue
+        active_by_sku: dict[str, list[ProductionOrder]] = {}
+        for link in links:
+            if link.doc_type == "production_order":
                 row = production.get(link.doc_id)
-                if row is None or row.status == "CANCELLED" or row.sku_id != sku:
-                    continue
-                planned += row.planned_qty
+                if row is not None and row.status != "CANCELLED":
+                    active_by_sku.setdefault(row.sku_id, []).append(row)
+        mto_skus = {sku for sku, line in line_map.items() if line.fulfillment_mode == "MTO"}
+        for sku in sorted(mto_skus | active_by_sku.keys()):
+            active_rows = active_by_sku.get(sku, [])
+            planned = sum(row.planned_qty for row in active_rows)
+            line = line_map.get(sku)
+            if line is None or line.fulfillment_mode != "MTO":
+                if planned:
+                    # Missing demand is not authority to cancel executed work or
+                    # reconstruct an order from historical quantities. Review first.
+                    findings.append(
+                        {
+                            "doc_id": sku,
+                            "problem": (
+                                f"{order.id}/{sku} 活跃生产计划 {planned} 缺少当前 MTO 订单行"
+                            ),
+                            "repair": {
+                                "action": "manual_review",
+                                "order_id": order.id,
+                                "order_revision": order.current_revision,
+                                "sku_id": sku,
+                                "production_order_ids": sorted(row.id for row in active_rows),
+                            },
+                        }
+                    )
+                continue
             if planned != line.ordered_qty:
                 findings.append(
                     {
