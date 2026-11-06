@@ -321,7 +321,7 @@ def test_existing_pending_verification_is_not_a_global_business_commit_lock(seed
         )
 
 
-def test_existing_old_verifier_can_publish_despite_future_schema_marker(seeded):
+def test_current_verifier_schema_marker_is_not_writer_isolation(seeded):
     result = legacy.commit(seeded)
     legacy.erase_line_and_origin(seeded, 2)
     with seeded() as session, begin_immediate(session):
@@ -329,7 +329,12 @@ def test_existing_old_verifier_can_publish_despite_future_schema_marker(seeded):
         session.execute(text("UPDATE alembic_version SET version_num='future-manifest-probe'"))
     kernel._post_verify(seeded, result.operation_id)
     with seeded() as session:
-        assert not session.get(Operation, result.operation_id).committed_verification_pending
+        op = session.get(Operation, result.operation_id)
+        # The real evidence veto now catches this loss. A pre-existing factory
+        # can still publish an observation past a future schema marker; schema
+        # migration therefore remains insufficient as old-writer isolation.
+        assert op.committed_verification_pending
+        assert op.verification_observation["status"] == "findings"
 
 
 def test_existing_link_schema_does_not_reserve_document_ownership_globally(seeded):
