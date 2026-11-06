@@ -2,11 +2,15 @@
 
 OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分派解析、库存、单据核对子 Agent，人工审批后执行并核验。
 
-**状态：v1.0.0 候选（1.0.0rc1）。阶段交接与后续改进已合入 main；尚未正式发布或打正式 tag，发布须等 Qi 批准。**
+**状态：v1.0.0 候选（1.0.0rc1）。历史阶段交接与后续草稿改进须按各自固定提交/分支核对，不能由本页推断当前候选已合入 main；尚未正式发布或打正式 tag，发布须等 Qi 批准。**
 
 已接通持久 inbox、worker、子 Agent 调度、预检、人工批准、原子提交、回读核验与 pending 核验重试，并支持静态文件上传、数据库任务视图及导出。默认 FIXTURE，可显式启用受预算限制的模型解析。
 
 ## 快速上手
+
+首次演示优先按[隔离安装与固定表格演示](docs/NEW_USER_DEMO.zh-CN.md)操作：源码 editable 与普通 wheel 路径分开，使用全新合成目录、绝对数据库地址和清空环境。固定表格入口为 `/ui/demo/new-stock-sheet`，契约见[固定表格说明](docs/BOUNDED_SHEET_ORDER.md)。[浏览器与 LIVE 待验收计划](docs/FUTURE_ACCEPTANCE.zh-CN.md)尚未执行。
+
+下面 Makefile 命令仅供源码开发环境，读取当前目录配置及继承环境，不能保证全新演示库；`seed` 幂等但不重置库存，重演缺5路径须使用上述新目录流程。普通 wheel 请使用指南中的 `python -m app.cli` 命令。
 
 需要 Python 3.11 及以上。本机演示只绑定 `127.0.0.1`，无需创建 `.env`。
 
@@ -219,9 +223,13 @@ Stage 5 后跟进有限核验重试之外的常驻调度、外部告警及历史
 On a task in `NEEDS_CLARIFICATION` or `AWAITING_APPROVAL`, the task page
 accepts one synthetic `.txt`, `.md`, or `.xlsx` file per upload (5 MiB/file,
 three files/task; existing parser limits also apply). Uploading only stores
-evidence. The attached-file list survives refresh, but every answer requires
-explicitly selecting its evidence again. Uploading another file clears previous
-selections. Filenames and error text are rendered as text.
+evidence. The attached-file list survives refresh. Generic answers require explicit
+evidence selection. In the bounded sheet workflow the initial answer must select
+the upload; a supported correction with omitted/empty IDs inherits only its already
+proven source set (see [contract](docs/BOUNDED_SHEET_ORDER.md)). Clearing selection
+does not remove that established bounded context. Uploading another file clears
+UI selections, but does not authorize replacing the bounded source set. Filenames
+and error text are rendered as text.
 
 Submit a clarification or revised intent, then explicitly run the FIXTURE
 worker. Approval and commit remain separate human actions. The answer delivery
