@@ -1,0 +1,259 @@
+{
+  "baseline_commit": "51ca65e84db5f67149fa0e7e68983d62c70c3bf7",
+  "transport": "Real loopback Uvicorn and static local provider. No real model, browser or ERP.",
+  "baseline_observations": [
+    {
+      "scenario": "late-response",
+      "task": "6a2c1d60-49ed-43e1-bb6e-9eba0d02ed2a",
+      "cancel_status": "CANCELLED",
+      "worker_result": null,
+      "operations": 0,
+      "provider_calls": 1,
+      "usage_status": "SETTLED",
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0,
+      "late_write_rejection": "STALE_ATTEMPT"
+    },
+    {
+      "scenario": "cancel-first",
+      "winner": "cancel",
+      "task_status": "CANCELLED",
+      "task": "d5457f28-d717-4ef3-899a-8626c530ff9d",
+      "cancel_response": [
+        200,
+        {
+          "task_id": "d5457f28-d717-4ef3-899a-8626c530ff9d",
+          "status": "CANCELLED"
+        }
+      ],
+      "commit_response": [
+        409,
+        {
+          "request_id": "cf10bf9b-0356-4c4e-b5f8-2de4059ab278",
+          "correlation_id": "cf10bf9b-0356-4c4e-b5f8-2de4059ab278",
+          "schema_version": "1.0",
+          "error": {
+            "code": "CANCELLED",
+            "message": "任务已取消",
+            "retryable": false,
+            "details": {}
+          }
+        }
+      ],
+      "operations": 0,
+      "provider_calls": 1,
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0
+    },
+    {
+      "scenario": "commit-first",
+      "winner": "commit",
+      "task_status": "SUCCEEDED",
+      "task": "9e5aa851-37b9-4356-a9c5-1dd19d5ed8c7",
+      "cancel_response": [
+        200,
+        {
+          "task_id": "9e5aa851-37b9-4356-a9c5-1dd19d5ed8c7",
+          "status": "ALREADY_COMMITTED"
+        }
+      ],
+      "commit_response": [
+        200,
+        {
+          "request_id": "445dadb8-cfe3-4527-a119-4881badcd1df",
+          "correlation_id": "445dadb8-cfe3-4527-a119-4881badcd1df",
+          "schema_version": "1.0",
+          "task_id": "9e5aa851-37b9-4356-a9c5-1dd19d5ed8c7",
+          "chain_id": "CH-SO-1001",
+          "status": "SUCCEEDED",
+          "operation_id": "OP-f4f4614db91a",
+          "order_id": "SO-1001",
+          "revision": 2,
+          "audit_id": "AUD-78ad9b46ab0b"
+        }
+      ],
+      "operations": 1,
+      "provider_calls": 1,
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0
+    },
+    {
+      "scenario": "simultaneous-1",
+      "winner": "commit",
+      "task_status": "SUCCEEDED",
+      "task": "3514a9d7-965e-4387-8707-4749ae71cf25",
+      "cancel_response": [
+        200,
+        {
+          "task_id": "3514a9d7-965e-4387-8707-4749ae71cf25",
+          "status": "ALREADY_COMMITTED"
+        }
+      ],
+      "commit_response": [
+        200,
+        {
+          "request_id": "52e9d03f-d9f2-408f-b7d6-83c1025706c6",
+          "correlation_id": "52e9d03f-d9f2-408f-b7d6-83c1025706c6",
+          "schema_version": "1.0",
+          "task_id": "3514a9d7-965e-4387-8707-4749ae71cf25",
+          "chain_id": "CH-SO-1001",
+          "status": "SUCCEEDED",
+          "operation_id": "OP-8be3697a1c3e",
+          "order_id": "SO-1001",
+          "revision": 2,
+          "audit_id": "AUD-d32435544ff9"
+        }
+      ],
+      "operations": 1,
+      "provider_calls": 1,
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0
+    },
+    {
+      "scenario": "simultaneous-2",
+      "winner": "commit",
+      "task_status": "SUCCEEDED",
+      "task": "46055fed-f65e-4dda-9547-431ee480373b",
+      "cancel_response": [
+        200,
+        {
+          "task_id": "46055fed-f65e-4dda-9547-431ee480373b",
+          "status": "ALREADY_COMMITTED"
+        }
+      ],
+      "commit_response": [
+        200,
+        {
+          "request_id": "50965c16-a9ae-4189-86a8-08f89e8d75bf",
+          "correlation_id": "50965c16-a9ae-4189-86a8-08f89e8d75bf",
+          "schema_version": "1.0",
+          "task_id": "46055fed-f65e-4dda-9547-431ee480373b",
+          "chain_id": "CH-SO-1001",
+          "status": "SUCCEEDED",
+          "operation_id": "OP-0f4765ad814e",
+          "order_id": "SO-1001",
+          "revision": 2,
+          "audit_id": "AUD-5ad4978ae895"
+        }
+      ],
+      "operations": 1,
+      "provider_calls": 1,
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0
+    },
+    {
+      "scenario": "simultaneous-3",
+      "winner": "commit",
+      "task_status": "SUCCEEDED",
+      "task": "76348e3a-d189-4b62-9b89-4779efedd83d",
+      "cancel_response": [
+        200,
+        {
+          "task_id": "76348e3a-d189-4b62-9b89-4779efedd83d",
+          "status": "ALREADY_COMMITTED"
+        }
+      ],
+      "commit_response": [
+        200,
+        {
+          "request_id": "ea012b16-1b01-4ded-84b5-48079be90263",
+          "correlation_id": "ea012b16-1b01-4ded-84b5-48079be90263",
+          "schema_version": "1.0",
+          "task_id": "76348e3a-d189-4b62-9b89-4779efedd83d",
+          "chain_id": "CH-SO-1001",
+          "status": "SUCCEEDED",
+          "operation_id": "OP-243fd6590fe5",
+          "order_id": "SO-1001",
+          "revision": 2,
+          "audit_id": "AUD-fefe06f773b8"
+        }
+      ],
+      "operations": 1,
+      "provider_calls": 1,
+      "restart_and_replay_unchanged": true,
+      "page_explains_cancelled_in_chinese": false,
+      "integrity_check": "ok",
+      "foreign_key_violations": 0
+    }
+  ],
+  "raw_evidence": {
+    "workspace_directory": "/workspace/order-ops-review/cancel-race-20261106",
+    "results_sha256": "2bda63057b2891c26760ae3f1782d6c459f68d0839f654acf8184a34f70d0a0d",
+    "runner_sha256": "808e158fe91894da2537a13f02456850735232c35db93bc244aa7441642bdeed"
+  },
+  "regression": {
+    "repository_path": "tests/test_cancel_journeys.py",
+    "sha256": "9ea95e40055228ba56d90f0ce228554f694b65d1c030176b18d452294a819da4",
+    "baseline": "3 failed, 1 passed in 17.56s; failures at absent cancellation page explanation",
+    "fixed_with_existing_provider_and_ui_js_tests": "27 passed, 1 warning in 49.44s",
+    "baseline_log": "/workspace/order-ops-review/cancel-regression-baseline-20261106.log",
+    "fixed_log": "/workspace/order-ops-review/cancel-regression-fixed-20261106.log",
+    "cancelled_approval_baseline": "3 failed, 4 deselected in 9.88s; no/active/expired approval each returned 200 ACTIVE",
+    "final_focused": "61 passed, 1 warning in 52.78s: cancellation, approval recovery, competing orders, create intent",
+    "final_focused_log": "/workspace/order-ops-review/cancel-approval-fixed-20261106.log"
+  },
+  "fix_scope": "Check cancellation before returning/creating/renewing change approval inside existing write transaction; explicit cancelled HTML guidance. No cancel/commit, transport, billing or schema change.",
+  "public_live_worker_added": false,
+  "limits": [
+    "Only isolated same-host SQLite/HTTP concurrency",
+    "Backend one-shot worker may end with STALE_ATTEMPT on late output; task remains CANCELLED",
+    "No real provider stop/billing proof",
+    "No browser clicks or ERP undo",
+    "No production identity or deployment claim"
+  ],
+  "cancelled_approval_api_baseline": [
+    {
+      "prior_approval": "none",
+      "http_status": 200,
+      "body": {
+        "request_id": "24b85cc3-1397-4645-b49e-c464b45165cd",
+        "correlation_id": "24b85cc3-1397-4645-b49e-c464b45165cd",
+        "schema_version": "1.0",
+        "approval_id": "AP-334286608e9e",
+        "status": "ACTIVE",
+        "expires_at": "2026-11-06T23:52:14.277968+00:00"
+      },
+      "database_unchanged": false,
+      "workspace_path": "/workspace/order-ops-review/cancel-approval-baseline-20261106/test_cancelled_task_cannot_cre0/approval-attempt.json"
+    },
+    {
+      "prior_approval": "active",
+      "http_status": 200,
+      "body": {
+        "request_id": "7243560d-d150-466f-8714-083e9d87e6fa",
+        "correlation_id": "7243560d-d150-466f-8714-083e9d87e6fa",
+        "schema_version": "1.0",
+        "approval_id": "AP-e9c7e07d556d",
+        "status": "ACTIVE",
+        "expires_at": "2026-11-06T23:52:17.035662+00:00"
+      },
+      "database_unchanged": true,
+      "workspace_path": "/workspace/order-ops-review/cancel-approval-baseline-20261106/test_cancelled_task_cannot_cre1/approval-attempt.json"
+    },
+    {
+      "prior_approval": "expired",
+      "http_status": 200,
+      "body": {
+        "request_id": "cf7a893f-4e5c-43d4-8741-20f65c37caf2",
+        "correlation_id": "cf7a893f-4e5c-43d4-8741-20f65c37caf2",
+        "schema_version": "1.0",
+        "approval_id": "AP-25f71d4c2ca2",
+        "status": "ACTIVE",
+        "expires_at": "2026-11-06T23:42:21.874622+00:00"
+      },
+      "database_unchanged": false,
+      "workspace_path": "/workspace/order-ops-review/cancel-approval-baseline-20261106/test_cancelled_task_cannot_cre2/approval-attempt.json"
+    }
+  ],
+  "superseded_checks": "Initial 27-test UI/provider subset passed before finding approval API gap; initial full check stopped at owned group 78538, log retained as check-superseded.log. It is not a completed final gate."
+}

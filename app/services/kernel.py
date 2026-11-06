@@ -318,6 +318,9 @@ def approve_plan(
             if plan.plan_kind == PlanKind.CREATE:
                 _check_current_create(session, plan)
                 _plan_sheet_provenance(session, plan)
+            task = session.get(Task, plan.task_id)
+            if task is not None and (task.cancel_requested or task.status == TaskStatus.CANCELLED):
+                raise AppError("任务已取消，不能批准或重新批准", code="CANCELLED", http_status=409)
             balances = _balances_for(session, set(plan.expected_stock_revisions))
             if any(
                 sku not in balances or balances[sku].revision != expected

@@ -44,3 +44,5 @@ python -m pytest -q tests/test_provider_failure_journeys.py
 测试启动两个本机 HTTP 服务，独立数据库、明确配置和预设响应；无需真实凭据。基线在全部业务恢复断言通过后，8条均因缺少页面原因而失败；修复后8条通过。每条测试保留 `failure.html`、`journey.json` 和 `uvicorn.log`，用 `--basetemp` 可指定独立证据目录。
 
 未验证真实浏览器点击/JavaScript、真实 DNS/TLS/代理、真实提供方认证/429/账单、模型自由语言、长文件、生产并发或 ERP。未知父图和共享依赖仍未证明；这次没有关闭认证授权或生产部署缺口。完整门禁及精确提交以本轮交付记录为准。
+
+另见[取消、迟到响应及提交竞争验收](CANCEL_JOURNEYS_HTTP.md)，涵盖处理中的取消及重启/重放；仍使用本机模拟提供方。

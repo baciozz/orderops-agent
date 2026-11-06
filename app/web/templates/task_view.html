@@ -16,6 +16,18 @@
   </dl>
   {% include "sheet_workflow.html" %}
   {% include "task_failure_guidance.html" %}
+  {% if view.card.status == 'CANCELLED' %}
+  <section id="cancelled-task-guidance" aria-labelledby="cancelled-task-heading">
+    <h2 id="cancelled-task-heading">任务已取消</h2>
+    <p>此任务不会继续规划、批准或提交，旧批准不能再使用。重启、刷新或重放原输入不会恢复此任务。
+      取消仅终止本任务，不会撤销已经生效的订单变更。</p>
+    {% if view.card.mode == 'LIVE' %}
+    <p>已发出的模型请求可能仍会返回；迟到结果不会恢复本任务。取消不保证停止已发送的请求，仍可能产生用量。</p>
+    {% endif %}
+    <p>仍需变更时，请先核对{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id | urlencode }}">当前订单</a>和{% endif %}
+      <a href="/ui/demo/tasks">最近任务</a>，再通过原入口明确新建任务；新任务仍需核对计划、人工批准并提交。</p>
+  </section>
+  {% endif %}
   {% if not view.result.operation_id and (view.card.status == 'SUPERSEDED' or (view.card.status == 'AWAITING_APPROVAL' and view.approval.disabled_reason == 'STALE')) %}
   <section id="stale-plan-guidance" aria-labelledby="stale-plan-heading">
     <h2 id="stale-plan-heading">旧计划已不能继续批准或提交</h2>
