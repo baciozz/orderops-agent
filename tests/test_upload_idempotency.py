@@ -313,8 +313,9 @@ def test_database_failure_rolls_back_all_rows_and_only_its_new_file(
 
     event.listen(target, event_name, fail)
     try:
-        with pytest.raises(RuntimeError, match="synthetic persistence failure"):
-            send(client, task_id)
+        response = send(client, task_id)
+        assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
+        assert "synthetic persistence failure" not in response.text
     finally:
         event.remove(target, event_name, fail)
     assert not any(counts(session_factory).values())
@@ -331,8 +332,10 @@ def test_after_commit_failure_preserves_committed_file_for_safe_replay(upload_en
     target = app.state.session_factory.class_
     event.listen(target, "after_commit", fail_after_commit)
     try:
-        with pytest.raises(RuntimeError, match="synthetic callback failed"):
-            send(client, task_id)
+        response = send(client, task_id)
+        assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
+        assert not response.json()["error"]["retryable"]
+        assert "synthetic callback failed" not in response.text
     finally:
         event.remove(target, "after_commit", fail_after_commit)
     paths = list(app.state.source_storage_dir.iterdir())
@@ -375,8 +378,10 @@ def test_cleanup_uncertainty_preserves_file_and_original_error(
     monkeypatch.setattr(Path, "unlink", unlink)
     event.listen(target, "before_flush", fail_flush)
     try:
-        with pytest.raises(RuntimeError, match="original write failure"):
-            send(client, task_id)
+        response = send(client, task_id)
+        assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
+        assert "original write failure" not in response.text
+        assert "sensitive cleanup" not in response.text
     finally:
         event.remove(target, "before_flush", fail_flush)
     assert not any(counts(session_factory).values())
@@ -393,8 +398,9 @@ def test_xb_collision_never_deletes_preexisting_file(upload_env, session_factory
     monkeypatch.setattr(sources, "uuid4", lambda: SimpleNamespace(hex="fixed"))
     sentinel = app.state.source_storage_dir / "SRC-fixed"
     sentinel.write_bytes(b"preexisting evidence must survive")
-    with pytest.raises(FileExistsError):
-        send(client, task_id)
+    response = send(client, task_id)
+    assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert "SRC-fixed" not in response.text
     assert sentinel.read_bytes() == b"preexisting evidence must survive"
     assert not any(counts(session_factory).values())
 

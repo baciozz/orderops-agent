@@ -316,7 +316,18 @@ def test_mto_commit_fault_stays_pending_and_replay_does_not_rewrite_documents(mt
     with mto() as session:
         assert session.get(OrderLine, (removed["revision_id"], SKU)) is None
         assert service._current_order_lines(session)["BENCH-0"][SKU].ordered_qty == 3
-    assert verification.verify_manually(mto, outcome.operation_id, now=NOW, settings=config)
+    # A separately approved revision restores current facts, not the missing
+    # historical row promised by the original operation's retained evidence.
+    assert not verification.verify_manually(mto, outcome.operation_id, now=NOW, settings=config)
+    old_state = fencing.operation(mto, outcome.operation_id)
+    assert old_state["committed_verification_pending"]
+    assert old_state["verification_observation"]["status"] == "findings"
+    assert (
+        fencing.operation(mto, repaired_operation.operation_id)["verification_observation"][
+            "status"
+        ]
+        == "partial"
+    )
     assert facts(mto) == repaired
 
 
