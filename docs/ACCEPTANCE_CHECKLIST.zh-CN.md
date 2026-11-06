@@ -23,7 +23,9 @@
 | 自动核验负例与提交写入失败恢复 | 已实测：`e91a661` | 首次回读前删除当前 MTO 行及全部关联，执行字段证据发现差异并保留 pending；证据 INSERT 故障返回结构化503、业务事务回滚，解除故障后原键提交一次。原始 SQL/业务参数未进入该 HTTP 故障的 Uvicorn 日志。仅限定当前操作保留证据，不覆盖所有历史断链或所有日志工具。 | E09；[语义与故障步骤](SCOPED_EXECUTION_GUARD.md)、[HTTP 故障用例](../tests/test_http_storage_failure.py) |
 | 部分范围结果、旧记录与下一步 | 已实测：`d6324e9`；旧库由 `f5e8ecd` 实际生成后迁移 | 新任务页面/API 的字段、数量及未覆盖对象一致；`partial` 只覆盖修订行、提交关联、预占/释放流水。旧记录迁移后为 `unassessed`，人工复核因无保留证据仍不确定、转人工，不认证历史；页面读取不改业务数据。 | E12；[新旧记录验收](VERIFICATION_EXPERIENCE_HTTP.md)、[HTTP 用例](../tests/test_verification_guidance_http.py) |
 
-本次简短确认：`python -m pytest -q tests/test_demo_clarification_journeys.py`，**2 passed（5.98秒）**，确实启动本地 HTTP 服务。最近一次运行代码完整本地门禁为 `d6324e9`：`make check` 2678 项通过、覆盖率95.60%，离线评测53/53、普通 wheel 门禁通过。两者范围不同；本次未重跑完整门禁，离线评测不是模型准确率。`1bf6452` 的 GitHub CI [运行42304097502](https://github.com/baciozz/order-ops-superagent/actions/runs/42304097502) 已成功。
+本次简短确认：`python -m pytest -q tests/test_demo_clarification_journeys.py`，**2 passed（5.98秒）**，确实启动本地 HTTP 服务。整理基线对应的完整本地门禁为 `d6324e9`：`make check` 2678 项通过、覆盖率95.60%，离线评测53/53、普通 wheel 门禁通过。两者范围不同；整理清单时未重跑完整门禁，离线评测不是模型准确率。`1bf6452` 的 GitHub CI [运行42304097502](https://github.com/baciozz/order-ops-superagent/actions/runs/42304097502) 已成功。
+
+后续另有[本机模拟提供方失败与恢复验收](PROVIDER_FAILURE_HTTP.md)，不扩展真实模型能力结论；该记录与本表历史基线分开看待。
 
 ## 未完成的验收与产品边界
 
