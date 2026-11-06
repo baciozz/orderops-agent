@@ -3,6 +3,10 @@
   <h2 id="task-failure-heading">任务失败：原因与下一步</h2>
   {% if failure_guidance.fixture_not_found %}
   <p>FIXTURE_NOT_FOUND：输入未匹配演示的精确示例，系统不会因此改为调用 live 模型。</p>
+  {% elif failure_guidance.intent_order %}
+  <p>订单已有较新输入，或无法可靠确定输入先后。本次解析未取得订单意图，也未撤销目标批准。
+    请人工核对订单当前状态和最新要求，<a href="/ui/demo/submit">明确选择订单后使用新的提交标识重新提交</a>；不要重试原失败输入。
+    新任务仍需核对计划、批准并提交。</p>
   {% else %}
   <p>暂无法提供此失败的安全说明。请向维护人员提供任务编号及任务审计摘要，核对原因后再决定下一步。</p>
   {% endif %}

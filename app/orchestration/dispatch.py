@@ -25,6 +25,7 @@ from app.config import Settings, get_settings
 from app.db.models import (
     AuditRecord,
     DispatchStep,
+    Event,
     InputPayload,
     JobAttempt,
     ModelUsage,
@@ -38,6 +39,7 @@ from app.observability import enrich, get_logger, log_event, observed, task_fiel
 from app.orchestration.agents import RUNNERS, AgentRun, StepContext
 from app.orchestration.defaults import build_default_registry
 from app.orchestration.fixtures import golden_fixtures
+from app.orchestration.intent_receipts import check_acquisition_order
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import Registry, tool_executor
 from app.orchestration.router import PlannedStep, Router
@@ -47,6 +49,7 @@ from app.orchestration.tools import ToolGateway
 from app.services.kernel import _current_links as current_links
 from app.services.kernel import (
     bound_task_id,
+    invalidate_order,
     plan_change,
     plan_new_order,
 )
@@ -375,6 +378,7 @@ def _one_attempt(
     try:
         with session.no_autoflush:
             task, attempt = _lock(session, task_id)
+            input_event_id = task.last_event_id
             gateway = ToolGateway(
                 session,
                 task_id=task.id,
@@ -437,7 +441,21 @@ def _one_attempt(
                 ).all()
                 live_tokens = sum(row.input_tokens + row.output_tokens for row in usage_rows)
                 live_cost = sum((row.cost_usd for row in usage_rows), Decimal("0"))
-                _copy_step_writes(session, writer)
+                acquired_intent = None
+                if code is None and run is not None and run.extraction is not None:
+                    try:
+                        acquired_intent = _acquire_late_intent(writer, task, input_event_id, run)
+                    except AppError as exc:
+                        if exc.code not in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"}:
+                            raise
+                        # Chronology rejection occurs before any acquisition mutation.
+                        # Finish visibly; do not copy this rejected parse's binding.
+                        code, message = exc.code, exc.message
+                if code not in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"}:
+                    _copy_step_writes(session, writer)
+                if acquired_intent is not None:
+                    # Do not copy the runner's pre-lock revision over the acquired one.
+                    task.intent_revision = acquired_intent
                 if code == "TIMEOUT":
                     attempt.fencing_token += 1
                 if code is None and run is not None:
@@ -494,6 +512,81 @@ def _one_attempt(
                 return None, False, failed
     finally:
         session.close()
+
+
+def _acquire_late_intent(
+    writer: Session, task: Task, input_event_id: str | None, run: AgentRun
+) -> int | None:
+    """Acquire an unbound durable change's intent in the fenced acceptance transaction.
+
+    The server-owned input JSON marker commits with the binding and survives retries.
+    It is never read from provider payloads or user-submitted fields.
+    Neither the model's revision nor its read snapshot authorizes acquisition.
+    """
+    if durable_guard.get() is None:
+        return None
+    if task.last_event_id != input_event_id:
+        raise AppError("输入已更新", code="STALE_INTENT", http_status=409)
+    receipt = writer.get(InputPayload, task.last_event_id) if task.last_event_id else None
+    if receipt is None or receipt.task_id != task.id:
+        raise AppError("输入已更新", code="STALE_INTENT", http_status=409)
+    extraction = run.extraction
+    assert extraction is not None
+    event = extraction.business_event
+    origin = writer.get(Event, receipt.event_id)
+    binding = receipt.body.get("late_bound_intent")
+    if "late_bound_intent" in receipt.body:
+        if (
+            origin is None
+            or origin.order_id is not None
+            or not isinstance(binding, dict)
+            or not isinstance(binding.get("order_id"), str)
+            or not binding["order_id"]
+            or type(binding.get("intent_revision")) is not int
+            or binding["intent_revision"] <= 0
+        ):
+            raise AppError(
+                "无法可靠确定订单意图的先后，请核对当前订单并选择订单重新提交",
+                code="INTENT_ORDER_UNPROVEN",
+                http_status=409,
+            )
+        order = writer.get(SalesOrder, binding["order_id"])
+        if (
+            order is None
+            or task.order_id != order.id
+            or task.intent_revision != binding["intent_revision"]
+            or order.intent_revision != binding["intent_revision"]
+        ):
+            raise AppError("意图已更新", code="STALE_INTENT", http_status=409)
+        if event is not None and event.order_id and event.order_id != order.id:
+            raise AppError("输入订单与绑定订单不一致", code="ORDER_SCOPE", http_status=409)
+        intent = order.intent_revision
+    elif (
+        origin is not None
+        and origin.order_id is None
+        and event is not None
+        and event.event_type == BusinessEventType.CHANGE_ORDER
+        and event.order_id
+        and task.order_id in (None, event.order_id)
+        and not extraction.questions
+        and not extraction.conflicts
+    ):
+        order = writer.get(SalesOrder, event.order_id)
+        if order is None:
+            raise AppError("订单不存在", code="NOT_FOUND", http_status=404)
+        check_acquisition_order(writer, receipt, order)
+        invalidate_order(writer, order.id, exclude_task_id=task.id)
+        order.intent_revision += 1
+        intent = order.intent_revision
+        receipt.body = {
+            **receipt.body,
+            "late_bound_intent": {"order_id": order.id, "intent_revision": intent},
+        }
+    else:
+        return None
+    run.extraction = extraction.model_copy(update={"intent_revision": intent})
+    run.payload = run.extraction.model_dump(mode="json")
+    return intent
 
 
 def _copy_step_writes(source: Session, writer: Session) -> None:

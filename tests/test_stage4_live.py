@@ -749,7 +749,8 @@ def test_fixture_sequence_waiting_order_task_then_all_navy(
             )
     assert any("已裁剪" in issue for issue in outcomes[-1].issues)
     with session_factory() as session:
-        assert session.get(Task, outcomes[1].task_id).status == "NEEDS_CLARIFICATION"
+        # The third unbound change now acquires a fresh intent before kernel clarification.
+        assert session.get(Task, outcomes[1].task_id).status == "SUPERSEDED"
         if clarification == TEXT_ALL_NAVY:
             assert session.get(Task, outcomes[1].task_id).chain_id == "CH-SO-1001"
         assert session.get(Task, outcomes[-1].task_id).chain_id == "CH-SO-1001"

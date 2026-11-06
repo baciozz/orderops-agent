@@ -9,6 +9,7 @@ from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
 from app.errors import AppError
 from app.observability import enrich, get_logger, observed, text_digest
+from app.orchestration.intent_receipts import receipt_metadata
 from app.orchestration.state import transition, utcnow
 from app.services.kernel import invalidate_order
 
@@ -88,6 +89,7 @@ def accept_input(
             )
             session.add(task)
             session.flush()
+        order = None
         if task.order_id:
             order = session.get(SalesOrder, task.order_id)
             invalidate_order(session, order.id, exclude_task_id=task.id)
@@ -120,7 +122,12 @@ def accept_input(
             InputPayload(
                 event_id=event.id,
                 task_id=task.id,
-                body={"text": text, "source_ids": source_ids or [], "input_sequence": sequence},
+                body={
+                    "text": text,
+                    "source_ids": source_ids or [],
+                    "input_sequence": sequence,
+                    **receipt_metadata(session, order),
+                },
             )
         )
         session.add(

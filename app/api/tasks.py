@@ -122,6 +122,8 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
                 )
                 failure_guidance = {
                     "fixture_not_found": task.error_code == "FIXTURE_NOT_FOUND",
+                    "intent_order": task.error_code
+                    in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"},
                     "has_operation": operation is not None,
                 }
             uploaded_sources = [

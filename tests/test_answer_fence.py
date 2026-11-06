@@ -188,7 +188,7 @@ def test_input_fence_blocks_unbound_cycles_and_binding_collision(durable):  # no
         accept_input(factory, task_id=task_id, **old_request)
     assert exc.value.code == "STALE_INTENT"
     assert snapshot(factory) == before
-    # Arrange the order's revision to collide with the unchanged unbound revision.
+    # Start the target at the unbound revision; acquisition must advance it.
     with factory() as session, begin_immediate(session):
         session.get(SalesOrder, "SO-1001").intent_revision = 0
     accept_input(
@@ -199,8 +199,10 @@ def test_input_fence_blocks_unbound_cycles_and_binding_collision(durable):  # no
     )
     assert run_once(factory, clock=clock).status == "AWAITING_APPROVAL"
     with factory() as session:
-        assert session.get(Task, task_id).intent_revision == 0
+        assert session.get(Task, task_id).intent_revision == 1
     before = snapshot(factory)
+    # Even a matching revision cannot rescue an obsolete input-event fence.
+    old_request["expected_intent_revision"] = 1
     with pytest.raises(AppError) as exc:
         accept_input(factory, task_id=task_id, **old_request)
     assert exc.value.code == "STALE_INTENT"

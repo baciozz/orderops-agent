@@ -561,7 +561,7 @@ def test_dispatch_preserves_parser_dirty_updates_and_has_no_model_write_lock(dur
                 persisted = session.get(Task, task_id)
                 assert persisted.order_id == ctx.task.order_id
                 assert persisted.chain_id == ctx.task.chain_id
-                assert persisted.intent_revision == ctx.task.intent_revision == 1
+                assert persisted.intent_revision == ctx.task.intent_revision == 2
 
     monkeypatch.setattr(FixtureLLMClient, "structured_call", model_call)
     result = run_once(factory, clock=clock, before_step=before_step)
