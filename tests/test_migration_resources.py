@@ -17,6 +17,11 @@ CHAIN = [
     "budget_price_snapshot",
     "verification_retries",
     "upload_idempotency",
+    "sync_dispatch_receipts",
+    "task_runtime_mode",
+    "execution_evidence",
+    "execution_evidence_binding",
+    "execution_verification_guard",
 ]
 
 

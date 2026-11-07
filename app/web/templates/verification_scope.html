@@ -1,0 +1,61 @@
+{% macro reason(code) -%}
+  {%- set labels = {
+    'CURRENT_ORDER_GRAPH_NOT_PROVEN': '当前整单的完整来源尚未证明',
+    'PARENT_GRAPH_NOT_BOUND_BY_APPROVAL': '本次批准未绑定可信的上一版本来源',
+    'OWNERSHIP_HISTORY_AND_DOCUMENT_FACTS_NOT_PROVEN': '单据的完整归属历史及全部执行事实尚未证明',
+    'SHARED_STOCK_CLOSURE_NOT_ESTABLISHED': '尚未确认所有共用该库存的订单和依赖',
+    'CROSS_ORDER_LINK_OBSERVED': '读到了跨订单关联，不能据此证明归属完整',
+    'EXECUTION_EVIDENCE_NOT_RETAINED': '未保留可供核对的执行证据，无法据此确认历史范围',
+    'EXECUTION_EVIDENCE_MISSING': '应保留的执行证据不可用，需要维护人员核对可信原件',
+    'REVISION_LINES_MISMATCH': '订单修订的行字段与本次保留证据不一致',
+    'EXPECTED_LINK_MISSING': '缺少本次提交应有的单据关联',
+    'MOVEMENTS_MISMATCH': '库存预占或释放流水与本次保留证据不一致'
+  } -%}
+  {%- if code in labels -%}{{ labels[code] }}
+  {%- else -%}原因尚未识别，请维护人员核对（{{ code }}）{% endif -%}
+{%- endmacro %}
+{% if view.result.operation_id %}
+<dt>核验边界</dt><dd id="verification-scope-notice">
+  已提交不等于整单核验通过。业务已提交，请勿重复提交；
+  以下结果不代表整单或全库通过，也不授权新的业务操作。
+</dd>
+{% if view.result.verification_details %}
+{% set detail = view.result.verification_details %}
+<dt>最近一次核验观察</dt><dd>{{ detail.observed_at }} · {{ {'partial': '限定字段一致', 'findings': '发现差异', 'inconclusive': '证据不足，无法下结论'}.get(detail.status, '结果未识别，需人工核对') }}。
+  这是记录时的观察，不是当前状态的持续保证。
+</dd>
+<dt>现存事实检查</dt><dd>{% if detail.existing_fact_checks == 'consistent' %}检查时未发现现存事实矛盾，但不证明来源完整。{% else %}发现现存事实差异，需要人工核对。{% endif %}</dd>
+{% if detail.execution.reason_code %}<dt>证据不足原因</dt><dd data-reason="{{ detail.execution.reason_code }}">{{ reason(detail.execution.reason_code) }}</dd>{% endif %}
+<dt>本次实际对照的字段</dt><dd><ul id="verification-field-checks">
+{% for field in detail.execution.fields %}
+  <li id="verification-field-{{ field.field }}" data-status="{{ field.status }}" data-expected-count="{{ field.expected_count }}" data-observed-count="{{ field.observed_count }}">
+    {{ {'revision_lines': '本次订单修订的 SKU、数量与履约方式', 'operation_links': '本次提交保留的单据关联字段', 'reservation_movements': '本次提交的库存预占/释放流水'}.get(field.field, '未识别字段，需人工核对') }}：
+    {% if field.status == 'consistent' %}与本次保留证据一致{% else %}发现差异，请人工核对{% endif %}；
+    证据中 {{ field.expected_count }} 项 / 本次读回 {{ field.observed_count }} 项。
+    {% for code in field.reason_codes %}<span data-reason="{{ code }}">{{ reason(code) }}。</span>{% endfor %}
+  </li>
+{% else %}<li>执行证据不足，没有可列出的字段对照；不能认为未列出的字段已经核验。</li>{% endfor %}
+</ul></dd>
+<dt>未覆盖范围</dt><dd><ul id="verification-uncovered">
+{% for item in detail.execution.uncovered %}
+  <li data-uncovered-object="{{ item.object_id }}" data-reason="{{ item.reason_code }}">{{ {'order': '订单', 'order_revision': '订单修订', 'production_order': '生产单', 'purchase_order': '采购单', 'warehouse_sku': '仓库/SKU'}.get(item.object_type, '未识别对象') }} {{ item.object_id }}：{{ reason(item.reason_code) }}。</li>
+{% else %}<li>没有可列出的对象清单，不能理解为全部覆盖。完整订单图、可信父链与共享依赖仍未证明。</li>{% endfor %}
+</ul></dd>
+{% else %}
+<dt>已核验范围</dt><dd>本页没有可用的范围记录，无法确认历史核验覆盖了哪些对象或字段。</dd>
+<dt>未覆盖范围</dt><dd>整单来源与依赖完整性未获证明；未记录的对象不能视为已核验。</dd>
+{% endif %}
+<dt>下一步</dt><dd id="verification-next-steps">
+  <p>先核对当前订单、提交编号和任务审计摘要；不要另建任务重复执行这次变更。
+    {% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id | urlencode }}">查看当前订单</a>。{% endif %}
+    {% if audit_url %}<a href="{{ audit_url }}">查看任务审计摘要</a>（不含原件，不能代替完整来源证明）。{% endif %}
+  </p>
+  {% if view.result.verification == 'unassessed' %}
+  <p>需要维护人员先核对原提交和可信来源，再按只读核验流程复核；缺失的历史证据不能从现存数据补造，结果仍可能无法确认。</p>
+  {% elif view.result.verification == 'pending' %}
+  <p>本次核验尚未完成，请按下方核验进度处理；核验重试不会重新执行业务。</p>
+  {% else %}
+  <p>若需要确认整单来源，请将原始订单及变更要求、审批记录、生产采购执行记录和共用库存范围交给维护人员人工核对。局部一致不会自动扩大核验范围。</p>
+  {% endif %}
+</dd>
+{% endif %}

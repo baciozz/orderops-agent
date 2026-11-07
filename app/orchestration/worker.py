@@ -7,11 +7,13 @@ from uuid import uuid4
 
 from sqlalchemy import func, select
 
+from app.adapters.llm import validated_live_provider
+from app.config import get_settings
 from app.db.models import InboxDelivery, InputPayload, JobAttempt, Task
 from app.db.session import begin_immediate
-from app.errors import AppError
+from app.errors import AppError, LiveStartRefused
 from app.observability import get_logger, log_event
-from app.orchestration.dispatch import dispatch_text
+from app.orchestration.dispatch import DispatchOutcome, dispatch_text
 from app.orchestration.state import check_fence, guard, transition, utcnow
 
 logger = get_logger("worker")
@@ -36,7 +38,7 @@ class Limits:
 DEFAULT_LIMITS = Limits()
 
 
-def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
+def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS, allow_live=False):
     started = perf_counter()
     claimed = None
     with factory() as session, begin_immediate(session):
@@ -45,7 +47,23 @@ def claim(factory, owner, *, clock=utcnow, limits=DEFAULT_LIMITS):
             select(func.count()).select_from(Task).where(Task.status == "RUNNING")
         ) >= min(MAX_ACTIVE, limits.active):
             return None
-        for task in session.scalars(select(Task).where(Task.status == "QUEUED").order_by(Task.id)):
+        modes = ["FIXTURE", "LIVE"] if allow_live else ["FIXTURE"]
+        for task in session.scalars(
+            select(Task)
+            .where(Task.status == "QUEUED", Task.runtime_mode.in_(modes))
+            .order_by(Task.id)
+        ):
+            receipt = session.get(InputPayload, task.last_event_id) if task.last_event_id else None
+            delivery = session.scalar(
+                select(InboxDelivery).where(
+                    InboxDelivery.event_id == task.last_event_id, InboxDelivery.consumer == "worker"
+                )
+            )
+            if receipt is None or receipt.task_id != task.id or delivery is None:
+                transition(task, "FAILED")
+                task.error_code = "INPUT_UNAVAILABLE"
+                task.result_ref = "任务缺少可恢复输入，请核对后重新提交"
+                continue
             previous = session.scalar(
                 select(JobAttempt)
                 .where(JobAttempt.task_id == task.id)
@@ -109,7 +127,25 @@ def run_once(
     fault=lambda _: None,
     **dispatch_options,
 ):
-    claimed = claim(factory, owner, clock=clock, limits=limits)
+    # Settings rejects in-place field edits. Keep one complete configuration
+    # reference for this call; a deepcopy of a mutable object is not atomic.
+    configured = dispatch_options.get("settings") or get_settings()
+    dispatch_options["settings"] = configured
+    allow_live = False
+    if configured.live_enabled:
+        try:
+            validated_live_provider(configured)
+        except LiveStartRefused as exc:
+            log_event(logger, "worker.live_unavailable", reason=exc.reason, outcome="rejected")
+        else:
+            allow_live = True
+    claimed = claim(
+        factory,
+        owner,
+        clock=clock,
+        limits=limits,
+        allow_live=allow_live,
+    )
     if claimed is None:
         return None
     task_id, fence = claimed
@@ -144,6 +180,40 @@ def run_once(
             now=clock(),
             **dispatch_options,
         )
+    except AppError as exc:
+        if exc.code != "STALE_ATTEMPT":
+            raise
+        # Cancellation deliberately invalidates this attempt. Only consume that
+        # confirmed terminal result; a replaced lease or input must still fail.
+        with factory() as session:
+            task = session.get(Task, task_id)
+            attempt = session.scalar(
+                select(JobAttempt)
+                .where(JobAttempt.task_id == task_id)
+                .order_by(JobAttempt.attempt_no.desc())
+            )
+            if (
+                task is None
+                or task.status != "CANCELLED"
+                or not task.cancel_requested
+                or task.last_event_id != event_id
+                or attempt is None
+                or attempt.fencing_token != fence
+            ):
+                raise
+            outcome = DispatchOutcome(
+                task_id=task.id,
+                chain_id=task.chain_id,
+                status=task.status,
+                plan_id=None,
+                order_id=task.order_id,
+                intent_revision=task.intent_revision,
+                plan_hash=None,
+                requires_human_approval=False,
+                issues=["任务已取消，迟到结果已丢弃"],
+                error_code=None,
+            )
+        log_event(logger, "worker.cancelled", task_id=task_id, outcome="cancelled")
     finally:
         guard.reset(marker)
     with factory() as session, begin_immediate(session):

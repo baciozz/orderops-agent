@@ -43,6 +43,15 @@ def _worker_loop(options: LoopOptions) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except Exception as exc:
+        log_event(get_logger("cli"), "cli.failed", outcome="failed", error_code=exception_code(exc))
+        print("命令未完成，请检查配置、数据库和结构化错误码；未自动重试")
+        return 1
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="oos", description="order-ops-superagent")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db", help="创建 SQLite 表")
@@ -56,7 +65,25 @@ def main(argv: list[str] | None = None) -> int:
         "verify-operation", help="对已转人工的操作执行一次只读核验，不重提或修复业务"
     )
     verify.add_argument("operation_id", help="已提交的 Operation ID")
+    audit = sub.add_parser("audit-links", help="只读审计一个提交的历史关联证据，不放行业务")
+    audit.add_argument("operation_id", help="需要审计的 Operation ID")
+    execution = sub.add_parser("audit-execution", help="只读核对保留的批准执行字段，明确未覆盖范围")
+    execution.add_argument("operation_id", help="需要核对的 Operation ID")
     args = parser.parse_args(argv)
+    if args.command == "audit-execution":
+        from app.services.execution_audit import audit_execution
+
+        execution_report = audit_execution(get_settings().database_url, args.operation_id)
+        print(execution_report.model_dump_json())
+        return {"consistent_for_retained_fields": 0, "findings": 1, "uncertain": 2}[
+            execution_report.status
+        ]
+    if args.command == "audit-links":
+        from app.services.link_audit import audit_operation_links
+
+        link_report = audit_operation_links(get_settings().database_url, args.operation_id)
+        print(link_report.model_dump_json())
+        return {"consistent_for_operation": 0, "findings": 1, "uncertain": 2}[link_report.status]
     loop_options = None
     if args.command == "worker-loop":
         try:
@@ -72,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         init_db(engine)
         if args.command == "init-db":
-            print(f"已创建表：{settings.database_url}")
+            print("数据库表已初始化")
             return 0
         if args.command == "reconcile-budget":
             count = reconcile_reservations(
@@ -94,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"核验未执行：{exc.code}")
                 return 2
             print(
-                "只读核验通过；业务提交未重复执行"
+                "限定字段核验完成；整单来源与共享依赖仍不确定，非全库通过；业务提交未重复执行"
                 if passed
                 else "核验仍未通过，保留人工处理状态；未修改业务数据"
             )
@@ -108,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         engine.dispose()
     if report.created:
-        print(f"已载入合成 seed：{', '.join(report.orders)} @ {report.database_url}")
+        print(f"已载入合成 seed：{', '.join(report.orders)}")
     else:
         print(f"seed 已存在，未重复写入：{', '.join(report.orders)}")
     return 0

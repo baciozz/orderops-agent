@@ -6,7 +6,7 @@ cannot establish semantic correctness; the plan still needs separate human appro
 """
 
 import pytest
-from app.adapters.llm import ModeResolution, StructuredCallResult
+from app.adapters.llm import StructuredCallResult
 from app.api.inputs import get_task, submit
 from app.api.orders import commit
 from app.errors import AppError
@@ -14,7 +14,6 @@ from app.orchestration.worker import run_once
 from app.services.kernel import plan_change
 from schemas.api import CommitRequest, InputSubmitRequest
 from schemas.common import UsageReport
-from schemas.enums import RuntimeMode
 from tests.test_bounded_sheet_durable import (
     INITIAL,
     approve_current,
@@ -25,6 +24,7 @@ from tests.test_bounded_sheet_durable import (
     upload,
 )
 from tests.test_durable_new_order import business, ingestion, snapshot  # noqa: F401
+from tests.test_stage4_live import settings as live_settings
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -157,6 +157,8 @@ def test_controlled_extraction_contract_not_model_accuracy(
     ingestion, engine, session_factory, monkeypatch, case, status, call_count
 ):
     request, settings = ingestion
+    settings = live_settings(database_url=settings.database_url)
+    request.app.state.settings = settings
     old, approval = approved_existing(request, session_factory)
     before = snapshot(engine)
     payload = {
@@ -205,13 +207,9 @@ def test_controlled_extraction_contract_not_model_accuracy(
                 payload=payload, usage=UsageReport(mode="LIVE", cost_usd="0")
             )
 
-    monkeypatch.setattr(
-        "app.orchestration.dispatch.resolve_mode",
-        lambda _: ModeResolution(RuntimeMode.LIVE, True, None),
-    )
     out = run_once(
         session_factory,
-        settings=settings.model_copy(update={"price_in_per_mtok": 0, "price_out_per_mtok": 0}),
+        settings=settings,
         client_factory=lambda *_: Controlled(),
     )
     assert out.status == status

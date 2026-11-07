@@ -343,7 +343,7 @@ def test_loop_advances_expired_lease_without_busy_spin(session_factory, database
 def test_loop_advances_retry_schedule_and_stops_at_manual_limit(session_factory, monkeypatch):
     add_operation(session_factory)
     clock, attempts = Clock(), []
-    monkeypatch.setattr(kernel, "_post_verify", lambda *_: attempts.append(clock.now))
+    monkeypatch.setattr(kernel, "_post_verify", lambda *_, **__: attempts.append(clock.now))
     settings = Settings(
         _env_file=None,
         verification_max_retries=3,

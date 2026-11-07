@@ -7,6 +7,10 @@
   <p>订单已有较新输入，或无法可靠确定输入先后。本次解析未取得订单意图，也未撤销目标批准。
     请人工核对订单当前状态和最新要求，<a href="/ui/demo/submit">明确选择订单后使用新的提交标识重新提交</a>；不要重试原失败输入。
     新任务仍需核对计划、批准并提交。</p>
+  {% elif failure_guidance.model_error_code %}
+  <p><strong>{{ failure_guidance.model_error_code }}</strong>：{{ failure_guidance.model_message }}</p>
+  <p>失败状态不会自动重试；刷新或再运行 worker 不会恢复此任务。复用原提交标识只会返回原失败回执。</p>
+  <p>本次失败仍可能产生模型用量；超时或连接失败按授权上限保守记账。新任务会重新占用调用额度，可能产生新的费用。</p>
   {% else %}
   <p>暂无法提供此失败的安全说明。请向维护人员提供任务编号及任务审计摘要，核对原因后再决定下一步。</p>
   {% endif %}
@@ -21,6 +25,12 @@
     <a href="/ui/demo/new-stock">新建库存订单（精确示例）</a>。
     保留入口的完整示例文本并使用新提交标识创建新任务；不要复用原失败任务的提交标识。
     新任务仍需手动运行 worker、核对计划、批准并提交，不保证当前订单状态适用。</p>
+    {% elif failure_guidance.model_error_code %}
+  <p>请先由维护人员确认提供方配置与服务已恢复，再核对
+    {% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">当前订单</a>、{% endif %}
+    <a href="/stock">当前库存</a>和<a href="/ui/demo/tasks">最近任务</a>，确认目标尚未完成。</p>
+  <p>确需继续时，通过原 LIVE 接入使用新提交标识明确创建新任务，重新核对计划、人工批准并提交。
+    网页演示入口及演示 worker 固定使用 FIXTURE，不能用它们恢复 LIVE 任务；请联系维护人员继续原接入流程。</p>
     {% endif %}
   {% endif %}
 </section>

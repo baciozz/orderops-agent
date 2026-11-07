@@ -24,6 +24,7 @@ from schemas.enums import (
     ProductionStatus,
     ProposalStatus,
     PurchaseStatus,
+    RuntimeMode,
     TaskStatus,
     Verdict,
 )
@@ -351,13 +352,19 @@ class Event(Base):
 
 class Task(Base):
     __tablename__ = "task"
-    __table_args__ = (_in_enum("status", TaskStatus, "ck_task_status"),)
+    __table_args__ = (
+        _in_enum("status", TaskStatus, "ck_task_status"),
+        _in_enum("runtime_mode", RuntimeMode, "ck_task_runtime_mode"),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     chain_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     order_id: Mapped[str | None] = mapped_column(ForeignKey("sales_order.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     intent_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    runtime_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="FIXTURE", server_default="FIXTURE"
+    )
     last_event_id: Mapped[str | None] = mapped_column(ForeignKey("event.id"), nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -370,6 +377,16 @@ class TaskSource(Base):
 
     task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), primary_key=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("input_source.id"), primary_key=True)
+
+
+class SyncDispatchReceipt(Base):
+    """Synchronous retry identity. Never persist the raw dispatch text."""
+
+    __tablename__ = "sync_dispatch_receipt"
+
+    client_event_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"), unique=True, nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(80), nullable=False)
 
 
 class SourceUploadReceipt(Base):
@@ -489,6 +506,19 @@ class Operation(Base):
         Boolean, nullable=False, default=False, server_default="0"
     )
     verification_last_error_code: Mapped[str | None] = mapped_column(String(64))
+    execution_evidence_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    execution_evidence_digest: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    verification_observation: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class ExecutionEvidence(Base):
+    """Retained approved fields for one commit, never a complete ownership graph."""
+
+    __tablename__ = "execution_evidence"
+
+    operation_id: Mapped[str] = mapped_column(ForeignKey("operation.id"), primary_key=True)
+    body: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    digest: Mapped[str] = mapped_column(String(80), nullable=False)
 
 
 class PurchaseProposal(Base):

@@ -11,12 +11,11 @@ import httpx
 from schemas.common import UsageReport
 
 from app.adapters.budget import BudgetLedger
-from app.adapters.llm import StructuredCallRequest, StructuredCallResult, resolve_mode
-from app.adapters.providers import provider_for_settings
+from app.adapters.llm import StructuredCallRequest, StructuredCallResult, validated_live_provider
 from app.adapters.providers.schema import ensure_supported_schema, validate_payload
 from app.config import Settings
 from app.errors import AppError, LiveStartRefused, SchemaInvalid
-from app.observability import enrich, get_logger, observed
+from app.observability import enrich, get_logger, observed, protect_http_logging
 
 logger = get_logger(__name__)
 
@@ -32,11 +31,8 @@ class LiveLLMClient:
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        resolution = resolve_mode(settings)
-        if resolution.mode != "LIVE":
-            raise LiveStartRefused(resolution.live_block_reason or "LIVE_DISABLED")
-        self._provider = provider_for_settings(settings)
-        self._provider.validate(settings)
+        protect_http_logging()
+        self._provider = validated_live_provider(settings)
         if not settings.llm_model:
             raise LiveStartRefused("MODEL_NOT_CONFIGURED")
         self._model: str = settings.llm_model

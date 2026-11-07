@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "compiled_at_utc": "2026-11-06T22:45:50Z",
+  "purpose": "Traceable bounded acceptance inventory, not release approval or current-head replay of all historical journeys.",
+  "baseline": {
+    "head": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0",
+    "runtime_commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+    "runtime_package_trees": {
+      "app": "ed3a09b6de287734b4af2e88c9d21c83412b31f5",
+      "schemas": "1e1f25b924083b629e600bb033f440c5f838759c",
+      "seeds": "c45e01d4834e27f8631cf39b0aa416b4ce0a1582",
+      "order_ops_migrations": "7ada01aac84bf3df78318b87295fb8c3cab27c9b"
+    },
+    "main": "f5e8ecdca79d93e737d8151dc72239668a49c5a4",
+    "pr60": "1de016e54669a8c98877cec738ff025c1b469746",
+    "pr61": "https://github.com/baciozz/order-ops-superagent/pull/61",
+    "state_at_compilation": "Both PRs remain separate unmerged drafts; only PR61 is the acceptance branch."
+  },
+  "versions": {
+    "f5e8ecd": "f5e8ecdca79d93e737d8151dc72239668a49c5a4",
+    "1de016e": "1de016e54669a8c98877cec738ff025c1b469746",
+    "e91a661": "e91a661e9b52d6cbe2ea1135390f8c36533df224",
+    "fb639e6": "fb639e656297734c9f9a3a6db68f61870cc37baa",
+    "5471a8d": "5471a8d7d739e4b24a684336d6b04cd8204cd293",
+    "70c62f5": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+    "853373b": "853373b3d65c2bf945b0ff60453082866210c671",
+    "302b122": "302b122d7ea05e3eb50094f5041c21b34d781d6d",
+    "d6324e9": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+    "1bf6452": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0"
+  },
+  "source_records_note": "Raw workspace artifacts are not bundled in the repository. Fingerprints identify observed records, do not guarantee future availability, and do not substitute for the actual output or rerun.",
+  "records": [
+    {
+      "id": "E01",
+      "journey": "源码隔离安装与重启",
+      "runtime_commit": "fb639e656297734c9f9a3a6db68f61870cc37baa",
+      "acceptance_head": "5471a8d7d739e4b24a684336d6b04cd8204cd293",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/onboarding-20261106/summary.json",
+        "sha256": "9563a4aee815d62d41f2f3724d71c47ce4d37ae4c9228f00d3f5327c4471bcda"
+      }
+    },
+    {
+      "id": "E02",
+      "journey": "文本风险与表格缺货",
+      "runtime_commit": "fb639e656297734c9f9a3a6db68f61870cc37baa",
+      "acceptance_head": "fb639e656297734c9f9a3a6db68f61870cc37baa",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/demo-journeys-20261106/summary.json",
+        "sha256": "558bbce42a218c89a37ba5931e5633942fea6e183109cab82ce350a3eb56a1e1"
+      }
+    },
+    {
+      "id": "E03",
+      "journey": "同订单与共享库存竞争",
+      "runtime_commit": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "acceptance_head": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/competing-orders-20261106/summary.json",
+        "sha256": "5c442e871dd55614d08ac69300addf1b33d17cf287ec38f391583256e8642f5e"
+      }
+    },
+    {
+      "id": "E04",
+      "journey": "已裁订单减量及取消",
+      "runtime_commit": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "acceptance_head": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/mto-business-20261106-v4/summary.json",
+        "sha256": "fd75f8ce2e710a9e483570adbb3c5e4bf44433e383c45400e6a21f568cfa9870"
+      }
+    },
+    {
+      "id": "E05",
+      "journey": "日常中断与恢复",
+      "runtime_commit": "fb639e656297734c9f9a3a6db68f61870cc37baa",
+      "acceptance_head": "5471a8d7d739e4b24a684336d6b04cd8204cd293",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/daily-recovery-20261106/summary.json",
+        "sha256": "10e99425597b28ea5443a1b9707b2f59e469d12b5f43a3ad4ea7f068bf8aec3e"
+      }
+    },
+    {
+      "id": "E06",
+      "journey": "持久原件及恢复",
+      "runtime_commit": "853373b3d65c2bf945b0ff60453082866210c671",
+      "acceptance_head": "853373b3d65c2bf945b0ff60453082866210c671",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/persistent-source-20261106/summary.json",
+        "sha256": "00a73a3ea21570b5443f2320bdbe3f9ed13990004b7cf88688d5721a7a3e6d2d"
+      }
+    },
+    {
+      "id": "E07",
+      "journey": "停服备份与恢复",
+      "runtime_commit": "853373b3d65c2bf945b0ff60453082866210c671",
+      "acceptance_head": "302b122d7ea05e3eb50094f5041c21b34d781d6d",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/local-backup-20261106/summary.json",
+        "sha256": "c4ee90fe8c0cdddd9f7c83495132eebfa2858be5cb773d96286736e0d22eb1cb"
+      }
+    },
+    {
+      "id": "E08",
+      "journey": "任务查找与结果导出",
+      "runtime_commit": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "acceptance_head": "70c62f56f94f7e2df9f41bc446facefb2e2b8fc3",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/task-delivery-20261106-v2/summary.json",
+        "sha256": "7f01a9474c72e1723da28206c9aa02078021ea4fb3fc4242c0799586fa0dc66f"
+      }
+    },
+    {
+      "id": "E09",
+      "journey": "执行证据拦截与HTTP写入故障恢复",
+      "runtime_commit": "e91a661e9b52d6cbe2ea1135390f8c36533df224",
+      "acceptance_head": "e91a661e9b52d6cbe2ea1135390f8c36533df224",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/scoped-guard-20261106/summary.json",
+        "sha256": "4f33f56ddf600352413cf0fad96275c20da8c78fe397a0b9c4be125bb6a63661"
+      }
+    },
+    {
+      "id": "E10",
+      "journey": "普通wheel安装与五分钟讲解主线",
+      "runtime_commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+      "acceptance_head": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/five-minute-demo-20261106/summary.json",
+        "sha256": "89d7c769de8f435cc60a42ecac141458cc07d5a1410fca8dfeb6315b701900ef"
+      }
+    },
+    {
+      "id": "E11",
+      "journey": "FIXTURE输入负例与新任务恢复",
+      "runtime_commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+      "acceptance_head": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/fixture-input-safety-20261106/summary.json",
+        "sha256": "bfdb5e2116212c7502e3d324302c4820eb155a917d4532985c6658ea8f020b64"
+      }
+    },
+    {
+      "id": "E12",
+      "journey": "新旧任务部分范围结果展示",
+      "runtime_commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+      "acceptance_head": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/verification-experience-after-20261106/summary.json",
+        "sha256": "7aef3bc31dcb9c7993bad34a55861655c82d3b6e1b8e10bc369a25d0eefd547e"
+      }
+    },
+    {
+      "id": "E13",
+      "journey": "本次短复测：文本风险澄清和Excel缺货修正",
+      "runtime_commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+      "acceptance_head": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0",
+      "command": "python -m pytest -q tests/test_demo_clarification_journeys.py",
+      "working_directory": "/workspace/order-ops-safety",
+      "result": "2 passed in 5.98s",
+      "transport": "Loopback Uvicorn subprocess and HTTP/HTML; no browser or model",
+      "source_record": {
+        "workspace_path": "/workspace/order-ops-review/acceptance-checklist-20261106/current-http.log",
+        "sha256": "3ff24320664eb1c732bccba176a2787fb04795cd2e7f3d553d589ec17a792469"
+      },
+      "test_file": {
+        "repository_path": "tests/test_demo_clarification_journeys.py",
+        "sha256": "626f90aa709d41f91aa57417ec0b8b5d4658331eb720c1d0a77b74c40abf5c21"
+      }
+    }
+  ],
+  "current_baseline_ci": {
+    "commit": "1bf6452db3abfbaaa8ba683480151f3ea683bfb0",
+    "run_id": 42304097502,
+    "status": "completed",
+    "conclusion": "success",
+    "source": "GitHub connector fetch_commit_workflow_runs; observed during compilation"
+  },
+  "latest_full_local_runtime_gates": {
+    "commit": "d6324e957be50ea18ce5248c55936b52eb722dfa",
+    "make_check_tests_passed": 2678,
+    "coverage_percent": 95.6,
+    "offline_passed": 53,
+    "offline_total": 53,
+    "ordinary_wheel_gate": "passed; 128 installed runtime files and repeat init verified",
+    "source_record_id": "E12",
+    "rerun_for_this_documentation_task": false
+  },
+  "not_accepted": [
+    "Real browser interactions and human demonstration timing",
+    "Current-candidate real model free-language generalization",
+    "Complete trusted origin graph and authoritative shared dependency closure",
+    "Authentication, authorization, multi-user and tenant isolation",
+    "Production ERP/supplier integration and external recovery",
+    "Production deployment, online backup, power-loss and cross-machine restore"
+  ],
+  "historical_live_note": "docs/LIVE_EVAL.md records small-sample real calls dated 2026-11-03. They were not rerun and do not certify the current acceptance baseline."
+}

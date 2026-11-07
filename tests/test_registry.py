@@ -10,7 +10,9 @@ from app.orchestration.router import Router
 from schemas.subagent import SchemaRef
 
 
-def test_R17_duplicate_schema_and_missing_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_R17_duplicate_schema_and_missing_capability(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     registry = Registry()
     registry.register(parser_spec())
     with pytest.raises(RegistryError) as duplicate:
@@ -28,12 +30,17 @@ def test_R17_duplicate_schema_and_missing_capability(monkeypatch: pytest.MonkeyP
     assert missing.value.code == "SCHEMA_MISSING"
 
     def fail_startup() -> Registry:
-        raise RegistryError("注册表损坏", code="REGISTRY_DUPLICATE")
+        raise RegistryError("PRIVATE_REGISTRY_DETAIL", code="REGISTRY_DUPLICATE")
 
     monkeypatch.setattr("app.main.build_default_registry", fail_startup)
-    with pytest.raises(RegistryError) as startup:
+    with pytest.raises(RuntimeError) as startup:
         create_app(Settings(_env_file=None))
-    assert startup.value.code == "REGISTRY_DUPLICATE"
+    assert "PRIVATE_REGISTRY_DETAIL" not in str(startup.value) + caplog.text
+    assert any(
+        getattr(record, "event", None) == "startup.failed"
+        and getattr(record, "error_code", None) == "REGISTRY_DUPLICATE"
+        for record in caplog.records
+    )
 
     failure = Router(Registry()).plan("new_order")
     assert failure.ok is False

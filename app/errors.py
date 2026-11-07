@@ -3,6 +3,10 @@
 from typing import Any
 
 
+class SchemaNotReadyError(RuntimeError):
+    """Only static, operator-actionable schema messages may use this type."""
+
+
 class AppError(Exception):
     """Base error mapped to the API error envelope."""
 

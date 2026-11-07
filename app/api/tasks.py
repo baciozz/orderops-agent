@@ -31,6 +31,12 @@ from app.web import templates
 
 router = APIRouter()
 STUB_TASK_ID = "T-STUB"
+_MODEL_FAILURE_MESSAGES = {
+    "MODEL_TIMEOUT": "模型请求超时，未生成可供批准的计划。",
+    "MODEL_TRANSPORT": "连接模型提供方失败，未生成可供批准的计划。",
+    "MODEL_UPSTREAM": "模型提供方服务出错，未生成可供批准的计划。",
+    "SCHEMA_INVALID": "模型返回格式不符合要求，已达到本次允许的格式检查次数。",
+}
 
 
 def build_stub_task_view(
@@ -136,6 +142,10 @@ def task_view_page(task_id: str, request: Request) -> HTMLResponse:
                     "fixture_not_found": task.error_code == "FIXTURE_NOT_FOUND",
                     "intent_order": task.error_code
                     in {"STALE_INPUT_ORDER", "INTENT_ORDER_UNPROVEN"},
+                    "model_error_code": task.error_code
+                    if task.runtime_mode == "LIVE" and task.error_code in _MODEL_FAILURE_MESSAGES
+                    else None,
+                    "model_message": _MODEL_FAILURE_MESSAGES.get(task.error_code or "", ""),
                     "has_operation": operation is not None,
                 }
             uploaded_sources = [
@@ -304,6 +314,9 @@ def _sheet_presentation(session, task: Task | None):
         "history": history,
         "correction": correction_view,
         "exhausted": task.error_code == "ATTEMPT_LIMIT",
+        "answer_placeholder": "蓝 L 改成 20"
+        if history or (isinstance(record, dict) and record.get("rows"))
+        else "按附件新建订单",
     }
 
 

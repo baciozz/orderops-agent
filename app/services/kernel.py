@@ -3,10 +3,11 @@
 Downstream documents are relinked in the same commit as the order revision.
 """
 
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from schemas.common import SourceRef
@@ -20,7 +21,8 @@ from schemas.enums import (
     TaskStatus,
 )
 from seeds.golden import WAREHOUSE_ID
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -316,6 +318,19 @@ def approve_plan(
             if plan.plan_kind == PlanKind.CREATE:
                 _check_current_create(session, plan)
                 _plan_sheet_provenance(session, plan)
+            task = session.get(Task, plan.task_id)
+            if task is not None and (task.cancel_requested or task.status == TaskStatus.CANCELLED):
+                raise AppError("任务已取消，不能批准或重新批准", code="CANCELLED", http_status=409)
+            balances = _balances_for(session, set(plan.expected_stock_revisions))
+            if any(
+                sku not in balances or balances[sku].revision != expected
+                for sku, expected in plan.expected_stock_revisions.items()
+            ):
+                raise AppError(
+                    "库存版本已变化，请核对可用库存后重新规划，再批准新计划",
+                    code="STALE_DEPENDENCY",
+                    http_status=409,
+                )
             duplicate_of = (plan.normalized_changes or {}).get("suspected_duplicate_of")
             if duplicate_of and not acknowledge_duplicate:
                 raise AppError(
@@ -977,6 +992,11 @@ def _commit_locked(
     if recomputed != approval.plan_hash or recomputed != plan.plan_hash:
         _revoke_if_active(approval)
         return None, AppError("计划内容与批准哈希不一致", code="HASH_MISMATCH", http_status=409)
+    from app.services.execution_audit import capture_payload, retain_execution
+
+    # Preserve exactly the payload validated above, before effects can mutate
+    # their inputs. This is evidence of retained fields, not parent provenance.
+    approved_execution = capture_payload(payload)
     transition(task, TaskStatus.COMMITTING)
     _hit_failpoint("before_write")
     operation_id = _id("OP")
@@ -1078,17 +1098,16 @@ def _commit_locked(
         "chain_id": task.chain_id,
         "plan_id": plan.id,
     }
-    session.add(
-        Operation(
-            id=operation_id,
-            idempotency_key=idempotency_key,
-            request_hash=request_hash,
-            plan_id=plan.id,
-            status="COMMITTED",
-            result_json=result,
-            committed_verification_pending=True,
-        )
+    operation = Operation(
+        id=operation_id,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+        plan_id=plan.id,
+        status="COMMITTED",
+        result_json=result,
+        committed_verification_pending=True,
     )
+    session.add(operation)
     session.add(
         AuditRecord(
             id=audit_id,
@@ -1103,6 +1122,22 @@ def _commit_locked(
             at=now,
         )
     )
+    session.flush()  # Evidence FK references this same transaction's operation.
+    _hit_failpoint("before_execution_evidence")
+    try:
+        retain_execution(
+            session, operation=operation, approval=approval, payload=approved_execution
+        )
+        session.flush()
+    except SQLAlchemyError:
+        # The enclosing transaction rolls back before the API handles this error.
+        raise AppError(
+            "业务保存失败，本次事务已回滚；恢复后请使用原提交标识重试",
+            code="COMMIT_STORAGE_FAILED",
+            http_status=503,
+            retryable=True,
+        ) from None
+    _hit_failpoint("after_execution_evidence")
     _hit_failpoint("after_audit")
     return (
         CommitOutcome(
@@ -1661,38 +1696,110 @@ def retry_pending_verification(
     return retry_pending(session_factory, operation_id, now=now, clock=clock, settings=settings)
 
 
-def _post_verify(session_factory: sessionmaker[Session], operation_id: str) -> None:
-    session = session_factory()
+def _verification_owned(
+    operation: Operation | None, lease_token: str | None, moment: datetime
+) -> bool:
+    if (
+        operation is None
+        or operation.status != "COMMITTED"
+        or not operation.committed_verification_pending
+    ):
+        return False
+    if lease_token is not None:
+        return (
+            operation.verification_lease_token == lease_token
+            and operation.verification_lease_until is not None
+            and _aware(operation.verification_lease_until) > _aware(moment)
+        )
+    # Initial commit readback is unleased and does not consume the retry budget.
+    # Once any retry/manual owner has started, it cannot publish an initial result.
+    return (
+        operation.verification_lease_token is None
+        and operation.verification_lease_until is None
+        and operation.verification_retry_attempts == 0
+        and not operation.verification_manual_required
+        and operation.verification_next_attempt_at is None
+        and operation.verification_last_error_code is None
+    )
+
+
+def _verification_problems(session: Session) -> list[str]:
     try:
-        problems: list[str] = []
-        try:
-            if verify_failpoint.get():
-                raise RuntimeError("injected verification failure")
-            problems = consistency_problems(session)
-            problems.extend(downstream_problems(session))
-        except Exception as exc:
-            problems = [str(exc)]
+        if verify_failpoint.get():
+            raise RuntimeError("injected verification failure")
+        return consistency_problems(session) + downstream_problems(session)
+    except Exception as exc:
+        return [str(exc)]
+
+
+def _post_verify(
+    session_factory: sessionmaker[Session],
+    operation_id: str,
+    *,
+    lease_token: str | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> None:
+    from schemas.verification_observation import VerificationObservation
+
+    from app.services.execution_audit import audit_in_session
+
+    clock = clock or (lambda: datetime.now(UTC))
+    with session_factory() as unbound:
+        engine = unbound.get_bind().engine
+    # SQLite data_version is comparable only on the SAME physical connection.
+    # Pin it across rollback: a pooled session alone may switch connections.
+    with engine.connect() as connection, session_factory(bind=connection) as session:
+        read_version = session.scalar(text("PRAGMA main.data_version"))
+        if not _verification_owned(session.get(Operation, operation_id), lease_token, clock()):
+            return
+        problems = _verification_problems(session)
+        execution = audit_in_session(session, operation_id)
         session.rollback()
         with begin_immediate(session):
             operation = session.get(Operation, operation_id)
-            # Re-read under the write lock after ending the readback transaction.
-            # Passed is sticky: a slower failed readback must not undo a concurrent pass.
-            if (
-                operation is not None
-                and operation.status == "COMMITTED"
-                and operation.committed_verification_pending
-            ):
-                operation.committed_verification_pending = bool(problems)
-                if not problems:
-                    # Clear retry metadata atomically with the authoritative pass.
-                    # A crash before the retry wrapper returns cannot leave stale schedules.
-                    operation.verification_manual_required = False
-                    operation.verification_next_attempt_at = None
-                    operation.verification_lease_until = None
-                    operation.verification_lease_token = None
-                    operation.verification_last_error_code = None
-    finally:
-        session.close()
+            # The SELECT acquires the actual write lock; read the clock afterward.
+            # Lost ownership or a failed readback never becomes a pass here.
+            if not _verification_owned(operation, lease_token, clock()) or read_version is None:
+                return
+            if session.scalar(text("PRAGMA main.data_version")) != read_version:
+                # An unrelated commit must not starve verification. Re-read the
+                # actual checks once under the write lock, not a duplicate list
+                # of their dependencies. No writer can change facts until commit.
+                problems = _verification_problems(session)
+                execution = audit_in_session(session, operation_id)
+            # Rechecking may consume the lease. Even without takeover, an expired
+            # owner must not publish; the result update uses this same transaction.
+            if _verification_owned(operation, lease_token, clock()):
+                assert operation is not None
+                status: Literal["partial", "findings", "inconclusive"] = (
+                    "findings"
+                    if problems or execution.status == "findings"
+                    else "inconclusive"
+                    if execution.status == "uncertain"
+                    else "partial"
+                )
+                observation = VerificationObservation(
+                    operation_id=operation_id,
+                    observed_at=clock(),
+                    status=status,
+                    existing_fact_checks="findings" if problems else "consistent",
+                    execution=execution,
+                ).model_dump(mode="json")
+                if not _verification_owned(operation, lease_token, clock()):
+                    return
+                operation.verification_observation = observation
+                # The legacy pending bit records unsettled readback, NOT graph
+                # completeness. Unknown/mismatched retained evidence vetoes its
+                # clearance. A settled observation remains explicitly partial.
+                if status != "partial":
+                    return
+                operation.committed_verification_pending = False
+                # A crash before the wrapper returns cannot leave stale schedules.
+                operation.verification_manual_required = False
+                operation.verification_next_attempt_at = None
+                operation.verification_lease_until = None
+                operation.verification_lease_token = None
+                operation.verification_last_error_code = None
 
 
 def consistency_problems(session: Session) -> list[str]:
@@ -1738,6 +1845,73 @@ def consistency_problems(session: Session) -> list[str]:
     for reservation in session.scalars(select(Reservation)).all():
         if reservation.sku_id in mto:
             problems.append(f"MTO {reservation.sku_id} 产生了预占")
+    problems.extend(_order_reservation_problems(session))
+    return problems
+
+
+def _current_order_lines(session: Session) -> dict[str, dict[str, OrderLine]]:
+    """Load only current revision lines in one query, in this transaction's snapshot."""
+    result: dict[str, dict[str, OrderLine]] = {}
+    for order_id, line in session.execute(
+        select(OrderRevision.order_id, OrderLine)
+        .join(OrderLine, OrderLine.revision_id == OrderRevision.id)
+        .join(
+            SalesOrder,
+            (SalesOrder.id == OrderRevision.order_id)
+            & (SalesOrder.current_revision == OrderRevision.revision_no),
+        )
+    ):
+        result.setdefault(order_id, {})[line.sku_id] = line
+    return result
+
+
+def _order_reservation_problems(session: Session) -> list[str]:
+    """Compare current order obligations, not a historical operation's delta.
+
+    This prototype allocates STOCK only in W1. Aggregate balance checks alone
+    cannot detect reservations moved between orders or an altered order line.
+    """
+    problems: list[str] = []
+    shipped: dict[str, dict[str, int]] = {}
+    for order_id, sku, qty in session.execute(
+        select(
+            ShipmentRecord.order_id, ShipmentRecord.sku_id, func.sum(ShipmentRecord.qty)
+        ).group_by(ShipmentRecord.order_id, ShipmentRecord.sku_id)
+    ):
+        shipped.setdefault(order_id, {})[sku] = int(qty)
+    expected: dict[tuple[str, str, str], int] = {}
+    lines_by_order = _current_order_lines(session)
+    current = session.execute(
+        select(SalesOrder, OrderRevision).outerjoin(
+            OrderRevision,
+            (OrderRevision.order_id == SalesOrder.id)
+            & (OrderRevision.revision_no == SalesOrder.current_revision),
+        )
+    )
+    for order, revision in current:
+        if revision is None:
+            if order.current_revision > 0:
+                problems.append(f"{order.id} 当前订单版本缺失")
+        lines = lines_by_order.get(order.id, {})
+        order_shipped = shipped.get(order.id, {})
+        for sku in sorted(lines.keys() | order_shipped.keys()):
+            line = lines.get(sku)
+            if line is None:
+                problems.append(f"{order.id}/{sku} 存在发货事实但当前订单行缺失")
+                continue
+            remaining = line.ordered_qty - order_shipped.get(sku, 0)
+            if remaining < 0:
+                problems.append(f"{order.id}/{line.sku_id} 订单数量低于已发数量")
+            if line.fulfillment_mode == FulfillmentMode.STOCK:
+                expected[(order.id, WAREHOUSE_ID, line.sku_id)] = max(0, remaining)
+    actual = {
+        (row.order_id, row.warehouse_id, row.sku_id): row.qty
+        for row in session.scalars(select(Reservation))
+    }
+    for key in sorted(expected.keys() | actual.keys()):
+        if expected.get(key, 0) != actual.get(key, 0):
+            order_id, warehouse_id, sku = key
+            problems.append(f"{order_id}/{warehouse_id}/{sku} 当前订单未发数量与预占不一致")
     return problems
 
 
@@ -1784,6 +1958,9 @@ def _existing_outcome(
     if event is None:
         return None
     plan = session.get(Plan, event.payload_ref) if event.payload_ref else None
+    owner = bound_task_id.get()
+    if plan is not None and owner is not None and plan.task_id != owner:
+        raise AppError("事件键属于其他任务", code="PLAN_REQUEST_CONFLICT", http_status=409)
     binding = (plan.normalized_changes or {}).get("direct_request_binding") if plan else None
     if request_hash is not None or binding is not None:
         if (
@@ -2432,10 +2609,120 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
     findings: list[dict[str, object]] = []
     orders = list(session.scalars(select(SalesOrder)).all())
     usage = _usage_map(session)
+    lines_by_order = _current_order_lines(session)
+    # Preserve _current_links(order_id)'s per-order latest-link rule. A newer
+    # link in another order must not hide a stale association in this order.
+    links_by_order: dict[str, dict[tuple[str, str], DownstreamLink]] = {}
+    verified_link_origins: set[str] = set()
+    existing_link_revisions: set[str] = set()
+    # Project only receipt identity, in the existing batch. A cancelled document
+    # may retain its actual cancellation link, never an arbitrary old/future one.
+    receipt = case((func.json_valid(Operation.result_json), Operation.result_json), else_="{}")
+    link_query = (
+        select(
+            DownstreamLink,
+            OrderRevision.id,
+            Operation.status,
+            func.json_extract(receipt, "$.order_id"),
+            func.json_extract(receipt, "$.revision"),
+            func.json_type(receipt, "$.revision"),
+        )
+        .outerjoin(
+            OrderRevision,
+            (OrderRevision.order_id == DownstreamLink.order_id)
+            & (OrderRevision.revision_no == DownstreamLink.order_revision),
+        )
+        .outerjoin(Operation, Operation.id == DownstreamLink.operation_id)
+    )
+    for (
+        link,
+        revision_id,
+        status,
+        receipt_order,
+        receipt_revision,
+        revision_type,
+    ) in session.execute(link_query):
+        if revision_id is not None:
+            existing_link_revisions.add(link.id)
+            if (
+                status == "COMMITTED"
+                and receipt_order == link.order_id
+                and revision_type == "integer"
+                and receipt_revision == link.order_revision
+            ):
+                verified_link_origins.add(link.id)
+        best = links_by_order.setdefault(link.order_id, {})
+        key = (link.doc_type, link.doc_id)
+        previous = best.get(key)
+        if previous is None or link.link_seq > previous.link_seq:
+            best[key] = link
+    linked_production_ids = select(DownstreamLink.doc_id).where(
+        DownstreamLink.doc_type == "production_order"
+    )
+    linked_purchase_ids = select(DownstreamLink.doc_id).where(
+        DownstreamLink.doc_type == "purchase_order"
+    )
+    production = {
+        row.id: row
+        for row in session.scalars(
+            select(ProductionOrder).where(ProductionOrder.id.in_(linked_production_ids))
+        )
+    }
+    purchase = {
+        row.id: row
+        for row in session.scalars(
+            select(PurchaseOrder).where(PurchaseOrder.id.in_(linked_purchase_ids))
+        )
+    }
+    # Join current document revisions; do not materialize historical JSON snapshots.
+    current_revisions = (
+        select(
+            literal("production_order").label("doc_type"),
+            ProductionOrder.id.label("doc_id"),
+            ProductionOrder.doc_revision.label("rev_no"),
+        )
+        .where(ProductionOrder.id.in_(linked_production_ids))
+        .union_all(
+            select(literal("purchase_order"), PurchaseOrder.id, PurchaseOrder.doc_revision).where(
+                PurchaseOrder.id.in_(linked_purchase_ids)
+            )
+        )
+        .subquery()
+    )
+    snapshots = {
+        (row.doc_type, row.doc_id): row
+        for row in session.scalars(
+            select(DocRevision).join(
+                current_revisions,
+                (DocRevision.doc_type == current_revisions.c.doc_type)
+                & (DocRevision.doc_id == current_revisions.c.doc_id)
+                & (DocRevision.rev_no == current_revisions.c.rev_no),
+            )
+        )
+    }
     for order in orders:
-        links = _current_links(session, order.id)
+        links = list(links_by_order.get(order.id, {}).values())
         for link in links:
-            if link.order_revision != order.current_revision:
+            document = (
+                production.get(link.doc_id)
+                if link.doc_type == "production_order"
+                else purchase.get(link.doc_id)
+            )
+            snapshot = snapshots.get((link.doc_type, link.doc_id))
+            cancelled = document is not None and document.status == "CANCELLED"
+            # Require an existing past revision and the matching cancellation
+            # operation receipt. The snapshot's cancellation status is checked below.
+            cancelled_history = (
+                cancelled
+                and link.order_revision < order.current_revision
+                and link.id in verified_link_origins
+                and snapshot is not None
+                and snapshot.operation_id is not None
+                and snapshot.operation_id == link.operation_id
+            )
+            if (link.order_revision != order.current_revision and not cancelled_history) or (
+                cancelled and link.id not in existing_link_revisions
+            ):
                 findings.append(
                     {
                         "doc_id": link.doc_id,
@@ -2444,50 +2731,132 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                             f"当前修订是 {order.current_revision}"
                         ),
                         "repair": {
-                            "action": "relink",
+                            "action": "manual_review" if cancelled else "relink",
                             "order_id": order.id,
                             "order_revision": order.current_revision,
                         },
                     }
                 )
-            if link.doc_type == "production_order":
-                row = session.get(ProductionOrder, link.doc_id)
-                snapshot = session.scalar(
-                    select(DocRevision).where(
-                        DocRevision.doc_type == "production_order",
-                        DocRevision.doc_id == link.doc_id,
-                        DocRevision.rev_no == (row.doc_revision if row else -1),
-                    )
+            if document is not None and snapshot is None:
+                # Cancellation also records a current revision. Old snapshots
+                # or the live row cannot replace missing revision evidence.
+                findings.append(
+                    {
+                        "doc_id": document.id,
+                        "problem": f"{document.id} 当前单据修订 {document.doc_revision} 缺失",
+                        "repair": {
+                            "action": "manual_review",
+                            "doc_type": link.doc_type,
+                            "doc_id": document.id,
+                            "doc_revision": document.doc_revision,
+                            "order_id": order.id,
+                        },
+                    }
                 )
-                if row is not None and snapshot is not None:
-                    recorded = snapshot.snapshot_json or {}
-                    if (
-                        recorded.get("planned_qty") != row.planned_qty
-                        or recorded.get("sku_id") != row.sku_id
-                    ):
-                        findings.append(
-                            {
-                                "doc_id": row.id,
-                                "problem": f"{row.id} 当前内容与单据修订 {row.doc_revision} 不一致",
-                                "repair": {
-                                    "action": "draft",
-                                    "sku_id": recorded.get("sku_id"),
-                                    "planned_qty": recorded.get("planned_qty"),
-                                },
-                            }
-                        )
-        line_map = _load_lines(session, order.id)
-        for sku, line in line_map.items():
-            if line.fulfillment_mode != "MTO":
+            elif (
+                document is not None
+                and document.status == "CANCELLED"
+                and snapshot is not None
+                and (
+                    not isinstance(snapshot.snapshot_json, dict)
+                    or snapshot.snapshot_json.get("status") != "CANCELLED"
+                )
+            ):
+                # Exempting an old order link requires current cancellation evidence,
+                # not just a changed status on the live document row.
+                findings.append(
+                    {
+                        "doc_id": document.id,
+                        "problem": (
+                            f"{document.id} 当前取消状态与单据修订 {document.doc_revision} 不一致"
+                        ),
+                        "repair": {
+                            "action": "manual_review",
+                            "doc_type": link.doc_type,
+                            "doc_id": document.id,
+                            "doc_revision": document.doc_revision,
+                            "order_id": order.id,
+                        },
+                    }
+                )
+            elif isinstance(document, ProductionOrder) and snapshot is not None:
+                recorded = snapshot.snapshot_json or {}
+                if (
+                    recorded.get("planned_qty") != document.planned_qty
+                    or recorded.get("sku_id") != document.sku_id
+                ):
+                    findings.append(
+                        {
+                            "doc_id": document.id,
+                            "problem": (
+                                f"{document.id} 当前内容与单据修订 {document.doc_revision} 不一致"
+                            ),
+                            "repair": {
+                                "action": "draft",
+                                "sku_id": recorded.get("sku_id"),
+                                "planned_qty": recorded.get("planned_qty"),
+                            },
+                        }
+                    )
+            elif isinstance(document, PurchaseOrder) and snapshot is not None:
+                recorded = snapshot.snapshot_json or {}
+                # Receipt progress is a separate execution fact. Compare only
+                # the material and ordered quantity written by every PO revision.
+                if (
+                    not isinstance(recorded, dict)
+                    or recorded.get("material_id") != document.material_id
+                    or type(recorded.get("ordered_qty")) is not int
+                    or recorded.get("ordered_qty") != document.ordered_qty
+                ):
+                    findings.append(
+                        {
+                            "doc_id": document.id,
+                            "problem": (
+                                f"{document.id} 当前采购内容与单据修订 "
+                                f"{document.doc_revision} 不一致"
+                            ),
+                            "repair": {
+                                "action": "manual_review",
+                                "doc_type": "purchase_order",
+                                "doc_id": document.id,
+                                "doc_revision": document.doc_revision,
+                                "order_id": order.id,
+                            },
+                        }
+                    )
+        # This check needs only quantity/mode, not _load_lines' shipment/cut enrichment.
+        line_map = lines_by_order.get(order.id, {})
+        active_by_sku: dict[str, list[ProductionOrder]] = {}
+        for link in links:
+            if link.doc_type == "production_order":
+                row = production.get(link.doc_id)
+                if row is not None and row.status != "CANCELLED":
+                    active_by_sku.setdefault(row.sku_id, []).append(row)
+        mto_skus = {sku for sku, line in line_map.items() if line.fulfillment_mode == "MTO"}
+        for sku in sorted(mto_skus | active_by_sku.keys()):
+            active_rows = active_by_sku.get(sku, [])
+            planned = sum(row.planned_qty for row in active_rows)
+            line = line_map.get(sku)
+            if line is None or line.fulfillment_mode != "MTO":
+                if planned:
+                    # Missing demand is not authority to cancel executed work or
+                    # reconstruct an order from historical quantities. Review first.
+                    findings.append(
+                        {
+                            "doc_id": sku,
+                            "problem": (
+                                f"{order.id}/{sku} 活跃生产计划 {planned} 缺少当前 MTO 订单行"
+                            ),
+                            "repair": {
+                                "action": "manual_review",
+                                "order_id": order.id,
+                                "order_revision": order.current_revision,
+                                "sku_id": sku,
+                                "production_order_ids": sorted(row.id for row in active_rows),
+                            },
+                        }
+                    )
                 continue
-            planned = 0
-            for link in links:
-                if link.doc_type != "production_order":
-                    continue
-                row = session.get(ProductionOrder, link.doc_id)
-                if row is None or row.status == "CANCELLED" or row.sku_id != sku:
-                    continue
-                planned += row.planned_qty
             if planned != line.ordered_qty:
                 findings.append(
                     {
@@ -2500,7 +2869,7 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
         actual: dict[tuple[str, str], int] = {}
         for link in links:
             if link.doc_type == "production_order":
-                row = session.get(ProductionOrder, link.doc_id)
+                row = production.get(link.doc_id)
                 if row is None or row.status == "CANCELLED":
                     continue
                 material = usage.get(row.sku_id)
@@ -2510,7 +2879,7 @@ def downstream_findings(session: Session) -> list[dict[str, object]]:
                 key = (row.id, material_id)
                 expected[key] = row.planned_qty * per_piece
             else:
-                row_po = session.get(PurchaseOrder, link.doc_id)
+                row_po = purchase.get(link.doc_id)
                 if row_po is None or row_po.status == "CANCELLED":
                     continue
                 key = (row_po.production_order_id, row_po.material_id)

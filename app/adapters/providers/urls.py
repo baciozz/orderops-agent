@@ -1,14 +1,16 @@
 """Offline URL validation. Loopback exceptions never use DNS resolution."""
 
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from app.errors import LiveStartRefused
 
 
-def validate_compatible_url(base_url: str | None) -> bool:
+def validate_compatible_url(base_url: str | None, api_key: str | None = None) -> bool:
     """Return whether the host is allowlisted loopback, or refuse the URL."""
     if not base_url:
         raise LiveStartRefused("BASE_URL_NOT_CONFIGURED")
+    if api_key and (api_key in base_url or api_key in unquote(base_url)):
+        raise LiveStartRefused("BASE_URL_CREDENTIALS")
     try:
         url = urlsplit(base_url)
         # Reject normalization ambiguities, invalid ports, and empty delimiters too.

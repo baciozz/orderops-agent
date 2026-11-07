@@ -547,12 +547,21 @@ def test_receipt_ordinals_are_atomic_clock_independent_and_replay_preserves_meta
     assert sorted(body["receipt_ordinal"] for body in bodies.values()) == [1, 2]
     assert all(body["intent_watermark"]["SO-1001"] == 2 for body in bodies.values())
     for index, receipt in enumerate(receipts):
-        assert (
+        with pytest.raises(AppError) as conflict:
             accept_input(
                 factory,
                 thread_id=str(index),
                 client_event_key=str(index),
                 text="different replay text",
+                clock=lambda: now,
+            )
+        assert conflict.value.code == "INPUT_REQUEST_CONFLICT"
+        assert (
+            accept_input(
+                factory,
+                thread_id=str(index),
+                client_event_key=str(index),
+                text="controlled",
                 clock=lambda: now,
             )[:2]
             == receipt[:2]

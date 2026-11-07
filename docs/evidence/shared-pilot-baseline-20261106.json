@@ -1,0 +1,256 @@
+{
+  "baseline_commit": "fa453049c0c814837a704606e0a6ab52820a5779",
+  "assessment_completed": true,
+  "shared_pilot_ready": false,
+  "identity_labels_are_authenticated": false,
+  "tenant_or_role_policy_selected": false,
+  "task_id": "f9fc797d-fb76-495d-8fc9-54017d3b3588",
+  "operation_id": "OP-1da2171a5270",
+  "counts": {
+    "operation": 1,
+    "execution_evidence": 1,
+    "approval": 2,
+    "model_usage": 0
+  },
+  "approval_actors": [
+    [
+      "demo-user"
+    ],
+    [
+      "demo-user"
+    ]
+  ],
+  "commit_audit_actors": [
+    [
+      "demo-user"
+    ]
+  ],
+  "existing_controls_observed": [
+    "body actor field rejected without DB mutation",
+    "expired approval rejected",
+    "explicit renewal succeeds",
+    "same commit key once"
+  ],
+  "unmet_gates": [
+    "authenticated identity",
+    "order/task/source/export authorization",
+    "accountable approval and execution identities",
+    "authenticated receipt replay"
+  ],
+  "not_testable_without_identity_layer": [
+    "real login/logout and session expiry",
+    "revocation during transaction",
+    "re-login then authorized same-key recovery",
+    "tenant isolation and role separation"
+  ],
+  "expired_marker_note": "An invalid cookie marker was ignored. No actual session was created or expired.",
+  "requests": [
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/orders/SO-1001",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/orders/SO-1002",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/stock",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/ui/demo/tasks",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/metrics",
+      "status": 200
+    },
+    {
+      "actor_label": "A",
+      "method": "POST",
+      "path": "/inputs",
+      "status": 202
+    },
+    {
+      "actor_label": "A",
+      "method": "POST",
+      "path": "/ui/demo/worker-once",
+      "status": 200
+    },
+    {
+      "actor_label": "A",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588/view",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/ui/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/ui/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/sources",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588/answers",
+      "status": 202
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/ui/demo/worker-once",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/ui/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/approve",
+      "status": 400,
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "请求格式不正确",
+        "retryable": false,
+        "details": {
+          "errors": [
+            {
+              "type": "extra_forbidden",
+              "loc": [
+                "body",
+                "actor_id"
+              ],
+              "msg": "Extra inputs are not permitted",
+              "input": "A"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/approve",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/commit",
+      "status": 409,
+      "error": {
+        "code": "EXPIRED",
+        "message": "批准已过期",
+        "retryable": false,
+        "details": {}
+      }
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/approve",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/commit",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "POST",
+      "path": "/plans/P-a320bd711b2d/commit",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588/audit",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588/download?fmt=csv",
+      "status": 200
+    },
+    {
+      "actor_label": "anonymous",
+      "method": "GET",
+      "path": "/tasks/f9fc797d-fb76-495d-8fc9-54017d3b3588/download?fmt=xlsx",
+      "status": 200
+    },
+    {
+      "actor_label": "A",
+      "method": "POST",
+      "path": "/inputs",
+      "status": 202
+    },
+    {
+      "actor_label": "B",
+      "method": "GET",
+      "path": "/tasks/4c569403-0d62-47cc-bbc1-bdbe7ca7c079",
+      "status": 200
+    },
+    {
+      "actor_label": "B",
+      "method": "POST",
+      "path": "/tasks/4c569403-0d62-47cc-bbc1-bdbe7ca7c079/cancel",
+      "status": 200
+    }
+  ],
+  "raw_record": {
+    "workspace_path": "/workspace/order-ops-review/shared-pilot-final-20261106/assessment.json",
+    "sha256": "3ba0c3d8b9fab53887e10efb04a52678f282f9cc6982a26594b4a947d919441f"
+  },
+  "assessor": {
+    "repository_path": "scripts/assess_shared_pilot.py",
+    "sha256": "92a79e7348af937d2ec9d8aec63ce5721bb375fa0d124fc2b057853d4121e4a3"
+  },
+  "runtime_package_trees": {
+    "app": "e0f1ce5e19c5bee0417bbb81a888a1e1ca63a01c",
+    "schemas": "1e1f25b924083b629e600bb033f440c5f838759c",
+    "seeds": "c45e01d4834e27f8631cf39b0aa416b4ce0a1582",
+    "order_ops_migrations": "7ada01aac84bf3df78318b87295fb8c3cab27c9b"
+  },
+  "existing_output_refused_without_modification": true
+}

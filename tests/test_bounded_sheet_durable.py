@@ -43,7 +43,7 @@ def sheet_env(engine, session_factory, database_url, tmp_path, monkeypatch):
     load_seed(session_factory, database_url=database_url)
     settings = Settings(_env_file=None, database_url=database_url, live_enabled=False)
     root = tmp_path / "uploads"
-    root.mkdir()
+    root.mkdir(mode=0o700)
     app = SimpleNamespace(
         state=SimpleNamespace(
             session_factory=session_factory, settings=settings, source_storage_dir=root

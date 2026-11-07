@@ -164,3 +164,5 @@ class LockedKind(StrEnum):
 class VerificationState(StrEnum):
     PASSED = "passed"
     PENDING = "pending"
+    PARTIAL = "partial"
+    UNASSESSED = "unassessed"

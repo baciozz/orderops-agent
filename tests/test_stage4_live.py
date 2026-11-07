@@ -11,7 +11,7 @@ import pytest
 from app.adapters.budget import BudgetLedger
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
-from app.adapters.llm import StructuredCallRequest
+from app.adapters.llm import StructuredCallRequest, resolve_mode
 from app.config import Settings
 from app.db.models import (
     Approval,
@@ -502,7 +502,12 @@ def test_live_call_reserves_before_http_and_settles_same_row_once(
 def pipeline(factory, database_url, *, text=TEXT_BLACK_TO_WHITE, payload=None, configured=None):
     load_seed(factory, database_url=database_url)
     _, task_id, _ = accept_input(
-        factory, thread_id="live", client_event_key="one", text=text, clock=lambda: NOW
+        factory,
+        thread_id="live",
+        client_event_key="one",
+        text=text,
+        clock=lambda: NOW,
+        runtime_mode=resolve_mode(configured or settings()).mode,
     )
     requests = []
 
@@ -659,6 +664,7 @@ def test_recorded_live_sequence_missing_replacement_qty_clarifies(
             thread_id=f"recorded-{index}",
             client_event_key=f"recorded-{index}",
             text=text,
+            runtime_mode="LIVE",
             **clock_options,
         )
         outcome = run_once(
@@ -769,6 +775,7 @@ def test_kernel_rejection_keeps_business_error_after_releasing_lease(
         thread_id="rejection",
         client_event_key="rejection",
         text=TEXT_BLACK_TO_WHITE,
+        runtime_mode=mode,
         clock=lambda: NOW,
     )
     fixtures = golden_fixtures()
@@ -999,7 +1006,11 @@ def test_manual_smoke_evaluator_aborts_on_budget_before_http(session_factory, da
 def test_incomplete_pipeline_step_preserves_billed_usage(session_factory, database_url):
     load_seed(session_factory, database_url=database_url)
     _, task_id, _ = accept_input(
-        session_factory, thread_id="incomplete", client_event_key="i", text=TEXT_BLACK_TO_WHITE
+        session_factory,
+        thread_id="incomplete",
+        client_event_key="i",
+        text=TEXT_BLACK_TO_WHITE,
+        runtime_mode="LIVE",
     )
     result = run_once(
         session_factory,

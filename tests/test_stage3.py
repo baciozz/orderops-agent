@@ -53,7 +53,7 @@ def stage3(session_factory, database_url, tmp_path, monkeypatch):
     load_seed(session_factory, database_url=database_url)
     app = create_app(Settings(_env_file=None, database_url=database_url))
     root = tmp_path / "sources"
-    root.mkdir()
+    root.mkdir(mode=0o700)
     app.state.source_storage_dir = root
     clock = [NOW]
     monkeypatch.setattr("app.api.tasks.utcnow", lambda: clock[0])
@@ -263,7 +263,7 @@ def test_fixture_golden_chain_upload_chat_precheck_approve_commit_export(stage3)
     assert result["card"]["status"] == "SUCCEEDED"
     assert result["result"]["operation_id"] == committed.operation_id
     assert result["result"]["revision"] == 2
-    assert result["result"]["verification"] == "passed"
+    assert result["result"]["verification"] == "partial"
     assert result["sources"] == view["sources"]
     assert result["result"]["download_url"]
     download = client.get(result["result"]["download_url"])
@@ -653,7 +653,7 @@ def test_R15_fixture_mode_visible_in_real_view_html_and_download(stage3):
     assert result["approval"]["disabled_reason"] == "CONSUMED"
     assert result["result"]["operation_id"] == committed.operation_id
     assert result["result"]["revision"] == 2
-    assert result["result"]["verification"] == "passed"
+    assert result["result"]["verification"] == "partial"
     assert result["line_diffs"] == view["line_diffs"] or [
         (row["sku_id"], row["old_qty"], row["new_qty"]) for row in result["line_diffs"]
     ] == [(row["sku_id"], row["old_qty"], row["new_qty"]) for row in view["line_diffs"]]

@@ -3,6 +3,7 @@
 import pytest
 from app.api import demo_ui, inputs, orders
 from app.db.models import Approval, SalesOrder, Task
+from app.errors import AppError
 from app.orchestration.fixtures import (
     TEXT_ALL_NAVY,
     TEXT_BLACK_TO_WHITE,
@@ -216,7 +217,7 @@ def test_direct_api_initially_unbound_late_binding_unchanged(web):
     assert outcome["status"] == "AWAITING_APPROVAL" and outcome["order_id"] == "SO-1001"
 
 
-def test_wrong_order_reused_key_rejected_but_api_replay_stays_key_first(web):
+def test_wrong_order_reused_key_rejected_by_demo_and_api_identity(web):
     response = post(web)
     assert response.status_code == 303
     before = all_tables(web.engine)
@@ -224,12 +225,24 @@ def test_wrong_order_reused_key_rejected_but_api_replay_stays_key_first(web):
     assert rejected.status_code == 400
     assert "DEMO_EXAMPLE_ORDER_MISMATCH" in rejected.body.decode()
     assert all_tables(web.engine) == before
+    with pytest.raises(AppError) as conflict:
+        inputs.submit(
+            InputSubmitRequest(
+                thread_id="guard",
+                client_event_key="guard",
+                text=TEXT_ONLY_UNCUT,
+                selected_order_id="SO-1002",
+            ),
+            request(web),
+        )
+    assert conflict.value.code == "INPUT_REQUEST_CONFLICT"
+    assert conflict.value.http_status == 409
     replay = inputs.submit(
         InputSubmitRequest(
             thread_id="guard",
             client_event_key="guard",
-            text=TEXT_ONLY_UNCUT,
-            selected_order_id="SO-1002",
+            text=TEXT_BLACK_TO_WHITE,
+            selected_order_id="SO-1001",
         ),
         request(web),
     )
@@ -255,13 +268,25 @@ def test_nonexistent_mismatch_never_reaches_receipt_even_with_reused_key(
     assert "NOT_FOUND：订单不存在" in rejected.body.decode()
     assert all_tables(web.engine) == before
     if reuse_key:
-        # Ordinary API still resolves the same key before nonexistent-order lookup.
+        # Identity is checked before current-order lookup: wrong content is a
+        # conflict, while an exact retry still resolves to the original task.
+        with pytest.raises(AppError) as conflict:
+            inputs.submit(
+                InputSubmitRequest(
+                    thread_id="guard",
+                    client_event_key="guard",
+                    text=text,
+                    selected_order_id="missing-order",
+                ),
+                request(web),
+            )
+        assert conflict.value.code == "INPUT_REQUEST_CONFLICT"
         replay = inputs.submit(
             InputSubmitRequest(
                 thread_id="guard",
                 client_event_key="guard",
-                text=text,
-                selected_order_id="missing-order",
+                text=TEXT_BLACK_TO_WHITE,
+                selected_order_id="SO-1001",
             ),
             request(web),
         )

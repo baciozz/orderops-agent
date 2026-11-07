@@ -7,9 +7,7 @@ at every acceptance/approval/commit. Numeric grammar applies to persisted cell t
 import json
 import re
 from copy import deepcopy
-from hashlib import sha256
 from io import BytesIO
-from pathlib import Path
 from typing import Any
 from zipfile import ZipFile
 
@@ -171,12 +169,8 @@ def _original_rows(session, task, ids):
         source = session.get(InputSource, source_id)
         if source is None or session.get(TaskSource, (task.id, source_id)) is None:
             raise _invalid()
-        path = Path(source.storage_ref)
         if (
-            not path.is_absolute()
-            or path.name != source.id
-            or path.is_symlink()
-            or not source.original_name.lower().endswith(".xlsx")
+            not source.original_name.lower().endswith(".xlsx")
             or source.media_type
             != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             or source.parser_version != "static-v1"
@@ -185,12 +179,11 @@ def _original_rows(session, task, ids):
         ):
             raise _invalid()
         try:
-            with path.open("rb") as stream:
-                content = stream.read(MAX_FILE_BYTES + 1)
-        except OSError as exc:
+            from app.services.source_files import original_content
+
+            content = original_content(source)
+        except AppError as exc:
             raise _invalid() from exc
-        if len(content) != source.size or sha256(content).hexdigest() != source.sha256:
-            raise _invalid()
         spans = list(
             session.scalars(
                 select(SourceSpan)

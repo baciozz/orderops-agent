@@ -141,7 +141,7 @@ def test_worker_approve_commit_and_read_result(web):
     assert "SUCCEEDED" in final.text
     assert committed.json()["operation_id"] in final.text
     assert "revision</dt><dd>2" in final.text
-    assert "核验</dt><dd>passed" in final.text
+    assert "核验</dt><dd>限定字段一致；整单来源仍不确定" in final.text
     assert "disabled" in Page(final.text).buttons["approve"]
     assert "disabled" in Page(final.text).buttons["commit"]
     assert 'data-approval-id=""' in final.text

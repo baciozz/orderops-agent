@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from app.adapters.uploads import validate_text
 from app.db.models import Event, InboxDelivery, InputPayload, SalesOrder, Task
 from app.db.session import begin_immediate
+from app.domain.hashing import canonical_hash
 from app.errors import AppError
 from app.observability import enrich, get_logger, observed, text_digest
 from app.orchestration.intent_receipts import receipt_metadata
@@ -48,9 +49,13 @@ def accept_input(
     expected_input_event_id=None,
     clock=utcnow,
     fault=lambda _: None,
+    runtime_mode="FIXTURE",
 ):
+    if runtime_mode not in {"FIXTURE", "LIVE"}:
+        raise AppError("任务运行模式无效", code="TASK_MODE_INVALID", http_status=400)
     validate_text(text, allow_empty=bool(source_ids))
     enrich(**text_digest(text or ""))
+    request_hash = _request_hash(text, source_ids, task_id, selected_order_id)
     with factory() as session, begin_immediate(session):
         event = session.scalar(
             select(Event).where(
@@ -59,6 +64,20 @@ def accept_input(
         )
         if event:
             receipt = session.get(InputPayload, event.id)
+            stored_hash = None
+            if receipt is not None and event.kind in {"input.submit", "clarify_answer"}:
+                stored_hash = receipt.body.get("request_hash_v1") or _request_hash(
+                    receipt.body.get("text"),
+                    receipt.body.get("source_ids"),
+                    receipt.task_id if event.kind == "clarify_answer" else None,
+                    event.order_id if event.kind == "input.submit" else None,
+                )
+            if receipt is None or stored_hash != request_hash:
+                raise AppError(
+                    "输入事件键已用于其他请求，请为新输入使用新的事件键",
+                    code="INPUT_REQUEST_CONFLICT",
+                    http_status=409,
+                )
             enrich(task_id=receipt.task_id, input_id=event.id, duplicate=True)
             return event.id, receipt.task_id, session.get(Task, receipt.task_id).status
         if selected_order_id and session.get(SalesOrder, selected_order_id) is None:
@@ -80,12 +99,15 @@ def accept_input(
             if task is None or task.status not in {"NEEDS_CLARIFICATION", "AWAITING_APPROVAL"}:
                 raise AppError("任务不能恢复", code="ILLEGAL_TRANSITION", http_status=409)
         else:
+            from app.services.sheet_order import ACTIVATION
+
             task = Task(
                 id=str(uuid4()),
                 chain_id=thread_id,
                 order_id=selected_order_id,
                 status="RECEIVED",
                 intent_revision=0,
+                runtime_mode="FIXTURE" if text == ACTIVATION else runtime_mode,
             )
             session.add(task)
             session.flush()
@@ -128,6 +150,7 @@ def accept_input(
                     "text": text,
                     "source_ids": source_ids or [],
                     "input_sequence": sequence,
+                    "request_hash_v1": request_hash,
                     **receipt_metadata(session, order),
                 },
             )
@@ -144,3 +167,16 @@ def accept_input(
         )
         enrich(task_id=task.id, input_id=event.id, duplicate=False, status=task.status)
         return event.id, task.id, task.status
+
+
+def _request_hash(text, source_ids, task_id, selected_order_id):
+    # Fences are retry preconditions, not a new input. An answer's optional
+    # selected_order_id is ignored by the established API; scope is inherited.
+    return canonical_hash(
+        {
+            "text": text or "",
+            "source_ids": source_ids or [],
+            "task_id": task_id,
+            "selected_order_id": selected_order_id if task_id is None else None,
+        }
+    )

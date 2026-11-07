@@ -25,8 +25,9 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
   FIXTURE 只保证模型执行离线，**不会鉴别数据库中是否含真实数据**，操作者必须指向合成库。
 - 只推进已有任务规划、租约恢复、提交后的只读核验和本地 outbox 回执。不会自动批准计划、
   提交订单或修复业务数据。待批准任务仍停在 `AWAITING_APPROVAL`。
-- 同样使用既有 CLI 的显式建表/迁移步骤。`worker-once` 的原调用参数、配置透传和单轮行为保持不变；
-  两个 CLI 命令共用单轮函数。网页 worker 端点与 API 启动行为不变。
+- 同样使用既有 CLI 的显式建表/迁移步骤。两个 CLI 命令共用单轮函数，均强制 FIXTURE；
+  `worker-once` 现在也明确透传关闭 LIVE 的配置副本。LIVE 持久任务不会被领取或降级。
+  任务模式与旧数据迁移见 [运行边界](DEPLOYMENT_BOUNDARIES.md)。
 
 ## 停止与错误
 
@@ -39,6 +40,8 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
   `max_iterations` / `stop_requested`。此前信号处理器会恢复，数据库 engine 会释放。
 - 现有组件已经处理的重试继续遵守其持久化计划：例如 outbox 失败退避、有限核验重试及耗尽后转人工。
   任务正常返回 `FAILED` 也不等同于循环崩溃，不会被循环无条件重试。
+- 已确认属于本次尝试的取消会返回 `CANCELLED`，继续后续轮次，不重试该任务。迟到结果仍被拒绝；
+  未确认的 STALE_ATTEMPT、租约已替换及其他执行异常仍按错误处理。具体[HTTP/进程验收](WORKER_LOOP_CANCEL_HTTP.md)包含后排任务、重启和原键重放。
 - 未处理的异常立即结束循环，退出码 1；不开始后续步骤或轮次，不吞掉错误无限重试。
   启动、迁移和清理异常也返回 1。输出只含固定提示和错误码，不打印异常原文或 traceback。
   本轮中已经提交的状态不会被伪装成回滚；操作者调查后可显式重启，沿用既有租约恢复与幂等机制。
@@ -62,7 +65,7 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
 `tests/test_worker_loop.py` 使用注入的 clock、wait、stop 和临时 SQLite 合成数据验证轮数边界、
 空闲等待、串行顺序、强制 FIXTURE、租约到期恢复、核验退避耗尽、outbox 到期投递和不重复业务提交。
 信号处理器以合成调用及受控 signal.raise_signal 测试（包括持有 Event 锁时），启动/清理故障以注入测试，不运行后台常驻服务或真实模型。
-`tests/test_cleanup_wiring.py` 继续覆盖 `worker-once` 旧参数和配置透传。
+`tests/test_cleanup_wiring.py` 覆盖 `worker-once` 的并发上限及 FIXTURE 配置副本透传。
 
 这不是托管调度器，不代表真实业务、生产负载、操作系统进程信号端到端验收或部署验收。
 外部推送告警、长期调度和历史快照核验仍未实现。

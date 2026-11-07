@@ -14,10 +14,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect, text
 
 NOTICE = (
-    "上传成功仅表示当时已解析并保存提取内容，不代表原始文件仍被保留。"
-    "原始文件使用临时存储，本页未检查其是否存在。"
+    "上传成功仅表示当时已解析并保存提取内容，不保证原件持续可用。"
+    "原始文件按上传时的本地设置保存；未配置持久目录时使用临时存储。"
+    "启用持久目录不迁移旧文件，也不代替备份，仍需操作者保留原件。"
     "即使原始文件丢失，已保存的提取内容仍可读取；"
-    "使用同一上传键重试不会恢复原始文件。审计摘要不包含原始文件。"
+    "使用同一上传键重试不会恢复原始文件，原件不可用时会拒绝回放。审计摘要不包含原始文件。"
 )
 HEADERS = {"x-request-id": "retention-read", "x-correlation-id": "retention-read"}
 
@@ -43,7 +44,7 @@ def test_retention_disclosure_is_conditional_and_read_only(
     settings = Settings(_env_file=None, database_url=database_url, live_enabled=False)
     app = create_app(settings)
     root = tmp_path / "private-path-canary"
-    root.mkdir()
+    root.mkdir(mode=0o700)
     app.state.source_storage_dir = root
     workbook = openpyxl.Workbook()
     workbook.active["A1"] = "Synthetic saved excerpt"
@@ -115,7 +116,11 @@ def test_retention_disclosure_is_conditional_and_read_only(
         paths[0].unlink()
         assert page(client) == before_page
         assert evidence(client) == before_evidence
-        assert send(client, 0).json() == receipts[0].json()
+        replay = send(client, 0)
+        assert replay.status_code == 409
+        assert replay.json()["error"]["code"] == "SOURCE_UNAVAILABLE"
+        assert str(root) not in replay.text
+        assert send(client, 1).json() == receipts[1].json()
         assert (
             client.get(f"/sources/{source_ids[0]}/spans", params={"task_id": other_id}).status_code
             == 404

@@ -228,7 +228,11 @@ def journey(output, name, database):
         after = get("/orders/SO-1001")
         audit = get(f"/tasks/{task}/audit")
         require(final["card"]["status"] == "SUCCEEDED", "Task did not succeed")
-        require(final["result"]["verification"] == "passed", "Verification did not pass")
+        require(final["result"]["verification"] == "partial", "Limited verification incomplete")
+        require(
+            final["result"]["verification_details"]["global_completeness"] == "not_assessed",
+            "Limited verification must not claim a global pass",
+        )
         require(after["current_revision"] == replay["revision"] == 2, "Wrong final revision")
         require(len(audit["committed_operations"]) == 1, "Expected exactly one operation")
         lines = {
@@ -435,7 +439,11 @@ def new_order_journey(output, database):
         consistent()
         final = view(plan)
         require(final["card"]["status"] == "SUCCEEDED", "New-order task did not succeed")
-        require(final["result"]["verification"] == "passed", "New-order verification failed")
+        require(final["result"]["verification"] == "partial", "New-order limited check incomplete")
+        require(
+            final["result"]["verification_details"]["order_graph"] == "inconclusive",
+            "New-order partial fields must not certify parent/closure provenance",
+        )
         return {
             "plan_id": plan.plan_id,
             "task_id": plan.task_id,
@@ -733,7 +741,8 @@ def publish_summary(output):
             "没有联系供应商，也没有取得对方同意。\n\n"
             "前两条旅程均经过持久输入和单独 CLI worker；批准前订单及业务表未变。"
             "脚本模拟 demo-user 批准，再单独提交；最终 revision 2、SUCCEEDED、"
-            "verification passed。同 key 重放返回原 Operation ID，审计各只有一次操作。\n\n"
+            "verification partial（限定字段一致；整单来源与全库完整性未证明）。"
+            "同 key 重放返回原 Operation ID，审计各只有一次操作。\n\n"
             "- 新建库存单：白色 8+2 合并为 10，蓝色 6，revision 1；独立模拟批准后提交。\n"
             "- 新单改单：白色 6、黑色 4、蓝色 9，revision 2；预留与订单数量一致。\n"
             "- 原建单提交重放仍返回 revision 1 同一 Operation ID，不回滚当前 revision 2。\n"

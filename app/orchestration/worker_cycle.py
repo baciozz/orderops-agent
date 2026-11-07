@@ -25,16 +25,16 @@ def run_cycle(
     settings: Settings,
     *,
     clock: Callable[[], datetime] | None = None,
-    fixture_only: bool = False,
+    fixture_only: bool = True,
     limits: Limits | None = None,
 ) -> CycleResult:
-    # Omit optional keywords for the legacy CLI path: its configuration and clock
-    # lookup behavior remain unchanged. The bounded loop explicitly opts into both.
+    # Both CLI entry points default to FIXTURE. Other callers must explicitly
+    # opt into live consumption and still obey each task's persistent mode.
     timing: dict[str, Any] = {} if clock is None else {"clock": clock}
     cycle_settings = (
         settings.model_copy(update={"live_enabled": False}) if fixture_only else settings
     )
-    dispatch: dict[str, Any] = {"settings": cycle_settings} if fixture_only else {}
+    dispatch: dict[str, Any] = {"settings": cycle_settings}
     recovered = watchdog.scan(factory, settings=cycle_settings, **timing)
     if limits is None:
         limits = replace(DEFAULT_LIMITS, active=effective_active(settings.worker_max_active))

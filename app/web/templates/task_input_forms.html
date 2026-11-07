@@ -2,7 +2,11 @@
   data-input-event-id="{{ input_event_id or '' }}"
   data-intent-revision="{{ view.card.intent_revision }}" data-status="{{ view.card.status }}">
   <h2>补充证据与澄清</h2>
+  {% if sheet_workflow %}
+  <p>只使用合成数据。上传仅保存证据，不会修改订单。首次回答「按附件新建订单」须勾选上传的表格；数量修正时可不勾选，继承已经验证的原始表格。更换文件请新建任务。</p>
+  {% else %}
   <p>只使用合成数据。上传仅保存证据，不会修改订单；每次回答须重新勾选需要的文件，未勾选的历史证据不会发送。</p>
+  {% endif %}
   {% if can_answer %}
   <form id="source-upload" class="input-form">
     <label for="evidence-file">上传一个文件（.txt / .md / .xlsx，每个最多 5 MiB，每任务最多 3 个）</label>
@@ -18,12 +22,15 @@
     {% else %}<li data-empty>暂无上传文件</li>{% endfor %}
   </ul>
   {% if uploaded_sources %}
-  <p id="evidence-retention-notice">上传成功仅表示当时已解析并保存提取内容，不代表原始文件仍被保留。原始文件使用临时存储，本页未检查其是否存在。即使原始文件丢失，已保存的提取内容仍可读取；使用同一上传键重试不会恢复原始文件。审计摘要不包含原始文件。</p>
+  <p id="evidence-retention-notice">上传成功仅表示当时已解析并保存提取内容，不保证原件持续可用。原始文件按上传时的本地设置保存；未配置持久目录时使用临时存储。启用持久目录不迁移旧文件，也不代替备份，仍需操作者保留原件。即使原始文件丢失，已保存的提取内容仍可读取；使用同一上传键重试不会恢复原始文件，原件不可用时会拒绝回放。审计摘要不包含原始文件。</p>
   {% endif %}
   {% if can_answer %}
   <form id="clarification-answer" class="input-form">
     <label for="answer-text">回答或修订意图</label>
-    <textarea id="answer-text" rows="3" placeholder="例如：只改未开裁"></textarea>
+    <textarea id="answer-text" rows="3" placeholder="{{ sheet_workflow.answer_placeholder if sheet_workflow else '例如：只改未开裁' }}"></textarea>
+    {% if sheet_workflow %}
+    <p class="hint">请按上方待确认问题回答：首次导入用「按附件新建订单」；数量修正用「蓝 L 改成 20」这类完整格式。「只改未开裁」用于生产改单，不适用于本表格流程。错误回答也会消耗处理次数。</p>
+    {% endif %}
     <p class="hint">FIXTURE 仅识别内置示例及支持的表格格式。回答会使旧批准失效；提交后另行点击运行 worker，再核对计划、批准与提交生效。</p>
     <button type="submit">提交回答并入队</button>
     <p id="answer-message" role="status" aria-live="polite"></p>

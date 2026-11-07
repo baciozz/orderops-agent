@@ -33,7 +33,9 @@ from app.db.models import InputSource, SourceSpan, SourceUploadReceipt, Task, Ta
 from app.db.session import begin_immediate
 from app.errors import AppError
 from app.observability import enrich, get_logger, log_event, observed
+from app.services.source_files import original_content
 from app.services.source_spans import task_spans
+from app.services.source_storage import new_original
 
 logger = get_logger(__name__)
 
@@ -145,6 +147,9 @@ def _replay_source(session: Session, task_id: str, key: str, fingerprint: str) -
             code="UPLOAD_KEY_CONFLICT",
             http_status=409,
         )
+    source = session.get(InputSource, source_id)
+    assert source is not None  # Checked by the ownership join above.
+    original_content(source)
     enrich(source_id=source_id, upload_replayed=True)
     return source_id
 
@@ -239,8 +244,7 @@ async def upload_source(request: Request):
             if root is None:
                 root = Path(mkdtemp(prefix="oos-sources-"))
                 request.app.state.source_storage_dir = root
-            storage_path = root / source_id
-            with storage_path.open("xb") as target:
+            with new_original(root, source_id) as (storage_path, target):
                 created_path = storage_path
                 target.write(content)
             session.add(

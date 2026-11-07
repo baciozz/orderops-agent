@@ -69,6 +69,7 @@ _BEGIN_IMMEDIATE: contextvars.ContextVar[bool] = contextvars.ContextVar(
 def make_engine(url: str, *, busy_timeout_ms: int = 5000) -> Engine:
     engine = create_engine(
         url,
+        hide_parameters=True,
         connect_args={"timeout": max(busy_timeout_ms, 1) / 1000},
     )
 

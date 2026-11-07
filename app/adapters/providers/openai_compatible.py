@@ -25,7 +25,7 @@ class OpenAICompatibleChatProvider:
         self._settings = settings
 
     def validate(self, settings: Settings) -> None:
-        loopback = validate_compatible_url(settings.llm_base_url)
+        loopback = validate_compatible_url(settings.llm_base_url, settings.llm_api_key_value())
         if not settings.llm_model:
             raise LiveStartRefused("MODEL_NOT_CONFIGURED")
         if not loopback and settings.llm_api_key_value() is None:

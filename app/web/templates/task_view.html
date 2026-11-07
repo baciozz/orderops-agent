@@ -16,6 +16,27 @@
   </dl>
   {% include "sheet_workflow.html" %}
   {% include "task_failure_guidance.html" %}
+  {% if view.card.status == 'CANCELLED' %}
+  <section id="cancelled-task-guidance" aria-labelledby="cancelled-task-heading">
+    <h2 id="cancelled-task-heading">任务已取消</h2>
+    <p>此任务不会继续规划、批准或提交，旧批准不能再使用。重启、刷新或重放原输入不会恢复此任务。
+      取消仅终止本任务，不会撤销已经生效的订单变更。</p>
+    {% if view.card.mode == 'LIVE' %}
+    <p>已发出的模型请求可能仍会返回；迟到结果不会恢复本任务。取消不保证停止已发送的请求，仍可能产生用量。</p>
+    {% endif %}
+    <p>仍需变更时，请先核对{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id | urlencode }}">当前订单</a>和{% endif %}
+      <a href="/ui/demo/tasks">最近任务</a>，再通过原入口明确新建任务；新任务仍需核对计划、人工批准并提交。</p>
+  </section>
+  {% endif %}
+  {% if not view.result.operation_id and (view.card.status == 'SUPERSEDED' or (view.card.status == 'AWAITING_APPROVAL' and view.approval.disabled_reason == 'STALE')) %}
+  <section id="stale-plan-guidance" aria-labelledby="stale-plan-heading">
+    <h2 id="stale-plan-heading">旧计划已不能继续批准或提交</h2>
+    <p>订单意图、版本、库存或来源可能已有变化。请核对当前订单与库存和
+      <a href="/ui/demo/tasks">最近任务</a>，确认目标是否已由其他任务完成；已经完成时不要重复执行。</p>
+    <p>{% if view.card.order_id %}<a href="/ui/demo/orders/{{ view.card.order_id }}">查看当前订单</a> · {% endif %}<a href="/stock">查看当前可用库存（JSON）</a></p>
+    <p>确需继续时，请基于最新数据重新规划，核对新计划并重新批准后再提交；不要反复重试旧批准或更换提交标识盲目提交。刷新不会自动重新规划。</p>
+  </section>
+  {% endif %}
   {% include "task_input_forms.html" %}
   {% include "worker_form.html" %}
   {% if view.card.task_id != "T-STUB" %}
@@ -99,7 +120,11 @@
   <dl>
     <dt>operation_id</dt><dd>{{ view.result.operation_id }}</dd>
     <dt>revision</dt><dd>{{ view.result.revision }}</dd>
-    <dt>核验</dt><dd>{{ view.result.verification }}</dd>
+    <dt>核验</dt><dd>{% if view.result.verification == 'partial' %}限定字段一致；整单来源仍不确定
+      {% elif view.result.verification == 'pending' %}核验待处理
+      {% elif view.result.verification == 'unassessed' %}旧核验记录；来源及覆盖范围未评估
+      {% else %}尚无核验结果{% endif %}</dd>
+    {% include "verification_scope.html" %}
     {% if view.result.verification == 'pending' %}
     <dt>核验进度</dt><dd>业务已提交，请勿重复提交。自动重试已执行 {{ view.result.verification_retry_attempts }} 次。
       {% if view.result.verification_manual_required %}

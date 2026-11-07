@@ -40,10 +40,12 @@ from app.services.kernel import (
     _known_skus,
     _load_lines,
     _mentioned,
+    _plan_sheet_provenance,
     _stable,
     current_doc_fingerprint,
 )
 from app.services.source_spans import task_spans
+from app.services.verification_observation import recorded_observation
 
 
 def _revision_lines(session, order_id, revision_no):
@@ -151,6 +153,10 @@ def _approval_block(session, task, plan, now, generated_at):
     ):
         reason = "STALE"
     if reason is None:
+        try:
+            _plan_sheet_provenance(session, plan)
+        except AppError:
+            reason = "STALE"
         balances = _balances_for(session, set(plan.expected_stock_revisions))
         if any(
             sku not in balances or balances[sku].revision != expected
@@ -261,6 +267,19 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
     elif task.status in {"QUEUED", "RUNNING"}:
         waiting = "subagent"
     result = operation.result_json or {} if operation else {}
+    questions = list(receipt.body.get("questions", [])) if receipt else []
+    # Kernel risk checks persist their questions on the draft plan, rather than
+    # the parser receipt. Show only the current clarification, never an invalidated
+    # plan's questions after a new answer or a successful commit.
+    if (
+        plan
+        and task.status == "NEEDS_CLARIFICATION"
+        and plan.status == "DRAFT"
+        and plan.intent_revision == task.intent_revision
+    ):
+        for question in plan.normalized_changes.get("outcome", {}).get("questions", []):
+            if question not in questions:
+                questions.append(question)
     return TaskView(
         request_id=request_id,
         correlation_id=correlation_id,
@@ -272,21 +291,28 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             waiting_on=cast(WaitingOn, waiting),
             mode=RuntimeMode.LIVE
             if session.scalar(select(ModelUsage.id).where(ModelUsage.task_id == task.id).limit(1))
-            else RuntimeMode.FIXTURE,
+            else RuntimeMode(task.runtime_mode),
         ),
         dispatch=dispatch,
         line_diffs=diffs,
         downstream=downstream,
         sources=list({ref.model_dump_json(): ref for ref in sources}.values()),
         conflicts=extraction.get("conflicts", []),
-        questions=receipt.body.get("questions", []) if receipt else [],
+        questions=questions,
         approval=approval,
         result=TaskResultBlock(
             operation_id=operation.id if operation else None,
             revision=result.get("revision"),
             verification=cast(
                 VerificationState | None,
-                ("pending" if operation.committed_verification_pending else "passed")
+                (
+                    "pending"
+                    if operation.committed_verification_pending
+                    else "partial"
+                    if (recorded := recorded_observation(operation))
+                    and recorded.status == "partial"
+                    else "unassessed"
+                )
                 if operation
                 else None,
             ),
@@ -299,6 +325,7 @@ def build_task_view(session, task_id, *, request_id, correlation_id, now):
             verification_next_attempt_at=aware(operation.verification_next_attempt_at)
             if operation and operation.verification_next_attempt_at
             else None,
+            verification_details=recorded_observation(operation),
             download_url=f"/tasks/{task.id}/download" if diffs else None,
         ),
     )

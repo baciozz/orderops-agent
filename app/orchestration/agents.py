@@ -11,15 +11,15 @@ from schemas.downstream import DocCheckOutput
 from schemas.enums import BusinessEventType
 from schemas.inventory import InventoryCheckOutput
 from schemas.subagent import AgentProposal, SubAgentSpec
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
 from app.adapters.llm import LLMClient, StructuredCallRequest
-from app.db.models import Event, InputPayload, SalesOrder, Task
+from app.db.models import SalesOrder, Task
 from app.domain.hashing import canonical_hash
 from app.errors import AppError, CallLimitExceeded, SchemaInvalid
 from app.orchestration.fixtures import compare_sheet_quantities
+from app.orchestration.order_scope import conflicting_order
 from app.orchestration.proposal import accept_proposal
 from app.orchestration.registry import invoke_tool
 from app.orchestration.state import guard as durable_guard
@@ -120,10 +120,11 @@ def run_parser(ctx: StepContext) -> AgentRun:
         order = ctx.session.get(SalesOrder, event.order_id)
         if order is None:
             raise AppError(f"订单 {event.order_id} 不存在", code="NOT_FOUND", http_status=404)
-        ctx.intent = order.intent_revision
+        if ctx.task.order_id is None or durable_guard.get() is None:
+            ctx.intent = order.intent_revision
         ctx.task.order_id = order.id
         ctx.task.chain_id = f"CH-{order.id}"
-        ctx.task.intent_revision = order.intent_revision
+        ctx.task.intent_revision = ctx.intent
         extracted = bind_extraction(
             payload,
             task_id=ctx.task.id,
@@ -146,25 +147,20 @@ def _respect_selected_order(ctx: StepContext, extracted: ExtractionResult) -> Ex
     or model-provided field is trusted here.
     """
     event = extracted.business_event
-    if (
-        durable_guard.get() is None
-        or event is None
-        or event.event_type != BusinessEventType.NEW_ORDER
-    ):
+    if durable_guard.get() is None or event is None:
         return extracted
-    selected = ctx.session.scalar(
-        select(Event.order_id)
-        .join(InputPayload, InputPayload.event_id == Event.id)
-        .where(
-            InputPayload.task_id == ctx.task.id,
-            Event.kind == "input.submit",
-            Event.order_id.is_not(None),
-        )
-    )
+    selected = conflicting_order(ctx.session, ctx.task, event)
     if selected is None:
         return extracted
     # Before any parser rebinding or proposal: do not dirty the Task, acquire a
     # different intent, or leave CREATE details in the clarification view.
+    message = (
+        f"本任务最初提交时选择了已有订单 {selected}，但本次输入被解析为新单。"
+        "请补充该订单的修改要求；如需新建订单，请另行提交不选择已有订单的新输入。"
+        if event.event_type == BusinessEventType.NEW_ORDER
+        else f"本任务的订单范围为 {selected}，但本次输入指向其他订单。"
+        "请补充本订单的修改要求；如需修改其他订单，请另行提交新输入。"
+    )
     return extracted.model_copy(
         update={
             "business_event": None,
@@ -174,10 +170,7 @@ def _respect_selected_order(ctx: StepContext, extracted: ExtractionResult) -> Ex
             "new_lines": [],
             "missing_fields": [],
             "conflicts": [],
-            "questions": [
-                f"本任务最初提交时选择了已有订单 {selected}，但本次输入被解析为新单。"
-                "请补充该订单的修改要求；如需新建订单，请另行提交不选择已有订单的新输入。"
-            ],
+            "questions": [message],
         }
     )
 
