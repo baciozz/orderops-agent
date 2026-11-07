@@ -13,7 +13,7 @@ from app.db.models import InboxDelivery, InputPayload, JobAttempt, Task
 from app.db.session import begin_immediate
 from app.errors import AppError, LiveStartRefused
 from app.observability import get_logger, log_event
-from app.orchestration.dispatch import dispatch_text
+from app.orchestration.dispatch import DispatchOutcome, dispatch_text
 from app.orchestration.state import check_fence, guard, transition, utcnow
 
 logger = get_logger("worker")
@@ -180,6 +180,40 @@ def run_once(
             now=clock(),
             **dispatch_options,
         )
+    except AppError as exc:
+        if exc.code != "STALE_ATTEMPT":
+            raise
+        # Cancellation deliberately invalidates this attempt. Only consume that
+        # confirmed terminal result; a replaced lease or input must still fail.
+        with factory() as session:
+            task = session.get(Task, task_id)
+            attempt = session.scalar(
+                select(JobAttempt)
+                .where(JobAttempt.task_id == task_id)
+                .order_by(JobAttempt.attempt_no.desc())
+            )
+            if (
+                task is None
+                or task.status != "CANCELLED"
+                or not task.cancel_requested
+                or task.last_event_id != event_id
+                or attempt is None
+                or attempt.fencing_token != fence
+            ):
+                raise
+            outcome = DispatchOutcome(
+                task_id=task.id,
+                chain_id=task.chain_id,
+                status=task.status,
+                plan_id=None,
+                order_id=task.order_id,
+                intent_revision=task.intent_revision,
+                plan_hash=None,
+                requires_human_approval=False,
+                issues=["任务已取消，迟到结果已丢弃"],
+                error_code=None,
+            )
+        log_event(logger, "worker.cancelled", task_id=task_id, outcome="cancelled")
     finally:
         guard.reset(marker)
     with factory() as session, begin_immediate(session):

@@ -1,0 +1,99 @@
+{
+  "baseline_commit": "0c97fe532f6f1b9e41aab091ca83e1f355189a6d",
+  "baseline": [
+    {
+      "mode": "fixture-cli-paused",
+      "first_process_exit": 1,
+      "before_restart": {
+        "first": "CANCELLED",
+        "second": "QUEUED"
+      },
+      "restart_exit": 0,
+      "final_first": "CANCELLED",
+      "final_second": "SUCCEEDED",
+      "operation_id": "OP-ee19b5dd0234",
+      "operation_count": 1,
+      "provider_gate_calls": 1,
+      "model_usage_count": 0,
+      "replay_dump_unchanged": true
+    },
+    {
+      "mode": "explicit-live-cycles",
+      "first_process_exit": 1,
+      "before_restart": {
+        "first": "CANCELLED",
+        "second": "QUEUED"
+      },
+      "restart_exit": 0,
+      "final_first": "CANCELLED",
+      "final_second": "SUCCEEDED",
+      "operation_id": "OP-c8c5e985b2c7",
+      "operation_count": 1,
+      "provider_gate_calls": 2,
+      "model_usage_count": 2,
+      "replay_dump_unchanged": true
+    }
+  ],
+  "fixed": [
+    {
+      "mode": "fixture-cli-paused",
+      "first_process_exit": 0,
+      "before_restart": {
+        "first": "CANCELLED",
+        "second": "AWAITING_APPROVAL"
+      },
+      "restart_exit": 0,
+      "final_first": "CANCELLED",
+      "final_second": "SUCCEEDED",
+      "operation_id": "OP-c03d1cbf90ed",
+      "operation_count": 1,
+      "provider_gate_calls": 1,
+      "model_usage_count": 0,
+      "replay_dump_unchanged": true
+    },
+    {
+      "mode": "explicit-live-cycles",
+      "first_process_exit": 0,
+      "before_restart": {
+        "first": "CANCELLED",
+        "second": "AWAITING_APPROVAL"
+      },
+      "restart_exit": 0,
+      "final_first": "CANCELLED",
+      "final_second": "SUCCEEDED",
+      "operation_id": "OP-854ca64ff4ab",
+      "operation_count": 1,
+      "provider_gate_calls": 2,
+      "model_usage_count": 2,
+      "replay_dump_unchanged": true
+    }
+  ],
+  "native_cli_mode_boundary": {
+    "exit_code": 0,
+    "live_status": "QUEUED",
+    "fixture_status": "AWAITING_APPROVAL",
+    "provider_calls": 0
+  },
+  "fixture_pause_is_test_instrumentation": true,
+  "public_live_mode_added": false,
+  "baseline_tests": "2 failed, 1 passed in 8.77s",
+  "focused_fixed": "67 passed in 40.52s",
+  "test_source": {
+    "path": "tests/test_worker_loop_cancel_http.py",
+    "sha256": "2eb4c954385631d65f69831c608602695a10359c108eb2568773546a6db8b189"
+  },
+  "evidence": {
+    "/workspace/order-ops-review/loop-cancel-20261107/run.py": "4779a8b60d9022efad1b7227a165ce476779b08b50814bb9fe47d04ca2f237fe",
+    "/workspace/order-ops-review/loop-cancel-20261107/results.json": "0f9aec3edf9683b4275155169f03f400a5b73ceee0adee2b9d6b5ee3bab41123",
+    "/workspace/order-ops-review/loop-cancel-after-20261107/run.py": "4779a8b60d9022efad1b7227a165ce476779b08b50814bb9fe47d04ca2f237fe",
+    "/workspace/order-ops-review/loop-cancel-after-20261107/results.json": "0480df312a9eaa32909181df2610d15810aa4757f2431e56721cca3a4a2909af"
+  },
+  "integrity_and_foreign_keys": "passed for all baseline/fixed DBs",
+  "migration": "none",
+  "limits": [
+    "Same-host synthetic HTTP and bounded processes",
+    "CLI fixture response pause is timing instrumentation, not a real model call",
+    "Explicit LIVE cycles are a test driver, not public scheduler capability",
+    "No real model, ERP, browser, production load or hosted service"
+  ]
+}

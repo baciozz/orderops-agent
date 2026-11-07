@@ -40,6 +40,8 @@ python -m app.cli worker-loop --interval-seconds 5 --max-iterations 60
   `max_iterations` / `stop_requested`。此前信号处理器会恢复，数据库 engine 会释放。
 - 现有组件已经处理的重试继续遵守其持久化计划：例如 outbox 失败退避、有限核验重试及耗尽后转人工。
   任务正常返回 `FAILED` 也不等同于循环崩溃，不会被循环无条件重试。
+- 已确认属于本次尝试的取消会返回 `CANCELLED`，继续后续轮次，不重试该任务。迟到结果仍被拒绝；
+  未确认的 STALE_ATTEMPT、租约已替换及其他执行异常仍按错误处理。具体[HTTP/进程验收](WORKER_LOOP_CANCEL_HTTP.md)包含后排任务、重启和原键重放。
 - 未处理的异常立即结束循环，退出码 1；不开始后续步骤或轮次，不吞掉错误无限重试。
   启动、迁移和清理异常也返回 1。输出只含固定提示和错误码，不打印异常原文或 traceback。
   本轮中已经提交的状态不会被伪装成回滚；操作者调查后可显式重启，沿用既有租约恢复与幂等机制。
