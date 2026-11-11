@@ -8,7 +8,10 @@
 .venv/bin/python scripts/eval_offline.py
 .venv/bin/python scripts/eval_offline.py --out /tmp/oos-offline.json
 make eval-offline PY=.venv/bin/python
+make eval-report-check PY=.venv/bin/python
 ```
+
+`make eval-report-check` 只离线检查已提交摘要（默认 `evals/live_v1/results/summary.json`）的内部自洽性，不调用模型。
 
 默认只向 stdout 输出总分、类别表格及失败明细；`--out` 另外写 JSON 报告。
 JSON 包含 `mode: "FIXTURE"`、评测局限说明、逐条实际状态/错误码/计划 diff、

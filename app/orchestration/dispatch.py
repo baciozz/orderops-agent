@@ -17,6 +17,7 @@ from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.budget import BudgetLedger
+from app.adapters.call_trace import CallTraceStore
 from app.adapters.fixture_model import FixtureLLMClient
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.llm import LLMClient, resolve_mode, validated_live_provider
@@ -172,7 +173,7 @@ def _dispatch_text(
         library = golden_fixtures()
         if fixtures:
             library.update(fixtures)
-        client = FixtureLLMClient(library)
+        client = FixtureLLMClient(library, traces=CallTraceStore(session_factory))
     if use_live:
         ledger = BudgetLedger.from_settings(session_factory, configured)
         # LiveLLMClient selects/validates llm_provider; all providers share this ledger.

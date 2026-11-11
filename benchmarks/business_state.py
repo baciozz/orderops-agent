@@ -11,7 +11,7 @@ def business_state(sessions):
     review-workspace/billing writes and migration/internal metadata are excluded.
     A matching row count alone is deliberately not sufficient evidence.
     """
-    excluded = {"review_workspace", "model_usage", "alembic_version"}
+    excluded = {"review_workspace", "model_usage", "call_trace", "alembic_version"}
     tables = []
     with sessions() as session:
         connection = session.connection()

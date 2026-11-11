@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | `OOS_LOG_JSON` | `true` | 每行一个 JSON 对象；`false` 使用级别、logger 前缀和 JSON 字段的文本格式 |
 | `OOS_LOG_LEVEL` | `INFO` | `oos` 的日志级别，如 DEBUG、INFO、WARNING、ERROR；未知名称回退 INFO |
+| `OOS_TRACE_LANGFUSE` | `false` | 预留的外部 Langfuse 开关，默认关闭。本仓库不引入 langfuse 依赖，也不会向外发送追踪数据 |
 
 当前业务事件均为 INFO；设置 WARNING 会隐藏这些事件，包括 outcome 为 failed 的事件。
 `worker.live_unavailable` 记录完整 LIVE 配置校验的固定 `reason`，不输出配置值或异常原文；
@@ -117,6 +118,32 @@ mode 只记录可靠事实，不从 ModelUsage 是否存在推断：
 | `watchdog.scan` | `app/orchestration/watchdog.py::scan`，started 与 success（完成）或 failed；完成时含扫描、恢复、补建 outbox 和 pending 重试数 |
 | `verification.retry` | `app/services/kernel.py::retry_pending_verification`，每个实际领取的到期重试一次：cleared / still_pending / error；异常仅记录错误码，继续其它操作 |
 
+## 本地调用追踪（call_trace）
+
+`LiveLLMClient.structured_call`（`app/adapters/live_model.py`）在 `BudgetLedger.settle`（`app/adapters/budget.py`）的**同一事务**里写入一行 `call_trace`，通过 `ledger_row_id` 关联 `model_usage`。写入失败则结算整体回滚，不会出现「有账没 trace」或「有 trace 没账」。
+
+`FixtureLLMClient.structured_call`（`app/adapters/fixture_model.py`）在传入 `CallTraceStore` 时也写 trace，供离线/FIXTURE 路径覆盖；不写 `model_usage`，不消耗 live 预算。`app/orchestration/dispatch.py` 的 FIXTURE 路径会注入该存储。
+
+表中只存摘要：`prompt_sha256` / `schema_sha256` / `input_sha256`、模型与状态、token 与费用，不存提示原文、客户原话或密钥。导出：
+
+```sh
+python -m app.cli export-trace --since 2026-11-11T00:00:00+00:00 --out traces.jsonl
+```
+
+默认 JSONL 不含原文，也没有导出原文的开关。输出文件必须是新文件，已存在则拒绝覆盖。`benchmarks/business_state.py` 把 `call_trace` 与 `model_usage` 一样视为非业务表。
+
+## 结构化输出的三道关卡
+
+提案要同时通过三道关，才进入规则层处理：
+
+1. **提供方 strict `json_schema`**：官方 OpenAI Responses 使用 `text.format = json_schema, strict=true`（见 `app/adapters/providers/openai_responses.py`）。
+2. **Pydantic `Proposal` 校验**：本地用 `Proposal.model_json_schema()` / 对应模型类再验一次，拒绝不可解析或不合 schema 的输出。
+3. **规则层**：即使 schema 合法，确定性业务规则仍可拒绝危险或越权提案（库存、取消范围、注入等）。
+
+当 `OOS_LLM_JSON_SCHEMA_SUPPORTED=false`（默认）时，兼容提供方会降级为 `json_object`，不再由提供方强制 schema。此时只剩本地 Pydantic 与规则层，模型可能返回多出字段、缺字段或非约定结构，失败率取决于本地校验。该开关不会在提供方拒绝 schema 后自动重试或静默降级。评测摘要里的 `schema_valid` / `raw_schema_valid` 记录的是本地校验结果，不是「模型已经正确理解业务」。
+
+`make eval-report-check`（`scripts/eval_report_check.py`）离线检查仓库里已提交的评测摘要是否自洽：分子不超过分母、尝试数与行数一致、SHA 字段格式正确、准确率标注为非正式。当前检查 `evals/live_v1/results/summary.json`；`reports/agent_comparison_v1/summary.json` 在文件存在时一并检查，S3 RESULT 合并之前允许缺失。CI 在 `eval-offline` 之后运行该步骤，且保持 `OOS_LIVE_ENABLED=false`，不注入密钥。
+
 ## 进程内指标
 
 `GET /metrics` 返回 JSON 对象，13 个 counter 始终存在（无事件时为 0），例如
@@ -179,7 +206,7 @@ fixture 每个测试前后清零。所有计数经 `log_event()` 的事件入口
 
 ## 已知不足
 
-- 只有进程日志和进程内 JSON 指标，没有跨进程指标聚合、分布式 tracing、日志轮转或持久化收集端。宿主另外配置
+- 本地 SQLite `call_trace` 表可持久保存调用摘要；仍然没有跨进程指标聚合、分布式 tracing、日志轮转或外部收集端。`OOS_TRACE_LANGFUSE` 保持关闭，本仓库不发送外部追踪。宿主另外配置
   root 输出 handler 时可能同时收到传播日志，需要在宿主统一安排输出。
 - lease、recovery、watchdog 和 pending 核验重试已打点；dispatch 客户端构造之前的路由/配置准备错误
   可能没有完整的 start/finish 配对；不存在的计划/批准无法补齐 task_id。

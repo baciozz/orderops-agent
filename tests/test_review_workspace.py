@@ -137,7 +137,7 @@ def all_business_rows(sessions):
         return {
             name: [tuple(row) for row in session.execute(table.select()).all()]
             for name, table in Base.metadata.tables.items()
-            if name not in {"review_workspace", "model_usage"}
+            if name not in {"review_workspace", "model_usage", "call_trace"}
         }
 
 
@@ -578,7 +578,7 @@ def test_workspace_migration_empty_downgrade_and_nonempty_refusal_are_lossless(
         with pytest.raises(RuntimeError, match="清单工作区非空"):
             command.downgrade(cfg, "execution_verification_guard")
         assert connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == (
-            "local_review_workspace"
+            "call_trace"
         )
     assert service.view(session_factory, review_id) == before
 

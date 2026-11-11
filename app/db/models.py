@@ -675,3 +675,36 @@ class ConsumerReceipt(Base):
     event_id: Mapped[str] = mapped_column(ForeignKey("event.id"), primary_key=True)
     consumer: Mapped[str] = mapped_column(String(64), primary_key=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CallTrace(Base):
+    __tablename__ = "call_trace"
+    __table_args__ = (
+        UniqueConstraint("ledger_row_id", name="uq_call_trace_ledger_row_id"),
+        CheckConstraint("elapsed_ms >= 0", name="ck_call_trace_elapsed"),
+        CheckConstraint("input_tokens >= 0", name="ck_call_trace_in_tok"),
+        CheckConstraint("output_tokens >= 0", name="ck_call_trace_out_tok"),
+        CheckConstraint("status IN ('ok', 'error')", name="ck_call_trace_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ledger_row_id: Mapped[str | None] = mapped_column(ForeignKey("model_usage.id"), nullable=True)
+    review_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    prompt_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    prompt_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schema_valid: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_usd: Mapped[Decimal] = mapped_column(Money(), nullable=False)

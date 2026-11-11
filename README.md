@@ -68,6 +68,6 @@ export OOS_LIVE_ENABLED=false
 - [安装实测](docs/beta/ONBOARDING_SOURCE_CHECK.zh-CN.md)、[浏览器实测](docs/beta/BROWSER_EDITOR_CHECK.zh-CN.md)与[已知限制](docs/LOCAL_BETA_LIMITATIONS.zh-CN.md)；没有未实测平台的承诺。
 - 旧演示请用[五分钟FIXTURE业务演示](docs/FIVE_MINUTE_DEMO.zh-CN.md)；它测固定业务链，不测自由语言理解。
 
-开发者安装`requirements-dev.lock`并运行`make check`、`make eval-offline`。普通CI离线且不持有付费模型密钥；真实评测须单独授权、固定版本、共用预算账本。当前包内`1.0.0rc1`是历史版本号，不代表本轮发布资格。
+开发者安装`requirements-dev.lock`并运行`make check`、`make eval-offline`、`make eval-report-check`。普通CI离线且不持有付费模型密钥；真实评测须单独授权、固定版本、共用预算账本。当前包内`1.0.0rc1`是历史版本号，不代表本轮发布资格。
 
 仓库已有[MIT许可证](LICENSE)，版权归属、维护者联系方式及拟公开内容仍须所有者最终确认；第三方组件单独保留其声明。不会自动公开仓库、打正式tag或创建Release。[历史README](docs/history/README_PRE_BETA_1e63f7c.md)保留旧工程交接细节。

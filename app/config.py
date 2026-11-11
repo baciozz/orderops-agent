@@ -72,6 +72,8 @@ class Settings(BaseSettings):
         )
     )
     llm_json_schema_supported: bool = False
+    # Optional external tracer; default off. This codebase never sends data.
+    trace_langfuse: bool = False
     model_reasoning_effort: str = "none"
     database_url: str = "sqlite:///./data/oos.db"
     source_storage_dir: Path | None = None

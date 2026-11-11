@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy.engine import make_url
 
@@ -152,6 +153,32 @@ def _worker_loop(options: LoopOptions) -> int:
     return 0
 
 
+def _export_trace(*, since: str, out: str) -> int:
+    from app.adapters.call_trace import export_traces, parse_since
+
+    settings = get_settings()
+    configure_logging(settings)
+    out_path = Path(out)
+    try:
+        moment = parse_since(since)
+    except ValueError:
+        print("起始时间不是有效的 ISO 8601 时间")
+        return 2
+    if out_path.exists():
+        print("输出文件已存在，拒绝覆盖")
+        return 2
+    engine = make_engine(settings.database_url)
+    try:
+        count = export_traces(make_session_factory(engine), since=moment, out_path=out_path)
+    except FileExistsError:
+        print("输出文件已存在，拒绝覆盖")
+        return 2
+    finally:
+        engine.dispose()
+    print(f"已导出调用追踪：{count} 行")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
@@ -181,9 +208,14 @@ def _main(argv: list[str] | None = None) -> int:
     audit.add_argument("operation_id", help="需要审计的 Operation ID")
     execution = sub.add_parser("audit-execution", help="只读核对保留的批准执行字段，明确未覆盖范围")
     execution.add_argument("operation_id", help="需要核对的 Operation ID")
+    export = sub.add_parser("export-trace", help="导出调用追踪摘要为 JSONL，不含原文")
+    export.add_argument("--since", required=True, help="起始时间，ISO 8601")
+    export.add_argument("--out", required=True, help="新的输出文件路径，已存在则拒绝覆盖")
     args = parser.parse_args(argv)
     if args.command == "check-model-auth":
         return _check_model_auth(probe=args.probe)
+    if args.command == "export-trace":
+        return _export_trace(since=args.since, out=args.out)
     if args.command == "audit-execution":
         from app.services.execution_audit import audit_execution
 

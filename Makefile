@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck cov check run seed init-db eval-offline check-wheel
+.PHONY: install test lint typecheck cov check run seed init-db eval-offline eval-report-check check-wheel
 
 PY ?= python
 
@@ -11,6 +11,9 @@ test:
 eval-offline:
 	$(PY) scripts/eval_offline.py
 
+eval-report-check:
+	$(PY) scripts/eval_report_check.py
+
 lint:
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
@@ -22,7 +25,7 @@ typecheck:
 cov:
 	$(PY) -m pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=xml
 
-# Source quality gates (CI also runs eval-offline and check-wheel).
+# Source quality gates (CI also runs eval-offline, eval-report-check, and check-wheel).
 check: lint typecheck cov
 
 run:

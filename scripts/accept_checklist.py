@@ -43,7 +43,7 @@ def business_counts(database: Path) -> dict[str, int]:
             for row in connection.execute(
                 "SELECT name FROM sqlite_master "
                 "WHERE type='table' AND name NOT IN "
-                "('review_workspace','model_usage','alembic_version')"
+                "('review_workspace','model_usage','call_trace','alembic_version')"
             )
         ]
         # Table identifiers originate in trusted migrated schema, never input text.

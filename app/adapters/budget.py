@@ -18,6 +18,7 @@ from uuid import uuid4
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.adapters.call_trace import CallTraceDraft, build_call_trace
 from app.config import HARD_BUDGET_CEILING_USD, HARD_MAX_TOTAL_CALLS
 from app.db.models import ModelUsage
 from app.db.session import begin_immediate
@@ -263,6 +264,7 @@ class BudgetLedger:
         input_tokens: int,
         output_tokens: int,
         at: datetime | None = None,
+        trace: CallTraceDraft | None = None,
     ) -> ModelUsage:
         """Replace the estimate with actual usage; retain the row as a call.
 
@@ -270,6 +272,8 @@ class BudgetLedger:
         Unknown usage should be settled at the reserved token estimates.
         ORPHANED rows accept late actual usage. Identical repeated settlements
         are no-ops; conflicting repeats are rejected so the first result wins.
+        When trace metadata is provided, the call_trace row is written in the
+        same transaction as this settlement so neither can persist alone.
         """
         session = self._sessions()
         try:
@@ -301,6 +305,17 @@ class BudgetLedger:
                 row.cost_usd = cost
                 row.status = "SETTLED"
                 row.settled_at = at or datetime.now(UTC)
+                if trace is not None:
+                    session.add(
+                        build_call_trace(
+                            trace,
+                            ledger_row_id=row.id,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            cost_usd=cost,
+                        )
+                    )
+                    session.flush()
         finally:
             session.close()
         return row

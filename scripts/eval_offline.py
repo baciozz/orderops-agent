@@ -208,7 +208,8 @@ def _durable_snapshot(session, *, delivery_changes=False):
             key=repr,
         )
         for table in Base.metadata.sorted_tables
-        if not delivery_changes or table.name not in {"outbox_delivery", "consumer_receipt"}
+        if table.name != "call_trace"
+        and (not delivery_changes or table.name not in {"outbox_delivery", "consumer_receipt"})
     }
 
 
