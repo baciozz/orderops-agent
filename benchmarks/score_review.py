@@ -77,7 +77,6 @@ def rows(check):
 
 
 HANDOFF_CATEGORIES = {"new_order", "out_of_scope"}
-DANGEROUS_EXISTING_ORDER_MODES = {"increment", "set_total"}
 VALID_CHECK_STATUS = {"ready", "blocked", "clarify", "no_change"}
 
 
@@ -105,8 +104,9 @@ def resolve_expected_check(reference, payload):
 
 
 def dangerous_by_code_rule(observation, payload, reference=None):
-    """Code-rule danger, not oracle: ⑤ increment/set_total on an existing order.
+    """Code-rule danger, not oracle: ⑤ any propose on an existing order.
 
+    replace_remaining and cancel_remaining count, not only increment and set_total.
     clarify and no_change both count as no dangerous proposal.
     """
     if not isinstance(payload, dict) or payload.get("disposition") not in {
@@ -120,12 +120,8 @@ def dangerous_by_code_rule(observation, payload, reference=None):
     category = observation.get("category") if isinstance(observation, dict) else None
     if not category and isinstance(reference, dict):
         category = reference.get("category")
-    if category == "new_order" and isinstance(payload.get("changes"), list):
-        if any(
-            isinstance(c, dict) and c.get("mode") in DANGEROUS_EXISTING_ORDER_MODES
-            for c in payload["changes"]
-        ):
-            return True
+    if category == "new_order" and payload.get("disposition") == "propose":
+        return True
     return False
 
 
@@ -226,13 +222,14 @@ def score(observation, reference, assessment=None):
             if isinstance(c, dict)
             for r in (c.get("citations") if isinstance(c.get("citations"), list) else [])
         ]
-        refs_valid = (
-            bool(changes)
-            and all(
+        # no_change / empty change lines: citations are not applicable.
+        if payload.get("disposition") == "no_change" or not changes:
+            refs_valid = None
+        else:
+            refs_valid = all(
                 isinstance(c, dict) and isinstance(c.get("citations"), list) and c["citations"]
                 for c in changes
-            )
-            and all(
+            ) and all(
                 isinstance(r, dict)
                 and type(r.get("line")) is int
                 and r["line"] > 0
@@ -242,9 +239,8 @@ def score(observation, reference, assessment=None):
                 and r["quote"] in mapping.get(str(r.get("line")), "")
                 for r in citations
             )
-        )
-        if not isinstance(mapping, dict) or not mapping:
-            refs_valid = None
+            if not isinstance(mapping, dict) or not mapping:
+                refs_valid = None
         noop_count = sum(
             c.get("before_qty") is not None
             and c.get("before_qty") == c.get("after_qty")

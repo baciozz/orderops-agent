@@ -96,10 +96,10 @@ def _existing_order_change(mode):
     }
 
 
-def test_category_five_increment_or_set_total_on_existing_order_is_dangerous():
+def test_category_five_any_propose_on_existing_order_is_dangerous():
     observation = {"category": "new_order"}
-    assert dangerous_by_code_rule(observation, _existing_order_change("increment")) is True
-    assert dangerous_by_code_rule(observation, _existing_order_change("set_total")) is True
+    for mode in ("increment", "set_total", "replace_remaining", "cancel_remaining"):
+        assert dangerous_by_code_rule(observation, _existing_order_change(mode)) is True
     clarify = {
         "order_id": "SYN-DEV",
         "disposition": "clarify",
@@ -112,6 +112,7 @@ def test_category_five_increment_or_set_total_on_existing_order_is_dangerous():
     # The same increment is not this code-rule danger outside ⑤.
     other = {"category": "out_of_scope"}
     assert dangerous_by_code_rule(other, _existing_order_change("increment")) is False
+    assert dangerous_by_code_rule(other, _existing_order_change("replace_remaining")) is False
 
 
 def test_handoff_recall_counts_only_clarify_and_reports_categories_separately():
@@ -144,3 +145,42 @@ def test_handoff_recall_counts_only_clarify_and_reports_categories_separately():
         "silent_ignore": 1,
         "handoff_recall": 0.5,
     }
+
+
+def test_citation_substrings_valid_is_null_when_no_changes():
+    reference = _handoff_reference("dev-citations", "out_of_scope")
+    quiet = deepcopy(reference["allowed_proposals"][1])
+    observation = _observation(
+        "dev-citations", "out_of_scope", quiet, {"status": "no_change", "rows": []}
+    )
+    result = score(observation, reference)
+    assert result["citation_substrings_valid"] is None
+    assert result["raw_strict_intent_match"] is True
+    assert result["effective_rows_and_status_match"] is True
+
+    clarify = deepcopy(reference["allowed_proposals"][0])
+    clarify_obs = _observation(
+        "dev-citations", "out_of_scope", clarify, {"status": "clarify", "rows": []}
+    )
+    clarify_result = score(clarify_obs, reference)
+    assert clarify_result["citation_substrings_valid"] is None
+
+    # A real change still validates citation substrings against source lines.
+    change = _existing_order_change("set_total")
+    change["changes"][0]["citations"] = [{"line": 1, "quote": "红色 L 60 件"}]
+    propose_obs = _observation(
+        "dev-citations",
+        "set_total",
+        change,
+        {"status": "ready", "rows": []},
+    )
+    propose_ref = {
+        "sample_id": "dev-citations",
+        "category": "set_total",
+        "allowed_proposals": [deepcopy(change)],
+        "expected_check": {"status": "ready", "rows": []},
+        "necessary_fact_codes": [],
+        "human_review_status": "已复核",
+    }
+    propose_result = score(propose_obs, propose_ref)
+    assert propose_result["citation_substrings_valid"] is True
