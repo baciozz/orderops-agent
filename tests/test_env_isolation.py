@@ -6,10 +6,14 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+from app import cli
 from app.adapters.llm import resolve_mode
 from app.config import Settings, get_settings
 from app.main import create_app
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from scripts.live_smoke import SECRET_PATTERN
 
 LIVE_DOTENV = """\
 OOS_LIVE_ENABLED=true
@@ -86,6 +90,66 @@ def test_default_settings_ignore_live_dotenv(tmp_path, monkeypatch):
     assert get_settings().llm_api_key_value() is None
     with TestClient(base_url="http://127.0.0.1", app=create_app()) as client:
         assert client.get("/health").json()["mode"] == "FIXTURE"
+
+
+def test_auth_preflight_ignores_dotenv_and_never_opens_http_or_database(
+    tmp_path, monkeypatch, capsys
+):
+    (tmp_path / ".env").write_text(LIVE_DOTENV)
+    monkeypatch.chdir(tmp_path)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Local auth preflight must not access HTTP, a ledger, or secret plaintext")
+
+    monkeypatch.setattr("httpx.Client", forbidden)
+    monkeypatch.setattr(cli, "make_engine", forbidden)
+    monkeypatch.setattr(SecretStr, "get_secret_value", forbidden)
+    assert cli.main(["check-model-auth"]) == 0
+    captured = capsys.readouterr()
+    assert "OOS_LIVE_ENABLED：无" in captured.out
+    assert "OOS_LLM_API_KEY：无" in captured.out
+    assert "fake-env-isolation-key" not in captured.out + captured.err
+    assert not SECRET_PATTERN.search(captured.out + captured.err)
+    assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("probe", [False, True])
+def test_auth_standard_openai_key_only_gets_mapping_hint(monkeypatch, capsys, probe):
+    fake_key = "sk-standard_only_offline_123456"
+    monkeypatch.setenv("OPENAI_API_KEY", fake_key)
+    monkeypatch.setenv("OOS_LIVE_ENABLED", "true")
+    monkeypatch.setenv("OOS_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OOS_LLM_MODEL", "offline-auth-model")
+    monkeypatch.setenv("OOS_PRICE_IN_PER_MTOK", "0.10")
+    monkeypatch.setenv("OOS_PRICE_OUT_PER_MTOK", "0.50")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Standard key must never authorize a model request")
+
+    monkeypatch.setattr("httpx.Client", forbidden)
+    monkeypatch.setattr(cli, "make_engine", forbidden)
+    monkeypatch.setattr(SecretStr, "get_secret_value", forbidden)
+    assert cli.main(["check-model-auth", *(["--probe"] if probe else [])]) == (2 if probe else 0)
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "OOS_LLM_API_KEY：无" in output
+    assert "项目只读 OOS_LLM_API_KEY，请在运行时把同一密钥映射到该变量名" in output
+    assert fake_key not in output and not SECRET_PATTERN.search(output)
+    if probe:
+        assert '"status": "KEY_NOT_CONFIGURED"' in captured.out
+
+
+@pytest.mark.parametrize("probe", [False, True])
+def test_auth_settings_errors_never_print_input_or_traceback(monkeypatch, capsys, probe):
+    fake_key = "sk-invalid_settings_offline_123456"
+    monkeypatch.setenv("OOS_LIVE_ENABLED", fake_key)
+    assert cli.main(["check-model-auth", *(["--probe"] if probe else [])]) == 2
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "AUTH_CONFIGURATION" in output
+    for forbidden in (fake_key, "Traceback", "ValidationError", "input_value"):
+        assert forbidden not in output
+    assert not SECRET_PATTERN.search(output)
 
 
 def test_subprocess_dispatch_ignores_live_dotenv_without_outbound_sockets(tmp_path):

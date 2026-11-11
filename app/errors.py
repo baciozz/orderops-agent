@@ -76,11 +76,19 @@ class PricesNotConfigured(AppError):
     code = "PRICES_NOT_CONFIGURED"
     http_status = 503
 
-    def __init__(self) -> None:
+    def __init__(self, *, model: str | None = None) -> None:
+        if model is None:
+            super().__init__(
+                "未配置 OOS_PRICE_IN_PER_MTOK / OOS_PRICE_OUT_PER_MTOK，拒绝 live，不猜测单价",
+                code="PRICES_NOT_CONFIGURED",
+                http_status=503,
+            )
+            return
         super().__init__(
-            "未配置 OOS_PRICE_IN_PER_MTOK / OOS_PRICE_OUT_PER_MTOK，拒绝 live，不猜测单价",
+            "该模型未在 OOS_MODEL_PRICES 或 OOS_PRICE_*_PER_MTOK 配置单价，拒绝调用，不猜测单价",
             code="PRICES_NOT_CONFIGURED",
             http_status=503,
+            details={"model": model},
         )
 
 

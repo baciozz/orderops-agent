@@ -51,7 +51,8 @@ def resolve_mode(settings: Settings) -> ModeResolution:
             live_requested=False,
             live_block_reason=None,
         )
-    if settings.price_in_per_mtok is None or settings.price_out_per_mtok is None:
+    # The active model needs its own price (OOS_MODEL_PRICES or the legacy pair).
+    if settings.prices_for(settings.llm_model) is None:
         return ModeResolution(
             mode=RuntimeMode.FIXTURE,
             live_requested=True,
@@ -70,7 +71,7 @@ def resolve_mode(settings: Settings) -> ModeResolution:
             )
     # Unknown providers are refused by provider selection, rather than misreported
     # as a missing OpenAI key. Preserve the existing unconfigured-provider fallback.
-    elif settings.llm_provider in (None, "openai") and settings.llm_api_key_value() is None:
+    elif settings.llm_provider in (None, "openai") and not settings.has_llm_api_key:
         return ModeResolution(
             mode=RuntimeMode.FIXTURE,
             live_requested=True,

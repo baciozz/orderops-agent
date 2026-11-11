@@ -1,4 +1,4 @@
-"""Budget guard: no guessed prices, hard $5 ceiling, persistent ledger, no network."""
+"""Budget guard: no guessed prices, hard $30 ceiling, persistent ledger, no network."""
 
 import socket
 from concurrent.futures import ThreadPoolExecutor
@@ -134,7 +134,7 @@ def test_prices_missing_refuses_without_guessing(session_factory) -> None:
     assert ledger.spent() == Decimal("0.000000")
 
 
-def test_code_ceiling_is_five_dollars_even_if_config_is_higher(session_factory) -> None:
+def test_code_ceiling_is_thirty_dollars_even_if_config_is_higher(session_factory) -> None:
     settings = Settings(_env_file=None, live_budget_usd=Decimal("100"))
     assert settings.live_budget_usd == Decimal("100")
     assert settings.effective_live_budget_usd == HARD_BUDGET_CEILING_USD
@@ -144,9 +144,9 @@ def test_code_ceiling_is_five_dollars_even_if_config_is_higher(session_factory) 
         price_in_per_mtok=Decimal("1000000"),
         price_out_per_mtok=Decimal("0"),
     )
-    assert ledger.cap_usd == Decimal("5.00")
+    assert ledger.cap_usd == Decimal("30.00")
     with pytest.raises(BudgetExceeded) as exc:
-        ledger.reserve(provider="test", model="cheap", input_tokens=6, max_output_tokens=0)
+        ledger.reserve(provider="test", model="cheap", input_tokens=31, max_output_tokens=0)
     assert exc.value.code == "BUDGET_EXCEEDED"
     assert exc.value.http_status == 429
     payload = error_payload(exc.value, request_id="r", correlation_id="c")

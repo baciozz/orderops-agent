@@ -2,10 +2,14 @@
 
 Before a live call, atomically reserve estimated input plus maximum output cost
 and a per-task call slot. Settle the same row after the call. A crash leaves the
-pessimistic reservation charged. The cap is min(configured, 5.00 USD). Prices
-are never guessed. Fixture calls do not write this ledger.
+pessimistic reservation charged. The cap is min(configured, 30.00 USD) and the
+ledger holds at most 3000 calls. Each model is billed at its own configured
+price; a ledger built with a model price table refuses any model not in it
+before a request is sent. Prices are never guessed. Fixture calls do not write
+this ledger.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -14,7 +18,7 @@ from uuid import uuid4
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import HARD_BUDGET_CEILING_USD
+from app.config import HARD_BUDGET_CEILING_USD, HARD_MAX_TOTAL_CALLS
 from app.db.models import ModelUsage
 from app.db.session import begin_immediate
 from app.errors import BudgetExceeded, CallLimitExceeded, PricesNotConfigured
@@ -22,6 +26,8 @@ from app.observability import enrich, get_logger, observed
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import CursorResult
+
+    from app.config import Settings
 
 logger = get_logger(__name__)
 
@@ -58,6 +64,12 @@ def effective_cap(configured_usd: Decimal) -> Decimal:
     return min(configured_usd, HARD_BUDGET_CEILING_USD)
 
 
+def effective_call_limit(requested: int | None) -> int:
+    if requested is not None and requested < 1:
+        raise ValueError("总调用上限须为正整数")
+    return HARD_MAX_TOTAL_CALLS if requested is None else min(requested, HARD_MAX_TOTAL_CALLS)
+
+
 def quote_cost(
     *,
     input_tokens: int,
@@ -81,17 +93,47 @@ class BudgetLedger:
         session_factory: sessionmaker[Session],
         *,
         cap_usd: Decimal,
-        price_in_per_mtok: Decimal | None,
-        price_out_per_mtok: Decimal | None,
+        price_in_per_mtok: Decimal | None = None,
+        price_out_per_mtok: Decimal | None = None,
         max_total_calls: int | None = None,
+        model_prices: Mapping[str, tuple[Decimal, Decimal]] | None = None,
     ) -> None:
+        """model_prices, when given, is the only price source: unlisted models are refused.
+
+        Without it the legacy single price pair applies to whatever model is
+        reserved (direct construction by tests and single-model tools).
+        """
         self._sessions = session_factory
         self.cap_usd = effective_cap(cap_usd)
         self.price_in_per_mtok = price_in_per_mtok
         self.price_out_per_mtok = price_out_per_mtok
-        if max_total_calls is not None and max_total_calls < 1:
-            raise ValueError("总调用上限须为正整数")
-        self.max_total_calls = max_total_calls
+        self.model_prices = None if model_prices is None else dict(model_prices)
+        self.max_total_calls = effective_call_limit(max_total_calls)
+
+    @classmethod
+    def from_settings(
+        cls,
+        session_factory: sessionmaker[Session],
+        settings: "Settings",
+        *,
+        cap_usd: Decimal | None = None,
+        max_total_calls: int | None = None,
+    ) -> "BudgetLedger":
+        """Strict per-model ledger: only models priced in settings may be reserved."""
+        return cls(
+            session_factory,
+            cap_usd=settings.effective_live_budget_usd if cap_usd is None else cap_usd,
+            max_total_calls=max_total_calls,
+            model_prices=settings.priced_models(),
+        )
+
+    def prices_for(self, model: str) -> tuple[Decimal | None, Decimal | None]:
+        if self.model_prices is None:
+            return self.price_in_per_mtok, self.price_out_per_mtok
+        price = self.model_prices.get(model)
+        if price is None:
+            raise PricesNotConfigured(model=model)
+        return price
 
     def spent(self) -> Decimal:
         session = self._sessions()
@@ -135,15 +177,20 @@ class BudgetLedger:
         max_calls_per_task: int | None = None,
         at: datetime | None = None,
     ) -> str:
-        """Check both limits and persist the reservation under one writer lock."""
+        """Check every limit and persist the reservation under one writer lock.
+
+        The row records the reserved model's own price, so settlement and any
+        later audit use the price that was in force for that model.
+        """
+        price_in, price_out = self.prices_for(model)
         estimate = quote_cost(
             input_tokens=input_tokens,
             output_tokens=max_output_tokens,
-            price_in_per_mtok=self.price_in_per_mtok,
-            price_out_per_mtok=self.price_out_per_mtok,
+            price_in_per_mtok=price_in,
+            price_out_per_mtok=price_out,
         )
         enrich(reserved_usd=estimate, actual_usd=None)
-        price_version = f"in={self.price_in_per_mtok};out={self.price_out_per_mtok}"
+        price_version = f"in={price_in};out={price_out}"
         reserved_at = at or datetime.now(UTC)
         row = ModelUsage(
             id=f"MU-{uuid4().hex[:16]}",
@@ -155,8 +202,8 @@ class BudgetLedger:
             output_tokens=max_output_tokens,
             cost_usd=estimate,
             price_version=price_version,
-            price_in_per_mtok=self.price_in_per_mtok,
-            price_out_per_mtok=self.price_out_per_mtok,
+            price_in_per_mtok=price_in,
+            price_out_per_mtok=price_out,
             at=reserved_at,
             status="RESERVED",
             reserved_at=reserved_at,
@@ -164,14 +211,13 @@ class BudgetLedger:
         session = self._sessions()
         try:
             with begin_immediate(session):
-                if self.max_total_calls is not None:
-                    total_calls = session.scalar(select(func.count()).select_from(ModelUsage))
-                    assert total_calls is not None
-                    if total_calls >= self.max_total_calls:
-                        raise CallLimitExceeded(
-                            "本轮账本已达到模型总调用次数上限",
-                            details={"calls": total_calls, "limit": self.max_total_calls},
-                        )
+                total_calls = session.scalar(select(func.count()).select_from(ModelUsage))
+                assert total_calls is not None
+                if total_calls >= self.max_total_calls:
+                    raise CallLimitExceeded(
+                        "本轮账本已达到模型总调用次数上限",
+                        details={"calls": total_calls, "limit": self.max_total_calls},
+                    )
                 if task_id is not None and max_calls_per_task is not None:
                     used = session.scalar(
                         select(func.count())

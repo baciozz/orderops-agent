@@ -159,6 +159,45 @@ class LiveLLMClient:
                 retryable=False,
             ) from None
 
+    def check_auth(self) -> int:
+        """One synthetic Responses request; reserve and settle the durable ledger.
+
+        This checks HTTP access, not model output quality. Unknown usage retains
+        the pessimistic reservation, including malformed successful responses.
+        """
+        if self._provider.name != "openai" or not self._settings.has_official_llm_base_url:
+            raise LiveStartRefused("BASE_URL_UNSUPPORTED")
+        if self._settings.model_max_tokens < 16:
+            raise AppError("单次输出 token 超过配置上限", code="TOKEN_LIMIT")
+        body: dict[str, object] = {
+            "model": self._model,
+            "input": "回复 ok",
+            "max_output_tokens": 16,
+            "reasoning": {"effort": "none"},
+            "store": False,
+            "service_tier": "default",
+        }
+        estimate = len(json.dumps(body, ensure_ascii=False).encode("utf-8")) + 256
+        key = self._settings.llm_api_key_value()
+        reservation_id = self._ledger.reserve(
+            provider="openai", model=self._model, input_tokens=estimate, max_output_tokens=16
+        )
+        input_tokens, output_tokens = estimate, 16
+        try:
+            response = self._send("https://api.openai.com/v1/responses", body, key)
+            parsed = self._provider.parse_response(response)
+            if parsed.usage is not None:
+                input_tokens, output_tokens = parsed.usage
+            elif not response.is_success:
+                input_tokens, output_tokens = 0, 0
+            if not response.is_success:
+                self._raise_http_error(response, key)
+            return response.status_code
+        finally:
+            self._ledger.settle(
+                reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
+            )
+
     @staticmethod
     def _raise_http_error(response: httpx.Response, key: str | None) -> None:
         details: dict[str, object] = {"status_code": response.status_code}

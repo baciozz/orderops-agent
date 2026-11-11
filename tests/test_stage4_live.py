@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import httpx
 import pytest
+from app import cli
 from app.adapters.budget import BudgetLedger
 from app.adapters.live_model import LiveLLMClient
 from app.adapters.live_prompts import build_prompts, catalog_context, parser_schema, to_extraction
@@ -40,10 +41,312 @@ from app.services.kernel import approve_plan, commit_plan
 from app.services.seed import load_seed
 from app.services.task_view import build_task_view
 from schemas.common import SourceRef
+from scripts.live_smoke import SECRET_PATTERN
 from sqlalchemy import func, select
 
 NOW = datetime(2026, 11, 3, tzinfo=UTC)
 MOCK_CREDENTIAL = "offline-test-credential"
+
+
+@pytest.fixture
+def auth_environment(monkeypatch, database_url):
+    # Synthetic credential only. Never take a credential from the runner.
+    fake_key = "sk-offline_auth_diagnostics_123456"
+    for name, value in {
+        "OOS_LIVE_ENABLED": "true",
+        "OOS_LLM_PROVIDER": "openai",
+        "OOS_LLM_MODEL": "offline-auth-model",
+        "OOS_PRICE_IN_PER_MTOK": "0.10",
+        "OOS_PRICE_OUT_PER_MTOK": "0.50",
+        "OOS_LIVE_BUDGET_USD": "0.60",
+        "OOS_LLM_API_KEY": fake_key,
+        "OOS_DATABASE_URL": database_url,
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    return fake_key
+
+
+def auth_output(capsys, fake_key):
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert fake_key not in output
+    assert not SECRET_PATTERN.search(output)
+    assert "Traceback" not in output
+    return captured
+
+
+def auth_transport(monkeypatch, handler):
+    def client(configured, book, **kwargs):
+        return LiveLLMClient(configured, book, transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(cli, "LiveLLMClient", client)
+
+
+def test_auth_preflight_reports_only_status_without_secret_or_io(
+    auth_environment, monkeypatch, capsys
+):
+    from pydantic import SecretStr
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Local preflight must not unwrap a credential, open HTTP, or open a ledger")
+
+    monkeypatch.setattr(SecretStr, "get_secret_value", forbidden)
+    monkeypatch.setattr(httpx, "Client", forbidden)
+    monkeypatch.setattr(cli, "make_engine", forbidden)
+    assert cli.main(["check-model-auth"]) == 0
+    captured = auth_output(capsys, auth_environment)
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        "OOS_LIVE_ENABLED：有",
+        "OOS_LLM_PROVIDER：合法",
+        "OOS_LLM_MODEL：有",
+        "OOS_LLM_BASE_URL 官方地址：合法",
+        "OOS_PRICE_IN_PER_MTOK：有",
+        "OOS_PRICE_OUT_PER_MTOK：有",
+        "OOS_MODEL_PRICES：无",
+        "当前模型单价：有",
+        "OOS_LLM_API_KEY：有",
+    ]
+
+
+def test_auth_probe_unexpected_setup_failure_prints_only_code(
+    auth_environment, monkeypatch, capsys
+):
+    def fail(*args, **kwargs):
+        raise RuntimeError(auth_environment)
+
+    monkeypatch.setattr(cli, "make_engine", fail)
+    assert cli.main(["check-model-auth", "--probe"]) == 2
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert report == {
+        "status": "AUTH_CONFIGURATION",
+        "http_status": None,
+        "error_type": None,
+        "error_code": None,
+        "ledger_spent_usd": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (200, "ok"),
+        (401, "MODEL_AUTH"),
+        (403, "MODEL_AUTH"),
+        (429, "MODEL_RATE_LIMIT"),
+        (400, "MODEL_HTTP"),
+        (503, "MODEL_UPSTREAM"),
+        (302, "MODEL_HTTP"),
+    ],
+)
+def test_auth_probe_one_request_with_durable_reservation(
+    auth_environment, session_factory, monkeypatch, capsys, caplog, status, expected
+):
+    calls = []
+
+    def handle(req):
+        calls.append(req)
+        assert str(req.url) == "https://api.openai.com/v1/responses"
+        assert req.headers["authorization"] == f"Bearer {auth_environment}"
+        body = json.loads(req.content)
+        assert body["input"] == "回复 ok" and body["max_output_tokens"] == 16
+        assert body["store"] is False and "tools" not in body
+        assert body["reasoning"] == {"effort": "none"}
+        with session_factory() as session:
+            row = session.scalar(select(ModelUsage))
+            assert row.status == "RESERVED" and row.output_tokens == 16
+            assert row.cost_usd > 0
+        if status == 200:
+            return httpx.Response(
+                200,
+                json={
+                    "status": "completed",
+                    "usage": {"input_tokens": 10, "output_tokens": 1},
+                    "output": [
+                        {"type": "message", "content": [{"type": "output_text", "text": "ok"}]}
+                    ],
+                },
+            )
+        return httpx.Response(
+            status,
+            headers={"Location": "https://forbidden.invalid"},
+            json={
+                "error": {
+                    "type": "authentication_error",
+                    "code": "mock_rejection",
+                    "message": auth_environment,
+                    "headers": dict(req.headers),
+                }
+            },
+        )
+
+    auth_transport(monkeypatch, handle)
+    assert cli.main(["check-model-auth", "--probe"]) == (0 if status == 200 else 2)
+    captured = auth_output(capsys, auth_environment)
+    report = json.loads(captured.out)
+    assert report["status"] == expected and report["http_status"] == status
+    assert len(calls) == 1
+    assert report["error_type"] == (None if status == 200 else "authentication_error")
+    assert report["error_code"] == (None if status == 200 else "mock_rejection")
+    if status in (401, 403):
+        for hint in ("撤销", "项目/组织权限", "OOS_LLM_API_KEY", "api.openai.com:443"):
+            assert hint in report["next_step"]
+    with session_factory() as session:
+        rows = session.scalars(select(ModelUsage)).all()
+        assert len(rows) == 1 and rows[0].status == "SETTLED"
+        assert Decimal(report["ledger_spent_usd"]) == rows[0].cost_usd
+        assert auth_environment not in str(vars(rows[0]))
+    assert auth_environment not in caplog.text
+
+
+@pytest.mark.parametrize("probe", [False, True])
+@pytest.mark.parametrize("upstream_field", ["type", "code", "message"])
+def test_auth_diagnostics_never_echo_upstream_credentials(
+    auth_environment, monkeypatch, capsys, probe, upstream_field
+):
+    def handle(req):
+        return httpx.Response(401, json={"error": {upstream_field: auth_environment}})
+
+    auth_transport(monkeypatch, handle)
+    assert cli.main(["check-model-auth", *(["--probe"] if probe else [])]) == (2 if probe else 0)
+    auth_output(capsys, auth_environment)
+
+
+@pytest.mark.parametrize(
+    "variable,value,expected",
+    [
+        ("OOS_LLM_API_KEY", None, "KEY_NOT_CONFIGURED"),
+        ("OOS_LIVE_ENABLED", "false", "LIVE_DISABLED"),
+        ("OOS_PRICE_IN_PER_MTOK", None, "PRICES_NOT_CONFIGURED"),
+        ("OOS_PRICE_OUT_PER_MTOK", None, "PRICES_NOT_CONFIGURED"),
+        ("OOS_LLM_MODEL", None, "LIVE_START_REFUSED"),
+        ("OOS_LLM_PROVIDER", "unknown", "LIVE_START_REFUSED"),
+        ("OOS_LLM_BASE_URL", "https://forbidden.invalid/v1", "LIVE_START_REFUSED"),
+        ("OOS_LLM_BASE_URL", "https://api.openai.com@forbidden.invalid/v1", "LIVE_START_REFUSED"),
+        ("OOS_DATABASE_URL", None, "LEDGER_NOT_CONFIGURED"),
+        ("OOS_DATABASE_URL", "sqlite:///:memory:", "LEDGER_NOT_PERSISTENT"),
+        ("OOS_DATABASE_URL", "sqlite:///file:memory?mode=memory&uri=true", "LEDGER_NOT_PERSISTENT"),
+        ("OOS_DATABASE_URL", "postgresql://forbidden.invalid/db", "LEDGER_NOT_PERSISTENT"),
+    ],
+)
+def test_auth_probe_local_refusal_without_http_or_database(
+    auth_environment, monkeypatch, capsys, variable, value, expected
+):
+    if value is None:
+        monkeypatch.delenv(variable)
+    else:
+        monkeypatch.setenv(variable, value)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Local refusal must precede HTTP and ledger setup")
+
+    monkeypatch.setattr(httpx, "Client", forbidden)
+    monkeypatch.setattr(cli, "make_engine", forbidden)
+    assert cli.main(["check-model-auth", "--probe"]) == 2
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert report["status"] == expected
+    assert report["http_status"] is None and report["ledger_spent_usd"] is None
+
+
+@pytest.mark.parametrize("prior_spend", ["0.599999", "0.600000", "0.600001"])
+def test_auth_probe_reuses_cumulative_ledger_and_stops_before_http(
+    auth_environment, session_factory, monkeypatch, capsys, prior_spend
+):
+    # Prior spend recorded by a wider-capped writer; the probe cap is $0.60 here.
+    book = ledger(session_factory, settings(live_budget_usd=Decimal("30")))
+    book.reserve(
+        provider="openai",
+        model="prior",
+        input_tokens=0,
+        max_output_tokens=int(Decimal(prior_spend) * 2_000_000),
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Persistent budget must stop this request")
+
+    monkeypatch.setattr(httpx, "Client", forbidden)
+    assert cli.main(["check-model-auth", "--probe"]) == 2
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert report["status"] == "BUDGET_EXCEEDED"
+    assert Decimal(report["ledger_spent_usd"]) == Decimal(prior_spend)
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ModelUsage)) == 1
+
+
+def test_auth_probe_cap_follows_live_budget_on_shared_ledger(
+    auth_environment, session_factory, monkeypatch, capsys
+):
+    # A later stage shares the ledger with eval spend above the old $0.60 cap.
+    monkeypatch.setenv("OOS_LIVE_BUDGET_USD", "25")
+    book = ledger(session_factory)
+    book.reserve(provider="openai", model="prior", input_tokens=0, max_output_tokens=2_000_000)
+    calls = []
+
+    def handle(req):
+        calls.append(req)
+        return httpx.Response(200, json={"usage": {"input_tokens": 10, "output_tokens": 1}})
+
+    auth_transport(monkeypatch, handle)
+    assert cli.main(["check-model-auth", "--probe"]) == 0
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert report["status"] == "ok"
+    assert Decimal(report["ledger_spent_usd"]) > Decimal("1.00")
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("failure", ["timeout", "transport", "unknown-usage", "malformed"])
+def test_auth_probe_retains_pessimistic_usage_on_uncertainty(
+    auth_environment, session_factory, monkeypatch, capsys, failure
+):
+    reserved = []
+
+    def handle(req):
+        with session_factory() as session:
+            row = session.scalar(select(ModelUsage))
+            reserved.append((row.input_tokens, row.output_tokens, row.cost_usd))
+        if failure == "timeout":
+            raise httpx.ReadTimeout(auth_environment, request=req)
+        if failure == "transport":
+            raise httpx.ConnectError(auth_environment, request=req)
+        return httpx.Response(200, json={} if failure == "unknown-usage" else [auth_environment])
+
+    auth_transport(monkeypatch, handle)
+    result = cli.main(["check-model-auth", "--probe"])
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert result == (2 if failure in {"timeout", "transport"} else 0)
+    assert (
+        report["status"]
+        == {
+            "timeout": "MODEL_TIMEOUT",
+            "transport": "MODEL_TRANSPORT",
+            "unknown-usage": "ok",
+            "malformed": "ok",
+        }[failure]
+    )
+    assert len(reserved) == 1
+    with session_factory() as session:
+        row = session.scalar(select(ModelUsage))
+        assert row.status == "SETTLED"
+        assert (row.input_tokens, row.output_tokens, row.cost_usd) == reserved[0]
+        assert Decimal(report["ledger_spent_usd"]) == row.cost_usd
+
+
+def test_auth_probe_reports_actual_overrun_without_another_request(
+    auth_environment, monkeypatch, capsys
+):
+    calls = []
+
+    def handle(req):
+        calls.append(req)
+        return httpx.Response(200, json={"usage": {"input_tokens": 6_000_010, "output_tokens": 0}})
+
+    auth_transport(monkeypatch, handle)
+    assert cli.main(["check-model-auth", "--probe"]) == 2
+    report = json.loads(auth_output(capsys, auth_environment).out)
+    assert report["status"] == "BUDGET_EXCEEDED"
+    assert Decimal(report["ledger_spent_usd"]) > Decimal("0.60")
+    assert len(calls) == 1
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +496,7 @@ def test_request_shape_usage_cost_and_no_credential_leaks(session_factory, caplo
     assert MOCK_CREDENTIAL not in result.model_dump_json() + caplog.text
 
 
-@pytest.mark.parametrize("cap,expected", [("100", "5.00"), ("1", "1.00")])
+@pytest.mark.parametrize("cap,expected", [("100", "30.00"), ("1", "1.00")])
 def test_budget_breaker_precedes_http_and_caps_config(session_factory, cap, expected):
     configured = settings(live_budget_usd=Decimal(cap))
     book = ledger(session_factory, configured)

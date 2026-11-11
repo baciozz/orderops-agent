@@ -174,12 +174,7 @@ def _dispatch_text(
             library.update(fixtures)
         client = FixtureLLMClient(library)
     if use_live:
-        ledger = BudgetLedger(
-            session_factory,
-            cap_usd=configured.effective_live_budget_usd,
-            price_in_per_mtok=configured.price_in_per_mtok,
-            price_out_per_mtok=configured.price_out_per_mtok,
-        )
+        ledger = BudgetLedger.from_settings(session_factory, configured)
         # LiveLLMClient selects/validates llm_provider; all providers share this ledger.
         client = (client_factory or LiveLLMClient)(configured, ledger)
     enrich(**task_fields_from_factory(session_factory, task_id))

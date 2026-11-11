@@ -17,7 +17,7 @@ from app.orchestration import dispatch, watchdog, worker, worker_cycle
 from app.orchestration.fixtures import TEXT_BLACK_TO_WHITE
 from app.orchestration.inbox import accept_input
 from app.orchestration.worker_loop import LoopOptions, run_loop
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from tests.test_deployment_boundaries import input_request, mock_client, seeded  # noqa: F401
@@ -253,6 +253,16 @@ def test_preflight_is_local_and_unexpected_validation_fault_precedes_claim(seede
     with seeded() as session:
         assert session.get(Task, task_id).status == "QUEUED"
         assert session.scalar(select(func.count()).select_from(JobAttempt)) == 0
+
+
+def test_official_preflight_checks_presence_without_unwrapping_credential(monkeypatch):
+    configured = settings()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Official local preflight must only check credential presence")
+
+    monkeypatch.setattr(SecretStr, "get_secret_value", forbidden)
+    assert validated_live_provider(configured).name == "openai"
 
 
 def test_invalid_config_logs_only_static_reason_and_keeps_fixture_isolation(seeded, caplog):

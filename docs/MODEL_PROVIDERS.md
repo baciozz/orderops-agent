@@ -69,7 +69,7 @@ OOS_LLM_JSON_SCHEMA_SUPPORTED=false
 
 缺任一输入/输出单价，拒绝启用 LIVE：保持 FIXTURE，原因 `PRICES_NOT_CONFIGURED`。永远不猜价格。本地模型同样必须显式填写两个单价；确认无需计费时可明确设为 `0`，空值不等于零。零价调用仍记录 `ModelUsage` 并占用每任务调用次数。
 
-有效总预算仍为 `min(OOS_LIVE_BUDGET_USD, 5.00 USD)`。HTTP 之前原子预留保守输入估计、最大输出费用与每任务调用名额；JSON object 模式追加的 schema 指令也纳入输入估计。成功响应缺少有效的 `usage.prompt_tokens` / `completion_tokens` 时抛出 `SCHEMA_INVALID`，按预留输入/最大输出悲观结算。非负整数才是有效用量（bool、字符串、负数无效）。
+有效总预算仍为 `min(OOS_LIVE_BUDGET_USD, 30.00 USD)`，同一账本最多 3000 次调用；每个模型须在 `OOS_MODEL_PRICES`（或当前模型的 `OOS_PRICE_*_PER_MTOK`）单独定价，未定价模型拒绝调用。HTTP 之前原子预留保守输入估计、最大输出费用与每任务调用名额；JSON object 模式追加的 schema 指令也纳入输入估计。成功响应缺少有效的 `usage.prompt_tokens` / `completion_tokens` 时抛出 `SCHEMA_INVALID`，按预留输入/最大输出悲观结算。非负整数才是有效用量（bool、字符串、负数无效）。
 
 有效用量即使超过预估也照实记录。非 JSON、schema 不匹配、`finish_reason="length"` 等失败同样结算；HTTP 拒绝有用量时照实记录，无有效用量时记零 token/费用，但保留调用名额。进程崩溃保留预留费用。任务卡只有存在实际 `ModelUsage` 行才标 LIVE；配置开启或 fixture 成功不算模型调用。
 
