@@ -2,7 +2,7 @@
 
 服装批发客户改单时，需要逐项对照订单、库存和已发货快照。<br>
 模型只输出结构化提案，无批准或执行权。<br>
-确定性规则核对并经人工确认后导出清单，不执行订单；当前为**私有开发预览、未发布**。
+确定性规则核对并经人工确认后导出清单，不执行订单；当前为**开发预览，未发布**。文中数据均为合成数据。
 
 ```mermaid
 flowchart TB
@@ -70,4 +70,4 @@ export OOS_LIVE_ENABLED=false
 
 开发者安装`requirements-dev.lock`并运行`make check`、`make eval-offline`。普通CI离线且不持有付费模型密钥；真实评测须单独授权、固定版本、共用预算账本。当前包内`1.0.0rc1`是历史版本号，不代表本轮发布资格。
 
-仓库已有[MIT许可证](LICENSE)，版权归属、维护者联系方式及拟公开内容仍须所有者最终确认；第三方组件单独保留其声明。不会自动公开仓库、打正式tag或创建Release。[历史README](docs/history/README_PRE_BETA_1e63f7c.md)保留旧工程交接细节。
+仓库以[MIT许可证](LICENSE)公开；当前仍是开发预览，不代表正式发布。第三方组件单独保留其声明。不会自动打正式 tag 或创建 Release。[历史README](docs/history/README_PRE_BETA_1e63f7c.md)保留旧工程交接细节。

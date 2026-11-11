@@ -5,7 +5,7 @@
 > 本文只做设计，不含代码。所有客户、订单、单据和数量都是合成测试数据。
 
 **项目名**：`order-ops-superagent`
-**简历一句话**：OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分派解析、库存、单据核对子 Agent，人工审批后执行并核验。
+**简历一句话（已作废，不再作为对外简历描述）**：OrderOps SuperAgent：服装批发订单的多 Agent 调度系统，Router 分派解析、库存、单据核对子 Agent，人工审批后执行并核验。
 
 ---
 
