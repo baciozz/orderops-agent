@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c10-04",
+  "category": "colloquial",
+  "category_no": 10,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-434",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "SJ3307-IV-M",
+          "to_sku": null,
+          "quantity": 55,
+          "unit": "件",
+          "before_qty": 40,
+          "after_qty": 55,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "米白M码 总shu 改55"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-IV-M",
+        "old_qty": 40,
+        "new_qty": 55
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-IV-M",
+          "old_qty": 40,
+          "new_qty": 55
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

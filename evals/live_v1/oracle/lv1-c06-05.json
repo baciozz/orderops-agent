@@ -1,0 +1,36 @@
+{
+  "sample_id": "lv1-c06-05",
+  "category": "clarify",
+  "category_no": 6,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-544",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "红色哪个尺码减少，各减多少件？"
+      ],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [
+    "quantity_missing",
+    "sku_ambiguous"
+  ],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "已复核",
+  "reviewed_by": "小八（非 Qi 人工复核）"
+}

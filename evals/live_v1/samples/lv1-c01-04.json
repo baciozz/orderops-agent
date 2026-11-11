@@ -1,0 +1,134 @@
+{
+  "sample_id": "lv1-c01-04",
+  "form": "text",
+  "request": {
+    "selected_order_id": "SJ-1110-404",
+    "instruction": "松间茶服这边：SJ3307 墨绿 M 原来订 90，现在统一按 72 件出。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:03:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "SJ3307-IV-S",
+          "style": "SJ3307 棉麻茶服",
+          "color": "米白",
+          "size": "S",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-IV-M",
+          "style": "SJ3307 棉麻茶服",
+          "color": "米白",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-IV-L",
+          "style": "SJ3307 棉麻茶服",
+          "color": "米白",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-DG-S",
+          "style": "SJ3307 棉麻茶服",
+          "color": "墨绿",
+          "size": "S",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-DG-M",
+          "style": "SJ3307 棉麻茶服",
+          "color": "墨绿",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-DG-L",
+          "style": "SJ3307 棉麻茶服",
+          "color": "墨绿",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-OC-S",
+          "style": "SJ3307 棉麻茶服",
+          "color": "赭石",
+          "size": "S",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-OC-M",
+          "style": "SJ3307 棉麻茶服",
+          "color": "赭石",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "SJ3307-OC-L",
+          "style": "SJ3307 棉麻茶服",
+          "color": "赭石",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "SJ-1110-404",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "SJ3307-DG-M",
+              "ordered_qty": 90,
+              "shipped_qty": 0
+            },
+            {
+              "sku_id": "SJ3307-IV-S",
+              "ordered_qty": 20,
+              "shipped_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [
+        {
+          "sku_id": "SJ3307-IV-S",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-IV-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-IV-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-DG-S",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-DG-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-DG-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-OC-S",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-OC-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "SJ3307-OC-L",
+          "available_qty": 500
+        }
+      ],
+      "documents": []
+    }
+  }
+}

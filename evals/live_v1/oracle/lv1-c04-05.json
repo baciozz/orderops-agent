@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c04-05",
+  "category": "cancel_remaining",
+  "category_no": 4,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-416",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "cancel_remaining",
+          "sku_id": "SJ3307-OC-L",
+          "to_sku": null,
+          "quantity": null,
+          "unit": "件",
+          "before_qty": 25,
+          "after_qty": 5,
+          "citations": [
+            {
+              "line": 3,
+              "quote": "| SJ3307 赭石 L | 取消未发货剩余 |"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-OC-L",
+        "old_qty": 25,
+        "new_qty": 5
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-OC-L",
+          "old_qty": 25,
+          "new_qty": 5
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

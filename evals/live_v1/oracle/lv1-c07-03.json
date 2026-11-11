@@ -1,0 +1,35 @@
+{
+  "sample_id": "lv1-c07-03",
+  "category": "cross_order",
+  "category_no": 7,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-409",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "BA-1102-415 与当前订单 BA-1102-409 不同，请确认"
+      ],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [
+    "order_selection"
+  ],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "已复核",
+  "reviewed_by": "小八（非 Qi 人工复核）"
+}

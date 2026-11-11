@@ -1,0 +1,69 @@
+{
+  "sample_id": "lv1-c03-05",
+  "category": "replace_remaining",
+  "category_no": 3,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-527",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": "YS6120-RD-M",
+          "to_sku": "YS6120-YL-M",
+          "quantity": 10,
+          "unit": "件",
+          "before_qty": 40,
+          "after_qty": 30,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "红色 M 未发的 10 件改成黄色 M"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-RD-M",
+        "old_qty": 40,
+        "new_qty": 30
+      },
+      {
+        "sku_id": "YS6120-YL-M",
+        "old_qty": 0,
+        "new_qty": 10
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-RD-M",
+          "old_qty": 40,
+          "new_qty": 30
+        },
+        {
+          "sku_id": "YS6120-YL-M",
+          "old_qty": 0,
+          "new_qty": 10
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

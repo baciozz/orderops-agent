@@ -1,0 +1,63 @@
+{
+  "sample_id": "lv1-c01-05",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-512",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "YS6120-RD-XXL",
+          "to_sku": null,
+          "quantity": 33,
+          "unit": "件",
+          "before_qty": 25,
+          "after_qty": 33,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "团服红色 XXL"
+            },
+            {
+              "line": 1,
+              "quote": "就做 33 件吧"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-RD-XXL",
+        "old_qty": 25,
+        "new_qty": 33
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-RD-XXL",
+          "old_qty": 25,
+          "new_qty": 33
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

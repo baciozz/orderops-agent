@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c02-06",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "CX-0915-603",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "CX5010-WH-M",
+          "to_sku": null,
+          "quantity": 40,
+          "unit": "件",
+          "before_qty": 150,
+          "after_qty": 190,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "白色 M 码再补 40 件给新生"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "CX5010-WH-M",
+        "old_qty": 150,
+        "new_qty": 190
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "CX5010-WH-M",
+          "old_qty": 150,
+          "new_qty": 190
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

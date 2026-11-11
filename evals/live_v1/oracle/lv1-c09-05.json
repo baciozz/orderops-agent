@@ -1,0 +1,109 @@
+{
+  "sample_id": "lv1-c09-05",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-556",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-RD-L",
+          "to_sku": null,
+          "quantity": 8,
+          "unit": "件",
+          "before_qty": 30,
+          "after_qty": 38,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "红 L +8"
+            }
+          ]
+        },
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-YL-L",
+          "to_sku": null,
+          "quantity": -4,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 16,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黄 L -4"
+            }
+          ]
+        },
+        {
+          "mode": "set_total",
+          "sku_id": "YS6120-BL-L",
+          "to_sku": null,
+          "quantity": 50,
+          "unit": "件",
+          "before_qty": 44,
+          "after_qty": 50,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "蓝 L 改 50 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-BL-L",
+        "old_qty": 44,
+        "new_qty": 50
+      },
+      {
+        "sku_id": "YS6120-RD-L",
+        "old_qty": 30,
+        "new_qty": 38
+      },
+      {
+        "sku_id": "YS6120-YL-L",
+        "old_qty": 20,
+        "new_qty": 16
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-BL-L",
+          "old_qty": 44,
+          "new_qty": 50
+        },
+        {
+          "sku_id": "YS6120-RD-L",
+          "old_qty": 30,
+          "new_qty": 38
+        },
+        {
+          "sku_id": "YS6120-YL-L",
+          "old_qty": 20,
+          "new_qty": 16
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

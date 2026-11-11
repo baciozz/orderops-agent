@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c02-02",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-406",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "SJ3307-IV-S",
+          "to_sku": null,
+          "quantity": -12,
+          "unit": "件",
+          "before_qty": 50,
+          "after_qty": 38,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "米白 S 码少要 12 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-IV-S",
+        "old_qty": 50,
+        "new_qty": 38
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-IV-S",
+          "old_qty": 50,
+          "new_qty": 38
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

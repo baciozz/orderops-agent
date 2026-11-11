@@ -1,0 +1,47 @@
+{
+  "sample_id": "lv1-c02-10",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-322",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "BA8802-KH-L",
+          "to_sku": null,
+          "quantity": 300,
+          "unit": "件",
+          "before_qty": 50,
+          "after_qty": 350,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "卡其 L 再加 300 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "blocked",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "blocked",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "可用库存 120 不足 300，规则应拦下（缺货整单拒绝）。",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

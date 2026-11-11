@@ -1,0 +1,35 @@
+{
+  "sample_id": "lv1-c06-03",
+  "category": "clarify",
+  "category_no": 6,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-342",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "一箱是多少件？"
+      ],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [
+    "unit_conversion"
+  ],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "已复核",
+  "reviewed_by": "小八（非 Qi 人工复核）"
+}

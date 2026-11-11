@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c10-09",
+  "category": "colloquial",
+  "category_no": 10,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-437",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "SJ3307-OC-M",
+          "to_sku": null,
+          "quantity": 48,
+          "unit": "件",
+          "before_qty": 36,
+          "after_qty": 48,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "赭石M码 总数搞成四十八件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-OC-M",
+        "old_qty": 36,
+        "new_qty": 48
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-OC-M",
+          "old_qty": 36,
+          "new_qty": 48
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

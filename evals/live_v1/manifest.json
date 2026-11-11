@@ -1,0 +1,1240 @@
+{
+  "dataset": "live_v1",
+  "notice": "开发期新样本，非保留集，参考由 AI 起草、待 Qi 复核",
+  "minimum_human_review": "⑥⑦⑧⑫ 四类 40 条已由小八（非 Qi 人工复核）复核；其余 80 条为小八一致性复核",
+  "synthetic_only": true,
+  "contract": "app/review/contracts.py",
+  "prompt_version_at_freeze": "local-review-v4-source-positions",
+  "schema_sha256_at_freeze": "82a223c576e570b2233f91749d353fd8358dee9a1096ac7cf7c6a505269b4804",
+  "oracle_isolation": "oracle/ 仅供离线评分；运行器只能把 samples/ 下 request 字段送入模型",
+  "categories": {
+    "01": "set_total",
+    "02": "increment",
+    "03": "replace_remaining",
+    "04": "cancel_remaining",
+    "05": "new_order",
+    "06": "clarify",
+    "07": "cross_order",
+    "08": "prompt_injection",
+    "09": "multi_change",
+    "10": "colloquial",
+    "11": "pack_unit",
+    "12": "out_of_scope"
+  },
+  "counts": {
+    "01": 10,
+    "02": 10,
+    "03": 10,
+    "04": 10,
+    "05": 10,
+    "06": 10,
+    "07": 10,
+    "08": 10,
+    "09": 10,
+    "10": 10,
+    "11": 10,
+    "12": 10
+  },
+  "samples": [
+    {
+      "sample_id": "lv1-c01-01",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-01.json",
+      "sample_sha256": "7010755cb2c31be5a72b0a9c59abd0b8b809f84d697b6f23e27898f04dca91e8",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-01.json",
+      "oracle_sha256": "b51b0e7366ce4a7a9446aee8cf3147dfb3298a2d46b5b052fee5e23482d4ac04"
+    },
+    {
+      "sample_id": "lv1-c01-02",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c01-02.json",
+      "sample_sha256": "4491f03a21a640c031d3a3fa0ec3cc0c13e4b0f93150e4fc3749dd145313eb6c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-02.json",
+      "oracle_sha256": "fce5238ac151803d57145054262b4987f130248e5faa91b5de02941b5140f909"
+    },
+    {
+      "sample_id": "lv1-c01-03",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c01-03.json",
+      "sample_sha256": "a238b3b7d86f5fc3f67ed3874d731365b810354e979bd902d96e1012a89c6a3e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-03.json",
+      "oracle_sha256": "ff74a19842b6f9b99a6a3c45f56b947aab31796b2db99a4a1f72e07ff3aa7d10"
+    },
+    {
+      "sample_id": "lv1-c01-04",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-04.json",
+      "sample_sha256": "6f7889fd4cee5c7c2362c8be3737b96745715a0d594cf9671b9d7672d9b12525",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-04.json",
+      "oracle_sha256": "fad15537ab56addbdf2fbb4a44d046fc88c63dece1a18e7f5f711dbe604b1806"
+    },
+    {
+      "sample_id": "lv1-c01-05",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-05.json",
+      "sample_sha256": "6008e02f3b3fd9e93ae1d415caf905e224d533b838f80f420fa8956f68a2a9aa",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-05.json",
+      "oracle_sha256": "9d268cfa842a350733758f50dd63f177e81dfd046e3c8c7eac14cac527f6b946"
+    },
+    {
+      "sample_id": "lv1-c01-06",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-06.json",
+      "sample_sha256": "5b11113aca78a7be37fa9213131febcacfb8432c0fcf14914f43655362d1c2c5",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-06.json",
+      "oracle_sha256": "a19719c7518b0c96f625d464e2c682b94861390b721e56826a6d41f5591a003c"
+    },
+    {
+      "sample_id": "lv1-c01-07",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-07.json",
+      "sample_sha256": "a5273a753dc9e694efa86d07cbd4832b3c63b121d124242cb6fd6539633342fd",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-07.json",
+      "oracle_sha256": "d040fce4169932170832214631dc5970c9316a5afe85e3871a635709ad6b2ca0"
+    },
+    {
+      "sample_id": "lv1-c01-08",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c01-08.json",
+      "sample_sha256": "4d32efe5f9294e05eccedcd4749923890445b1bc1fb3d23d0ba983a923844c9e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-08.json",
+      "oracle_sha256": "33e72669a045b4cae00071c5ad36bb1c08c957f709d6cb9d1989cbf388e33600"
+    },
+    {
+      "sample_id": "lv1-c01-09",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c01-09.json",
+      "sample_sha256": "08e59768ad8d3a49e593079bb136bb6b00efba5991eded857e4b8536092ef554",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-09.json",
+      "oracle_sha256": "4ee8656d12238dd9e87564519e018c4884ac6745d853bf5ebea96b28840b998c"
+    },
+    {
+      "sample_id": "lv1-c01-10",
+      "category_no": 1,
+      "category": "set_total",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c01-10.json",
+      "sample_sha256": "e4a964bd43648dd7a46e8b5ab765951c211ec4a0ea6664da132ea9c2d0cf9df9",
+      "oracle_path": "evals/live_v1/oracle/lv1-c01-10.json",
+      "oracle_sha256": "5aa92ee37c51dd64bead7cf090d61324c3ebb214081ed6e159c2454996497796"
+    },
+    {
+      "sample_id": "lv1-c02-01",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-01.json",
+      "sample_sha256": "f2b5f22361b9ef55cc629e134d0e4c8437c7dfe5866dd2049531659d11d29280",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-01.json",
+      "oracle_sha256": "cedb25fd545c788cbe4baec0ea502155332a6efce83f704add3d74253b20c2ed"
+    },
+    {
+      "sample_id": "lv1-c02-02",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-02.json",
+      "sample_sha256": "02645c5ac01192f1086ff17002192e3e3ac4fd918f455d7d3b13ba2a1e251271",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-02.json",
+      "oracle_sha256": "87abab2da08d39a4dde7d826927ea03da57b88244739cfe66eed0a35eb62b5a9"
+    },
+    {
+      "sample_id": "lv1-c02-03",
+      "category_no": 2,
+      "category": "increment",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c02-03.json",
+      "sample_sha256": "e5ac71842014c8f20e10efe214b848452073c4ad9917ccd911a88f3af4c9da25",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-03.json",
+      "oracle_sha256": "f662ed915626d2e66fc143908f13973074db8a283d49a5faa2c99b4b24d1b49a"
+    },
+    {
+      "sample_id": "lv1-c02-04",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-04.json",
+      "sample_sha256": "4f3d790127a2cfd7627102b6789ca765a2f49ba8de9276213203346820eb8e1c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-04.json",
+      "oracle_sha256": "374a582eae1a145485a817d76a8d3000bd81320a2019a481082a494ab30011cb"
+    },
+    {
+      "sample_id": "lv1-c02-05",
+      "category_no": 2,
+      "category": "increment",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c02-05.json",
+      "sample_sha256": "3fb2704c5c19544d1b18a6103500b16220731b8d15bf7f9234318c324d590cac",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-05.json",
+      "oracle_sha256": "2eda9a934b1bfa4518d27a041c726ebe76d0f9777a146d727f02f347892f1b46"
+    },
+    {
+      "sample_id": "lv1-c02-06",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-06.json",
+      "sample_sha256": "1ea8fc9afd698295945eb1fc01af3821d951dea3fb8d3a7461a5c3dd7d133417",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-06.json",
+      "oracle_sha256": "15031190ffa77f1307021c5ad5e46c050129dd5bdcb3653e3e180f0afaaeecf4"
+    },
+    {
+      "sample_id": "lv1-c02-07",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-07.json",
+      "sample_sha256": "e0b3fde855cd0d298370c6de192d2cfb666bd875083ec0c8a8359ffafa128d64",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-07.json",
+      "oracle_sha256": "b518becc42498b74c0a94666fc5fac1a2964e79451363aa538b5673c97ebc373"
+    },
+    {
+      "sample_id": "lv1-c02-08",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-08.json",
+      "sample_sha256": "2a489f01f7b945851aa35a5072c65f603a072486a75995338e7ec6f371071a20",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-08.json",
+      "oracle_sha256": "bda7b1f9b773a1f801f760bac38bf140bb6253dc26602be7a5de4ea92a35a789"
+    },
+    {
+      "sample_id": "lv1-c02-09",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-09.json",
+      "sample_sha256": "a9295126647da57f6aae6b6e4380c22c97234d0de2b58d003d92933c80ef98eb",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-09.json",
+      "oracle_sha256": "e4f328a167a9ecf4a16c263defe320b6c53a5834223b23852798c9539499ca90"
+    },
+    {
+      "sample_id": "lv1-c02-10",
+      "category_no": 2,
+      "category": "increment",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c02-10.json",
+      "sample_sha256": "7022948f251c88ebf8a76ad05c0c0284f6dd60253d475966dedb438c2460d5f7",
+      "oracle_path": "evals/live_v1/oracle/lv1-c02-10.json",
+      "oracle_sha256": "77e33fd3ea2f8e546148a91c883ff0e6daeadddd050b3f986607ebe329adc407"
+    },
+    {
+      "sample_id": "lv1-c03-01",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-01.json",
+      "sample_sha256": "9aefe1e41c379abbc5aded9ebe353a8ce38b0244ba8519e1cd3413d25e37b1c5",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-01.json",
+      "oracle_sha256": "ce6adbc85740af21537ab46bdd3a3dfc00bdff0a559ce690056d59eb996cad15"
+    },
+    {
+      "sample_id": "lv1-c03-02",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-02.json",
+      "sample_sha256": "81eeaac9e9a3c0baf16477ac04d1d02f1dacb4946ec60573ed2f6e767f7693d8",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-02.json",
+      "oracle_sha256": "0281618ca1b29973255fee65f14d4345c348ce7e37ab81273bceb20114c22bc0"
+    },
+    {
+      "sample_id": "lv1-c03-03",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c03-03.json",
+      "sample_sha256": "0700e578b9ad7aa9da38bbf585d666ddc624d92d4e8cfc0b15667bed38d6f6e4",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-03.json",
+      "oracle_sha256": "6c2443690148e05d05214610b342a36f4ac9e93c673bdd95c7ac95b8c16e92c3"
+    },
+    {
+      "sample_id": "lv1-c03-04",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c03-04.json",
+      "sample_sha256": "4e858f0fadd8f5f5d5645ed9cab3e2c4456808dee9a15b5c8e2326c5753cf44d",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-04.json",
+      "oracle_sha256": "e874e243517e756a35d9aa4f8636690715d5b523c6d3fae3810d7095132a3f1e"
+    },
+    {
+      "sample_id": "lv1-c03-05",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-05.json",
+      "sample_sha256": "7df6f545398c60264273138e7c686a7c311aa9794324e36dfddb7192c5da13f5",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-05.json",
+      "oracle_sha256": "af596373bdc5f3683cd2283dad55955368d2ec4943c30f250db0ee09a869d62c"
+    },
+    {
+      "sample_id": "lv1-c03-06",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-06.json",
+      "sample_sha256": "e3bf6a6d7a587153b47575d76e62f405bd32acee7a93812e7023eac7a2899352",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-06.json",
+      "oracle_sha256": "48161d817ff6d4bc2be7019b1c139dd81bb0838b839f1ed1712e00618ba1733a"
+    },
+    {
+      "sample_id": "lv1-c03-07",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-07.json",
+      "sample_sha256": "e1220354bcbadf0b6b802a3c0559571df04a480351b1016bc460be7a504a9d92",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-07.json",
+      "oracle_sha256": "f4fd7e04b63e77cf8939b757a4a46745bef6c88fe9c8e24e1d3ab9cb5c89e5f8"
+    },
+    {
+      "sample_id": "lv1-c03-08",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-08.json",
+      "sample_sha256": "dfc0759abede8db175240fc20977d80fd230c5531aa37047f88b416a25ed1a24",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-08.json",
+      "oracle_sha256": "5c2e48f864a9075e38b4ab6a650cc45b2232ae3d3895318c2a39076c65d717ab"
+    },
+    {
+      "sample_id": "lv1-c03-09",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-09.json",
+      "sample_sha256": "237e22cdcdf1fe486869520a11744565fefb7b056a41796f706aecb82b32bfad",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-09.json",
+      "oracle_sha256": "6aee1f459ad69831875baa849f28eecab77ea9b8b137b60b3bd685995b124c9d"
+    },
+    {
+      "sample_id": "lv1-c03-10",
+      "category_no": 3,
+      "category": "replace_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c03-10.json",
+      "sample_sha256": "9fabbab522716301abac1104a0f11efa126e83369bb85b32a4c42cefd332512d",
+      "oracle_path": "evals/live_v1/oracle/lv1-c03-10.json",
+      "oracle_sha256": "a73e2ac0c8d7e64a5b22110c1e1b5945fac901be66e012414dbb770e4936859a"
+    },
+    {
+      "sample_id": "lv1-c04-01",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-01.json",
+      "sample_sha256": "9af6ce129216442d3b9ca1f9241296ab6a7de362a07415a23fc3c9cdce54f952",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-01.json",
+      "oracle_sha256": "20c4584b054305e98266683e69a2854fc547f9c6ed941e94ba736e493959d820"
+    },
+    {
+      "sample_id": "lv1-c04-02",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-02.json",
+      "sample_sha256": "2300f865d6db0e7a340255381ae94fdbc6794f14a7feece49fae0e91b6a7caff",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-02.json",
+      "oracle_sha256": "b47b4897350396eb6c3b9b46f98b410fdc836ce0a1ba24dfe3c07ee036e8c3bd"
+    },
+    {
+      "sample_id": "lv1-c04-03",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-03.json",
+      "sample_sha256": "1c5cb512bafc4fb7d15ebfe70f23cda058c34c1e6b111eaccefb93c72c4a0224",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-03.json",
+      "oracle_sha256": "7007a9ce34e5b5df7f01a580aefc48ab3034d2482eec93eb64bef7bb5a1bba71"
+    },
+    {
+      "sample_id": "lv1-c04-04",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c04-04.json",
+      "sample_sha256": "081bf86b7b43fc3fdcc39a496322b1c6ef0da9b761b091d6f645fe104a9ddcee",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-04.json",
+      "oracle_sha256": "70c0f0d23d2d6dd12b10e7fd91454b1c5863540e0336ff29cb72858cf0a96492"
+    },
+    {
+      "sample_id": "lv1-c04-05",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c04-05.json",
+      "sample_sha256": "36a669456dd3262a2b700854d59fc747fc2163f9e715fe16aa6e98949ca021dc",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-05.json",
+      "oracle_sha256": "388ac21c421a255a2cc4d53e338cbb59144ffa54e3176ddf5d58478a01720662"
+    },
+    {
+      "sample_id": "lv1-c04-06",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-06.json",
+      "sample_sha256": "3f71d8636b36addb10b84d9a93c1cfd4511b340997d1ce4d346dfa1d2ef1c6f6",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-06.json",
+      "oracle_sha256": "67993cf434d9c20616ff89e6e9c985f23b4521860d89557ae589c4ed91af2886"
+    },
+    {
+      "sample_id": "lv1-c04-07",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-07.json",
+      "sample_sha256": "8aa93a5de03bb33d11ba38028f21e93ec694d30353ded2602892d344087ac292",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-07.json",
+      "oracle_sha256": "6848ec8fa0fc5982c1c5f5b1c27eef3040a2df17e6124d3156640a6fa6d3e803"
+    },
+    {
+      "sample_id": "lv1-c04-08",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-08.json",
+      "sample_sha256": "7ab9477e69e9974359be43ee3b63a4363d831272283d9c96dd229f31665d767e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-08.json",
+      "oracle_sha256": "a4e953f6c87139ec3f21b0617f491c65fce6d81d39d47364e7ca2f53797080a2"
+    },
+    {
+      "sample_id": "lv1-c04-09",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-09.json",
+      "sample_sha256": "fdbfbc65939cc8cd609a598df643b587880793ae0f6955bae35acd12d35f99a6",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-09.json",
+      "oracle_sha256": "fe587217b6f1d184a1b8ecedcb5cac3021e9688d75b60abd3b39d1af9eacc4fe"
+    },
+    {
+      "sample_id": "lv1-c04-10",
+      "category_no": 4,
+      "category": "cancel_remaining",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c04-10.json",
+      "sample_sha256": "822ca96b44122b32614ab943766fa737e3b478648a84c2effe27bfeabecf1fa0",
+      "oracle_path": "evals/live_v1/oracle/lv1-c04-10.json",
+      "oracle_sha256": "e7ff5166afbdfe81403ff53637ad5f2e402dd208a6f37dd13e7b2ae049924b5d"
+    },
+    {
+      "sample_id": "lv1-c05-01",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-01.json",
+      "sample_sha256": "fac902a0ffb305a2f4bf6f6b78f8c954ba0f186424e1b56c4e38b3a58270a726",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-01.json",
+      "oracle_sha256": "1edfba3d3dd8fefc0b68c150095c04ec38dc56379ec64a085ce4d5d1d1cf0546"
+    },
+    {
+      "sample_id": "lv1-c05-02",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c05-02.json",
+      "sample_sha256": "47c10ea49bb87fe90b01bc77c17dcb828a44e74e3cd9e890a2bb9ff07c154dfa",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-02.json",
+      "oracle_sha256": "95f45730040db01f6842d012c2f8d8d603887e81d49fa3a2729136ceb66b44b2"
+    },
+    {
+      "sample_id": "lv1-c05-03",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c05-03.json",
+      "sample_sha256": "81e7bac8369e0d8606a6927657ca6c9097f536305150880fbe0c241f153147cb",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-03.json",
+      "oracle_sha256": "dc890c990b3ce4a70279c5f0f0a5af8a154ca64ed0b85c55b529dac7c63b23bc"
+    },
+    {
+      "sample_id": "lv1-c05-04",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-04.json",
+      "sample_sha256": "9e5b2f1b518be8feefada7383ef5f2a7bcab9835ec72fdc009d49b3eb0305e33",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-04.json",
+      "oracle_sha256": "ded73799b90ddc33e365b6fe0cc5751d1aeee6ecffe80c66fabfa8c3a6c36fc1"
+    },
+    {
+      "sample_id": "lv1-c05-05",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-05.json",
+      "sample_sha256": "6424452db8249ad0cd7f6fdcb354d05ea37d5a28ee3ff5afbe9f66445d9e6fd7",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-05.json",
+      "oracle_sha256": "7d7163e839ae2aecb52f5cbf358a4377194a51e8199f5a9eb1f29ba07c5f7c40"
+    },
+    {
+      "sample_id": "lv1-c05-06",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-06.json",
+      "sample_sha256": "c3cf250ab3eba52425dfc5a0fdb49e2c418ef1b56383eaa4008d1563f1be83a0",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-06.json",
+      "oracle_sha256": "f795a2edd7b9f709ecdb5d3dad8b9ff5f89715835e9fc0832a899affce64a7e5"
+    },
+    {
+      "sample_id": "lv1-c05-07",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-07.json",
+      "sample_sha256": "1c2e7f57ab991067441366805b61d8ebdf51e1981f656cf1d05fe8781b0cea34",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-07.json",
+      "oracle_sha256": "b38a2f1c7c3c50ba9208e4c75213edfcb6a2ff966dd046afa293cdca0b200cc7"
+    },
+    {
+      "sample_id": "lv1-c05-08",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-08.json",
+      "sample_sha256": "9ddb00741ef01e867502a6f8ab8246d1ed427395ec7754391e4ea970d40b1d44",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-08.json",
+      "oracle_sha256": "0358ab274237dfbbfc24ec5e01cd9a38e30c37dab506ee620b373dd9c0fb856b"
+    },
+    {
+      "sample_id": "lv1-c05-09",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c05-09.json",
+      "sample_sha256": "3c0ee16c518c5915afede586fc521a45e8a2216206b560b1daeb674138145c2c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-09.json",
+      "oracle_sha256": "548326bf49877ffdda1c5cedc7c747d6e4194979cc73fc186007ecb76fc6ac3a"
+    },
+    {
+      "sample_id": "lv1-c05-10",
+      "category_no": 5,
+      "category": "new_order",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c05-10.json",
+      "sample_sha256": "b4018b0620454e5cc8ef37ea98c05e3c16b9c22eccbc78dae28583033beab803",
+      "oracle_path": "evals/live_v1/oracle/lv1-c05-10.json",
+      "oracle_sha256": "b8b7d143ba1cb6f9e69fb534f453e1ccd13d7016b5b0ec4346a2d5a2b9e579ea"
+    },
+    {
+      "sample_id": "lv1-c06-01",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-01.json",
+      "sample_sha256": "856d10247a5d737b94b0c79bbb7eb5ab7e01d413087a0834bd9f72250712f7dd",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-01.json",
+      "oracle_sha256": "59e9ec90c20f8fb17fe450437b2fe3efaffd25cd023c6cb75dfe789c6f2f1a4d"
+    },
+    {
+      "sample_id": "lv1-c06-02",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-02.json",
+      "sample_sha256": "77472a2c7a0fec2df7992faef69b723f828ba5f3ec084f916fe893c83e734a30",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-02.json",
+      "oracle_sha256": "cf08cbb45793e443ae5f439e8aeb68d49819303c05102533537c42dd5943a41d"
+    },
+    {
+      "sample_id": "lv1-c06-03",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-03.json",
+      "sample_sha256": "b8473c4b1efa419f31902a323da74d07fd57f331f4c3c7e898d2c7bf96ad245e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-03.json",
+      "oracle_sha256": "c40e72a4b2e3db231e7994b58da79ed901a68e39bc15c145c1dda2560a42d327"
+    },
+    {
+      "sample_id": "lv1-c06-04",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-04.json",
+      "sample_sha256": "1cb2edba39b4c72baf1db817e1ec25893fa4334757d1c0ebb039ae9ee37e1e2a",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-04.json",
+      "oracle_sha256": "8e935ec088e25b598dfb3c0d101427afab5a31ccc2a9de7eb05617de2baa22a2"
+    },
+    {
+      "sample_id": "lv1-c06-05",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-05.json",
+      "sample_sha256": "34569b825259608e2e8dc80034d419806142e72be1cc076ed97dd9fb8c9919af",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-05.json",
+      "oracle_sha256": "8af3fb9670c3c82a90b7a8da9bc3e70c4e74659266d85037f6146273e4a2e30d"
+    },
+    {
+      "sample_id": "lv1-c06-06",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-06.json",
+      "sample_sha256": "4c34d3e29a013bcd834ada4ec5d9da39d259a05c5c9036df436308b9704a6677",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-06.json",
+      "oracle_sha256": "1644ad21d5da78e76cc21e6e6cdbfee44c6673790549cd6fcd4db87ee97cc126"
+    },
+    {
+      "sample_id": "lv1-c06-07",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-07.json",
+      "sample_sha256": "ad2a33ee86048f5290a089bc1f98eed282b44ff1278554a09b02318d1a7ceaeb",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-07.json",
+      "oracle_sha256": "9c729f20f672044de47152d9337f609f62438a69f63e33f0683bdf0a773f7dbf"
+    },
+    {
+      "sample_id": "lv1-c06-08",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-08.json",
+      "sample_sha256": "594a0684eb2c32d3571af823d9c76bdc97375eb633141e491ce1864a965eb20a",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-08.json",
+      "oracle_sha256": "90c19f4217d5d997e9cdc8e35231295f806760db8f308e121f49c722086b208d"
+    },
+    {
+      "sample_id": "lv1-c06-09",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c06-09.json",
+      "sample_sha256": "5e47c8c6f6eace72abaea91bca0d34f8660734093cd6c69e87a3a7150e52f248",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-09.json",
+      "oracle_sha256": "b3508af66338eb721d723d28f5c4395eb425382df64f5025cfbfbd5a30cd5422"
+    },
+    {
+      "sample_id": "lv1-c06-10",
+      "category_no": 6,
+      "category": "clarify",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c06-10.json",
+      "sample_sha256": "e8b78913dc333ea2df7b6c48daae858dd07eac90f8cfecf72a01f002f5f852db",
+      "oracle_path": "evals/live_v1/oracle/lv1-c06-10.json",
+      "oracle_sha256": "8bf8efe158437172892e4d338993054c5a083bce8d0a4cc8f92dedf4450b56d7"
+    },
+    {
+      "sample_id": "lv1-c07-01",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-01.json",
+      "sample_sha256": "5cd3d4199a1437068aa7bd18d725a3c9028456bab927ef960c5f3e083c747b46",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-01.json",
+      "oracle_sha256": "2503e71a8cbbd240e66c4dfc85658432337fd15a96e4062bbe4ff5257e0e552a"
+    },
+    {
+      "sample_id": "lv1-c07-02",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-02.json",
+      "sample_sha256": "e5c89aa62bcb9ff79214b3accc4c53e14c4dae2213f3fcce1a412f4e96d3d94c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-02.json",
+      "oracle_sha256": "f34fa39ce01e093f9ef45e6fe611a981b6653d6a7458e0297889696cc2fd73c6"
+    },
+    {
+      "sample_id": "lv1-c07-03",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c07-03.json",
+      "sample_sha256": "17cac8562b80fe8218d5fe833ce05c5d3bd1e28831fe20afce7131c22eb83089",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-03.json",
+      "oracle_sha256": "f8e14780c1332eedf5b3e17e988a6e0efd05cb1678bc58ad6b7fad70e2119f03"
+    },
+    {
+      "sample_id": "lv1-c07-04",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-04.json",
+      "sample_sha256": "f283ec41508f61fecf970b464a3fad111f765fe434ef5fac1dd537791426b501",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-04.json",
+      "oracle_sha256": "5e1043152ec494ae0699f709055b573e07077b0fe268bcdcdff065eeda1a7e74"
+    },
+    {
+      "sample_id": "lv1-c07-05",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-05.json",
+      "sample_sha256": "c18ca5c2f4dba62c900465a5279509010ed9a2e2c5328f4ed571f95517e4aa87",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-05.json",
+      "oracle_sha256": "2135d1c0e09f2dc148f202b3633130a027eb4f333169dec98ce125e755707365"
+    },
+    {
+      "sample_id": "lv1-c07-06",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-06.json",
+      "sample_sha256": "972b0827031801186fa656a41604f25b03c4feea28df4cca6f092a89cd17073b",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-06.json",
+      "oracle_sha256": "3744aa1919eac3a70a0e51f4ae3baea6f1089c9d7ed6960651f5b7f24748bd56"
+    },
+    {
+      "sample_id": "lv1-c07-07",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-07.json",
+      "sample_sha256": "b31a1eabf241cd100b40bc1b99bc4f907b937df020ee781fca818c9391f51c4b",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-07.json",
+      "oracle_sha256": "107ee889f3e23bc5c6046a29388f5f702d10e7f77560486e10af6f216dfa29c0"
+    },
+    {
+      "sample_id": "lv1-c07-08",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c07-08.json",
+      "sample_sha256": "c46c5a53481d8037386f3717329d2626571db1cd6f58ca6ba0655ad81b516f8f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-08.json",
+      "oracle_sha256": "9fd154a8136698f33f4f773e9a6d1b69ad4447df1edf88b8a6198e1018741292"
+    },
+    {
+      "sample_id": "lv1-c07-09",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-09.json",
+      "sample_sha256": "8e6b304addcdb5f9068c9d07c85b3d98d98be1ca2f0351fd3b903b84bf514952",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-09.json",
+      "oracle_sha256": "2230bc26dca90a2654cdc322fcb13860b269b6ee31567fd290773933d0326206"
+    },
+    {
+      "sample_id": "lv1-c07-10",
+      "category_no": 7,
+      "category": "cross_order",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c07-10.json",
+      "sample_sha256": "6cb45f4dfecd5380050ebd72ec52947c30f47c5081e49aca5b671f49236a234c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c07-10.json",
+      "oracle_sha256": "5181b49d3a18c55ff7c7ad4f492591e0944e624fa82cbdbc7f9719ecfbeefb40"
+    },
+    {
+      "sample_id": "lv1-c08-01",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-01.json",
+      "sample_sha256": "2532498dc10e1114c938cf1eb5ac8fbb148962725ed2dfb05bfe7485da466e74",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-01.json",
+      "oracle_sha256": "f706dda358255599f4b316e32168989b060a7730f31ff0e15da6783e08ecf109"
+    },
+    {
+      "sample_id": "lv1-c08-02",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-02.json",
+      "sample_sha256": "709de23964110bc74df0fac57a72672de61209e1287dab3f6a854f04d8c189b2",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-02.json",
+      "oracle_sha256": "6240e136fb21247460c285c3fc6b2c561e6386861109a7f4014097ca89885be5"
+    },
+    {
+      "sample_id": "lv1-c08-03",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c08-03.json",
+      "sample_sha256": "128aad2e2decf0c2ca7085c5da50e01fa0ad3029fd35c62cf9889f35b31cc2c2",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-03.json",
+      "oracle_sha256": "f54e501101d93ff9ee21c748085a7101535d4dfcbdd9aac1c5fbb8989cb444e5"
+    },
+    {
+      "sample_id": "lv1-c08-04",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c08-04.json",
+      "sample_sha256": "761e299902eb4e90b19f31c1b2bf0163151afefbed3bd3437ce0bd1e3a59d3a9",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-04.json",
+      "oracle_sha256": "0461a3047a3ef4979e04890b92a817dfe0dd19b7c930403377510ba96470065a"
+    },
+    {
+      "sample_id": "lv1-c08-05",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-05.json",
+      "sample_sha256": "0a2bb7b88422268987d10ca208df0f59b5efd78492575a15ce7cfd430e790338",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-05.json",
+      "oracle_sha256": "e8855bb766a5ae7edca648de1cb633c954bf369381616948b4c3dbba27b9ca86"
+    },
+    {
+      "sample_id": "lv1-c08-06",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-06.json",
+      "sample_sha256": "3e08e19556478cec16758637b6b11819f0713050f3236ca77db2381348a13af8",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-06.json",
+      "oracle_sha256": "2dddb5efb35a16236a4c376b5c5dc504a9b582d6602b46f71e36e155d7130968"
+    },
+    {
+      "sample_id": "lv1-c08-07",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-07.json",
+      "sample_sha256": "2b6eee6c7f0511d50097534fd1da247e317ebd77475e241ce9e412f35b290c29",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-07.json",
+      "oracle_sha256": "ceab2d20f1e3c09e5335fe55222e3a9585259fd281a924293bd3fc90771ce53f"
+    },
+    {
+      "sample_id": "lv1-c08-08",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-08.json",
+      "sample_sha256": "906d362f430788847b63f93ca6db5c9e51f6c1f14873427b3472a0f1fdf26661",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-08.json",
+      "oracle_sha256": "32062bcc84e737bfdb50554cc44366f763cf3e9c42d8c65a27eed2ecd2d369c5"
+    },
+    {
+      "sample_id": "lv1-c08-09",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-09.json",
+      "sample_sha256": "9e586e7f628eb974c3e953bc0688479ecc4fcbcfb133966ab83e1334de0311f5",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-09.json",
+      "oracle_sha256": "a8aafe438bf2d0216478d2c5b7f5a51b032bc21700df4171b47a7f1df1611cb8"
+    },
+    {
+      "sample_id": "lv1-c08-10",
+      "category_no": 8,
+      "category": "prompt_injection",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c08-10.json",
+      "sample_sha256": "7c673f140da38ebf0ff453334ddb03a5fc3a1e2ac83975ef3f409ef24598b51b",
+      "oracle_path": "evals/live_v1/oracle/lv1-c08-10.json",
+      "oracle_sha256": "f76ea290965eedac2fb24a5fe8fb894d68031901edbf62f6e662b81c9f736790"
+    },
+    {
+      "sample_id": "lv1-c09-01",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-01.json",
+      "sample_sha256": "b0b279dfc39b01fee5b674dc2084a032ba5565a3cb1177051ae436ccea13566f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-01.json",
+      "oracle_sha256": "7963dd15803640a9d4532e82ca038737a5477c3b593c43ddf5898a313f285d4b"
+    },
+    {
+      "sample_id": "lv1-c09-02",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c09-02.json",
+      "sample_sha256": "e19731d592a7a64d0aaa15944c7b7b12e4c1821eb39e52cbfbebce1815b0de88",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-02.json",
+      "oracle_sha256": "efd7fa60a728be4803df87a923f794daa7ecc90ce7408a9b8ef1a0ac6736b688"
+    },
+    {
+      "sample_id": "lv1-c09-03",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c09-03.json",
+      "sample_sha256": "9f9f64c77200e89fd85fe75539d0204d6f14cd4a32ee713efdae902539c034c3",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-03.json",
+      "oracle_sha256": "94a9ba06232c9b157b3f67e62e37f7df5f7b5a93ef613227be01ae672365c659"
+    },
+    {
+      "sample_id": "lv1-c09-04",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-04.json",
+      "sample_sha256": "f1b5bd395706342a4ec410548766712c0c408c4fe935976149a67158fc866a3a",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-04.json",
+      "oracle_sha256": "db68738ca7f493429df3afd85710086d19895df7961734966397788b5a5e8dd5"
+    },
+    {
+      "sample_id": "lv1-c09-05",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-05.json",
+      "sample_sha256": "c24a9176643a11f62b505e4beb48704cad2b3426ba7eb557afc229b67d9b7435",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-05.json",
+      "oracle_sha256": "d1fbce8c9050b1c8936af8aeec6d087adcd3813430142b04673442e72353e0c0"
+    },
+    {
+      "sample_id": "lv1-c09-06",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-06.json",
+      "sample_sha256": "2023d2dcf9da8c667e0b041da6d0f3e07a392e2c635d708c297d4734933bcab9",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-06.json",
+      "oracle_sha256": "c9d945b5c8aaccda106f27eb09cac43f9ae87959aa652fc57b437af1d12837e0"
+    },
+    {
+      "sample_id": "lv1-c09-07",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-07.json",
+      "sample_sha256": "491f142a4d6be1590e387a3392883ebd841d13a73d3ffdceb70cd18e1a582f4f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-07.json",
+      "oracle_sha256": "a8a50a88522f2e5ab24a18850432dfb64ac41f2a0ce20e20b802f30787e51d0f"
+    },
+    {
+      "sample_id": "lv1-c09-08",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-08.json",
+      "sample_sha256": "50b2aaa490fdb9a911621adac343289d049b9f3375e641adf630d750da22734f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-08.json",
+      "oracle_sha256": "191c2c01470154312ebe888634d18052e75fbc5b7787cb60148021a4abd2a46f"
+    },
+    {
+      "sample_id": "lv1-c09-09",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c09-09.json",
+      "sample_sha256": "5a2851eb1f8c5e99c2debd6a3c16d1a7e8e79260e72c154b3ccdd84c80d1406b",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-09.json",
+      "oracle_sha256": "96bb3b1d301dc42a469ecb3e91443b26ca62038646e9763395ddb4e137a39cfe"
+    },
+    {
+      "sample_id": "lv1-c09-10",
+      "category_no": 9,
+      "category": "multi_change",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c09-10.json",
+      "sample_sha256": "f0876d5e3ce68744c045f1185d856610aeb15775074d1befba95cee085350c0a",
+      "oracle_path": "evals/live_v1/oracle/lv1-c09-10.json",
+      "oracle_sha256": "59b302e594829705b381fec7b78a47f97034bed097978425d21aa4c472dcfe65"
+    },
+    {
+      "sample_id": "lv1-c10-01",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c10-01.json",
+      "sample_sha256": "419a956e05778a1fd9a164cb27e4df3e1c9711e5b65282f4e0dc0e7fef32f053",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-01.json",
+      "oracle_sha256": "d6728d4a5fbcaef1304a6767b34e7ff8411684d79862f97eac6ac28a264c6d83"
+    },
+    {
+      "sample_id": "lv1-c10-02",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-02.json",
+      "sample_sha256": "1b2300fedb124b4d29442d09debe244188d1f967d1beb1232e166012462ab190",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-02.json",
+      "oracle_sha256": "4351fef3e27c409a12c8220a1990b726e72bab87c1ec23d62d9b5a4715b4bd95"
+    },
+    {
+      "sample_id": "lv1-c10-03",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c10-03.json",
+      "sample_sha256": "221c4a97200dbb2d423595cb284f0e504cb6c32f0a8dbd06a23cde8f5dcfd15f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-03.json",
+      "oracle_sha256": "2e4aa6200fd6314c8d791602451a5705d833429a4022904c720883f595662767"
+    },
+    {
+      "sample_id": "lv1-c10-04",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-04.json",
+      "sample_sha256": "51c6fe4791ceb3008846e96c3997d5a3db6b44f08b7d2dd36a690a2e599f62dd",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-04.json",
+      "oracle_sha256": "146d9326e8d026897d4648eedec07610fe0f7ae458a25d61b8603a7026f30c9e"
+    },
+    {
+      "sample_id": "lv1-c10-05",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-05.json",
+      "sample_sha256": "ebb6ca82ec8d309ee6551040b954a983322a5fde4fb32398411f31e129edbc57",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-05.json",
+      "oracle_sha256": "e3792f541e72e9f53673b237d4c1b4bac4f5cda3f6b65426ef607dcd7f8f7699"
+    },
+    {
+      "sample_id": "lv1-c10-06",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-06.json",
+      "sample_sha256": "c79ce812e273db76b30313b8b55fe6d788d0b9d110d87423a1e48ce66265929e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-06.json",
+      "oracle_sha256": "34e7a409ccc420c793fbf668b3ba6fe7484d28638aa4848c5d80d7f5dd12317c"
+    },
+    {
+      "sample_id": "lv1-c10-07",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c10-07.json",
+      "sample_sha256": "9d56d43a5f6b86ef24bdeb25d4c296c47bc61e9ac026b3d787a2fde30ae81c99",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-07.json",
+      "oracle_sha256": "f5cf8ea9a91d50168eca230d99c1803fbb285ff04d695be32810d1eb2ff0141d"
+    },
+    {
+      "sample_id": "lv1-c10-08",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-08.json",
+      "sample_sha256": "7c67a96dde4ac49a8fef8dcb6c3f83be0db05ca32b5b4b47e8889c92059c5909",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-08.json",
+      "oracle_sha256": "0df8df0905505ad51ec4a5e462c880ef0782703c76ccbc3b71a4f51ab7590a3f"
+    },
+    {
+      "sample_id": "lv1-c10-09",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-09.json",
+      "sample_sha256": "87fb76a81040e22d3a9f04a87035ee8c6e0c48ab6169e9edec2a3ace981cc5e2",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-09.json",
+      "oracle_sha256": "072fa27a903690a1cbd42d7b2445f048cea29b7b98eee66e67108ba9477eeea2"
+    },
+    {
+      "sample_id": "lv1-c10-10",
+      "category_no": 10,
+      "category": "colloquial",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c10-10.json",
+      "sample_sha256": "a43884cd9cd8c7b9275fff393e30c0eed36077244dd80334105eddec581fe061",
+      "oracle_path": "evals/live_v1/oracle/lv1-c10-10.json",
+      "oracle_sha256": "7e6b322a678ee545e0e77e4636c3a41842885ad054dc1283f341a2423debb36e"
+    },
+    {
+      "sample_id": "lv1-c11-01",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "chat",
+      "sample_path": "evals/live_v1/samples/lv1-c11-01.json",
+      "sample_sha256": "378c3fdb5e56f61d0d59a26763c014c87bb9e0f8c3c7dba5865196cf90589859",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-01.json",
+      "oracle_sha256": "1ec2c50035ae2a9fece35d71e904f4b81c98ab55800eb10f03c27ee42010b3b2"
+    },
+    {
+      "sample_id": "lv1-c11-02",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-02.json",
+      "sample_sha256": "4769e7a34697d3826b8c09138a4ea9250eaa8127f8ee8069e4162519cbac5363",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-02.json",
+      "oracle_sha256": "b981b8adffab2b84979171a9bc49d421ce24bff32faca33e86ed53c1ae353a44"
+    },
+    {
+      "sample_id": "lv1-c11-03",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-03.json",
+      "sample_sha256": "1df6abc7e2e6af19e967f8dba30e93c5645c0cbf168b3cb1840c386853d88f4c",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-03.json",
+      "oracle_sha256": "9654e85d1e99889068e02ed7a6db43d0a67892d8cd8f3c9e3e898c53d35f2ead"
+    },
+    {
+      "sample_id": "lv1-c11-04",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-04.json",
+      "sample_sha256": "000924550a6febd55fad9adbbe0c7abebdd9e102d1ae308cf72b733ae7ee19ca",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-04.json",
+      "oracle_sha256": "98885fbfeae7f7727c1c4908a82808c733aef0a86bc75802b1cedf4d7d829c9b"
+    },
+    {
+      "sample_id": "lv1-c11-05",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-05.json",
+      "sample_sha256": "3c544a029078d7de7259b2affca35d6f63abfa8f50a1ddf7c62662c31098b4da",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-05.json",
+      "oracle_sha256": "ad0cfc8ce6d10c5f046e2c8d085f9a6f8b57d898a93bb6dcb83d2bfb08bcae11"
+    },
+    {
+      "sample_id": "lv1-c11-06",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-06.json",
+      "sample_sha256": "993904211652d3e6497647d5ef44ae50d41cf95b0e831687c1e19d6f17d2c980",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-06.json",
+      "oracle_sha256": "3803aa76fabba4bfdfba9bb6a4e05db373e698ff8c3475f1c26e9bc5ecbf28ff"
+    },
+    {
+      "sample_id": "lv1-c11-07",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-07.json",
+      "sample_sha256": "ee07f2f90dad384f4ded0e95a2fc88ac62726813d55f51346d24653b89744ae0",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-07.json",
+      "oracle_sha256": "8b94cd1b358b42d15cc355945f86180c4e0c20fed81ff0117f6ca7ecb9f86f25"
+    },
+    {
+      "sample_id": "lv1-c11-08",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-08.json",
+      "sample_sha256": "3fff0da1cd8de3905065f5b2f6ade24b47d39b21be81ab447f438c33e535952a",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-08.json",
+      "oracle_sha256": "819a31e63bd819bd746d922097df9867305cc6f52b49a53a48c533809cf6c5d7"
+    },
+    {
+      "sample_id": "lv1-c11-09",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c11-09.json",
+      "sample_sha256": "0d29bdcc273284ea76d11e9257f6601ccc29dd1a797d8c46ccead8a94d840ba4",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-09.json",
+      "oracle_sha256": "a74897d3984dfd32b4e92949f79766f609dbcc91aa2d45620436224e76473f99"
+    },
+    {
+      "sample_id": "lv1-c11-10",
+      "category_no": 11,
+      "category": "pack_unit",
+      "form": "markdown_table",
+      "sample_path": "evals/live_v1/samples/lv1-c11-10.json",
+      "sample_sha256": "2792e4f942c3663068e7eefeaf821649481b01f50db681e510ac3c08cfd25d3e",
+      "oracle_path": "evals/live_v1/oracle/lv1-c11-10.json",
+      "oracle_sha256": "57df8adf5c9b46f28edbce1ffce675d54e16ebaa11bab1cf6bb763547eab8282"
+    },
+    {
+      "sample_id": "lv1-c12-01",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-01.json",
+      "sample_sha256": "858ff4038000186be2de44f6e61475911322411cb5d07b296ee65c5175875ef4",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-01.json",
+      "oracle_sha256": "ec63b85c75848a78d5f5c7019838c5f885eb1a743a6353a8d40760e4ba70159b"
+    },
+    {
+      "sample_id": "lv1-c12-02",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-02.json",
+      "sample_sha256": "aff49603b524cd985022fc92fe221187644b7a1d0bdc1726891ff780f8a0c94f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-02.json",
+      "oracle_sha256": "2b95d77e371fa13714ee951923f69c3bdbf8e47bb1284a7d73db44e3704b4f1a"
+    },
+    {
+      "sample_id": "lv1-c12-03",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-03.json",
+      "sample_sha256": "0a4d9c05a97e13b11f4c25c4b4430abce0dbd47040fd777447deee597da6463d",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-03.json",
+      "oracle_sha256": "a839de8e14655ea123f1aef114baedba5d46b0630fece2e5addbcf4192615615"
+    },
+    {
+      "sample_id": "lv1-c12-04",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-04.json",
+      "sample_sha256": "a860cef060c2bd5368e2b1785477e306e30d013ca9cba55af67e3dcac4a31765",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-04.json",
+      "oracle_sha256": "2b9c4b243e52afe4f4e0abaab5b8b24529ebfdee7bcb78fd2ebb2e65f24b05f7"
+    },
+    {
+      "sample_id": "lv1-c12-05",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-05.json",
+      "sample_sha256": "70038605e882fb562aae1bf84e637a67a4f28cc84823f94dd8a552f318a92f58",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-05.json",
+      "oracle_sha256": "fa08064a3373e11a7da6108557a405d0d0a8c90feb8591e7f1dc0504f807b98e"
+    },
+    {
+      "sample_id": "lv1-c12-06",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-06.json",
+      "sample_sha256": "38f29987bde9ca5cce2eb20ea684bd2d102f4c9effcf48129301f33c85d94b0f",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-06.json",
+      "oracle_sha256": "e13e5506975576a8edf3ec96fada39f7dc07b0821c9c79f34863fde0be9cd640"
+    },
+    {
+      "sample_id": "lv1-c12-07",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-07.json",
+      "sample_sha256": "e3d53547e59ab387bce21ee7c0f3a393dea46fe1aaa4b4df81f0a2c7bf6b3c29",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-07.json",
+      "oracle_sha256": "2d358ec5ab2b90864bcfbed483aec3abf79c80776c584e4412f42cadf4194fdd"
+    },
+    {
+      "sample_id": "lv1-c12-08",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-08.json",
+      "sample_sha256": "a9243516fa6ad336dde73e3005a5e31152b0bffc9ddc0dbe600639c0cba91e52",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-08.json",
+      "oracle_sha256": "5de76892788db7aec906b1c67d56a2d4a4e400359acd4d5b109c964c437e0923"
+    },
+    {
+      "sample_id": "lv1-c12-09",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-09.json",
+      "sample_sha256": "fd96bccf142539d2b9a7b732eb51939e19c31820472e38deaef617356e1f26fa",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-09.json",
+      "oracle_sha256": "8c24bba94b42865a051caf784395efd3bf86b1ba4516775d1058956415760785"
+    },
+    {
+      "sample_id": "lv1-c12-10",
+      "category_no": 12,
+      "category": "out_of_scope",
+      "form": "text",
+      "sample_path": "evals/live_v1/samples/lv1-c12-10.json",
+      "sample_sha256": "1c97e55f673922fefb3ebb8c3c4fc5255c9093ccb698cb245b1c306e39f1f2d3",
+      "oracle_path": "evals/live_v1/oracle/lv1-c12-10.json",
+      "oracle_sha256": "2fe3a1a5bd67143991ab442c69340472a4f1aa4a0e4739720a5d86993cbb9054"
+    }
+  ]
+}

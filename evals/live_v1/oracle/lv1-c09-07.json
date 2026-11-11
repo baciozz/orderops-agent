@@ -1,0 +1,94 @@
+{
+  "sample_id": "lv1-c09-07",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "HY-2611-093",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": "HY7101-WH-M",
+          "to_sku": "HY7101-NV-M",
+          "quantity": 10,
+          "unit": "件",
+          "before_qty": 25,
+          "after_qty": 15,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "白 M 剩余未发的 10 件换藏青 M"
+            }
+          ]
+        },
+        {
+          "mode": "increment",
+          "sku_id": "HY7101-GN-L",
+          "to_sku": null,
+          "quantity": 15,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 35,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "荧光绿 L 再加 15 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "HY7101-GN-L",
+        "old_qty": 20,
+        "new_qty": 35
+      },
+      {
+        "sku_id": "HY7101-NV-M",
+        "old_qty": 0,
+        "new_qty": 10
+      },
+      {
+        "sku_id": "HY7101-WH-M",
+        "old_qty": 25,
+        "new_qty": 15
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "HY7101-GN-L",
+          "old_qty": 20,
+          "new_qty": 35
+        },
+        {
+          "sku_id": "HY7101-NV-M",
+          "old_qty": 0,
+          "new_qty": 10
+        },
+        {
+          "sku_id": "HY7101-WH-M",
+          "old_qty": 25,
+          "new_qty": 15
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

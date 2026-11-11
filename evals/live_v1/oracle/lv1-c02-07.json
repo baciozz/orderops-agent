@@ -1,0 +1,47 @@
+{
+  "sample_id": "lv1-c02-07",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "HY-2611-038",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "HY7101-GN-L",
+          "to_sku": null,
+          "quantity": -50,
+          "unit": "件",
+          "before_qty": 70,
+          "after_qty": 20,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "荧光绿 L 减 50 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "blocked",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "blocked",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "减后 20 件低于已发 40 件，规则应拦下。",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

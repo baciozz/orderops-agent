@@ -1,0 +1,84 @@
+{
+  "sample_id": "lv1-c09-08",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-255",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "QH2203-OT-110",
+          "to_sku": null,
+          "quantity": 28,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 28,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "燕麦 110 码：总数 28 件"
+            }
+          ]
+        },
+        {
+          "mode": "increment",
+          "sku_id": "QH2203-OT-130",
+          "to_sku": null,
+          "quantity": 3,
+          "unit": "件",
+          "before_qty": 14,
+          "after_qty": 17,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "燕麦 130 码：在原数量上加 3 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "QH2203-OT-110",
+        "old_qty": 20,
+        "new_qty": 28
+      },
+      {
+        "sku_id": "QH2203-OT-130",
+        "old_qty": 14,
+        "new_qty": 17
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "QH2203-OT-110",
+          "old_qty": 20,
+          "new_qty": 28
+        },
+        {
+          "sku_id": "QH2203-OT-130",
+          "old_qty": 14,
+          "new_qty": 17
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c02-09",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-525",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-BK-M",
+          "to_sku": null,
+          "quantity": -9,
+          "unit": "件",
+          "before_qty": 45,
+          "after_qty": 36,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黑色 M 码，原订单基础上扣减 9 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-BK-M",
+        "old_qty": 45,
+        "new_qty": 36
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-BK-M",
+          "old_qty": 45,
+          "new_qty": 36
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

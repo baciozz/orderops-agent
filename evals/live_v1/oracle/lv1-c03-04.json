@@ -1,0 +1,73 @@
+{
+  "sample_id": "lv1-c03-04",
+  "category": "replace_remaining",
+  "category_no": 3,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-411",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": "SJ3307-IV-L",
+          "to_sku": "SJ3307-DG-L",
+          "quantity": 8,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 12,
+          "citations": [
+            {
+              "line": 3,
+              "quote": "| SJ3307 米白 L | SJ3307 墨绿 L | 8 |"
+            },
+            {
+              "line": 4,
+              "quote": "只换未发货部分"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-DG-L",
+        "old_qty": 0,
+        "new_qty": 8
+      },
+      {
+        "sku_id": "SJ3307-IV-L",
+        "old_qty": 20,
+        "new_qty": 12
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-DG-L",
+          "old_qty": 0,
+          "new_qty": 8
+        },
+        {
+          "sku_id": "SJ3307-IV-L",
+          "old_qty": 20,
+          "new_qty": 12
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

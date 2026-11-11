@@ -1,0 +1,134 @@
+{
+  "sample_id": "lv1-c12-03",
+  "form": "text",
+  "request": {
+    "selected_order_id": "BA-1102-369",
+    "instruction": "上一批黑 M 有 3 件开线，申请退款 3 件的钱。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:52:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "BA8802-BK-M",
+          "style": "BA8802 冲锋衣",
+          "color": "黑",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-BK-L",
+          "style": "BA8802 冲锋衣",
+          "color": "黑",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-BK-XL",
+          "style": "BA8802 冲锋衣",
+          "color": "黑",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-KH-M",
+          "style": "BA8802 冲锋衣",
+          "color": "卡其",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-KH-L",
+          "style": "BA8802 冲锋衣",
+          "color": "卡其",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-KH-XL",
+          "style": "BA8802 冲锋衣",
+          "color": "卡其",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-OL-M",
+          "style": "BA8802 冲锋衣",
+          "color": "橄榄",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-OL-L",
+          "style": "BA8802 冲锋衣",
+          "color": "橄榄",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "BA8802-OL-XL",
+          "style": "BA8802 冲锋衣",
+          "color": "橄榄",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "BA-1102-369",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "BA8802-BK-M",
+              "ordered_qty": 24,
+              "shipped_qty": 24
+            },
+            {
+              "sku_id": "BA8802-KH-L",
+              "ordered_qty": 10,
+              "shipped_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [
+        {
+          "sku_id": "BA8802-BK-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-BK-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-BK-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-KH-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-KH-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-KH-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-OL-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-OL-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "BA8802-OL-XL",
+          "available_qty": 500
+        }
+      ],
+      "documents": []
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "sample_id": "lv1-c09-02",
+  "form": "markdown_table",
+  "request": {
+    "selected_order_id": "QH-1108-252",
+    "instruction": "| 款色码 | 调整 |\n|---|---|\n| 粉 110 | 加 5 |\n| 燕麦 120 | 减 8 |\n| 灰 130 | 总量改 30 |",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:21:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "QH2203-PK-110",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "粉",
+          "size": "110",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-PK-120",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "粉",
+          "size": "120",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-PK-130",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "粉",
+          "size": "130",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-OT-110",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "燕麦",
+          "size": "110",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-OT-120",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "燕麦",
+          "size": "120",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-OT-130",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "燕麦",
+          "size": "130",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-GY-110",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "灰",
+          "size": "110",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-GY-120",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "灰",
+          "size": "120",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "QH2203-GY-130",
+          "style": "QH2203 童装连帽卫衣",
+          "color": "灰",
+          "size": "130",
+          "fulfillment_mode": "STOCK"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "QH-1108-252",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "QH2203-PK-110",
+              "ordered_qty": 20,
+              "shipped_qty": 0
+            },
+            {
+              "sku_id": "QH2203-OT-120",
+              "ordered_qty": 24,
+              "shipped_qty": 0
+            },
+            {
+              "sku_id": "QH2203-GY-130",
+              "ordered_qty": 22,
+              "shipped_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [
+        {
+          "sku_id": "QH2203-PK-110",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-PK-120",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-PK-130",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-OT-110",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-OT-120",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-OT-130",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-GY-110",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-GY-120",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "QH2203-GY-130",
+          "available_qty": 500
+        }
+      ],
+      "documents": []
+    }
+  }
+}

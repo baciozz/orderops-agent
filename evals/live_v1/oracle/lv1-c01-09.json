@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c01-09",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-520",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "YS6120-BL-L",
+          "to_sku": null,
+          "quantity": 120,
+          "unit": "件",
+          "before_qty": 100,
+          "after_qty": 120,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "蓝色L码订单数量改为一百二十件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-BL-L",
+        "old_qty": 100,
+        "new_qty": 120
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-BL-L",
+          "old_qty": 100,
+          "new_qty": 120
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

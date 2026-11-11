@@ -1,0 +1,109 @@
+{
+  "sample_id": "lv1-c09-02",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-252",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "QH2203-PK-110",
+          "to_sku": null,
+          "quantity": 5,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 25,
+          "citations": [
+            {
+              "line": 3,
+              "quote": "| 粉 110 | 加 5 |"
+            }
+          ]
+        },
+        {
+          "mode": "increment",
+          "sku_id": "QH2203-OT-120",
+          "to_sku": null,
+          "quantity": -8,
+          "unit": "件",
+          "before_qty": 24,
+          "after_qty": 16,
+          "citations": [
+            {
+              "line": 4,
+              "quote": "| 燕麦 120 | 减 8 |"
+            }
+          ]
+        },
+        {
+          "mode": "set_total",
+          "sku_id": "QH2203-GY-130",
+          "to_sku": null,
+          "quantity": 30,
+          "unit": "件",
+          "before_qty": 22,
+          "after_qty": 30,
+          "citations": [
+            {
+              "line": 5,
+              "quote": "| 灰 130 | 总量改 30 |"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "QH2203-GY-130",
+        "old_qty": 22,
+        "new_qty": 30
+      },
+      {
+        "sku_id": "QH2203-OT-120",
+        "old_qty": 24,
+        "new_qty": 16
+      },
+      {
+        "sku_id": "QH2203-PK-110",
+        "old_qty": 20,
+        "new_qty": 25
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "QH2203-GY-130",
+          "old_qty": 22,
+          "new_qty": 30
+        },
+        {
+          "sku_id": "QH2203-OT-120",
+          "old_qty": 24,
+          "new_qty": 16
+        },
+        {
+          "sku_id": "QH2203-PK-110",
+          "old_qty": 20,
+          "new_qty": 25
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

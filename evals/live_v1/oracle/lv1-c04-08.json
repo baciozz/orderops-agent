@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c04-08",
+  "category": "cancel_remaining",
+  "category_no": 4,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-225",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "cancel_remaining",
+          "sku_id": "QH2203-GY-120",
+          "to_sku": null,
+          "quantity": null,
+          "unit": "件",
+          "before_qty": 24,
+          "after_qty": 4,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "灰色 120 码剩余的不发了，取消剩余部分"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "QH2203-GY-120",
+        "old_qty": 24,
+        "new_qty": 4
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "QH2203-GY-120",
+          "old_qty": 24,
+          "new_qty": 4
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

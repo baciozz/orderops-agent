@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c10-05",
+  "category": "colloquial",
+  "category_no": 10,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-562",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-RD-XXL",
+          "to_sku": null,
+          "quantity": 5,
+          "unit": "件",
+          "before_qty": 10,
+          "after_qty": 15,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "红的XXL追家5件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-RD-XXL",
+        "old_qty": 10,
+        "new_qty": 15
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-RD-XXL",
+          "old_qty": 10,
+          "new_qty": 15
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "“家”为“加”的错别字。",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

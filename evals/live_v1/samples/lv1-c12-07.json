@@ -1,0 +1,134 @@
+{
+  "sample_id": "lv1-c12-07",
+  "form": "text",
+  "request": {
+    "selected_order_id": "HY-2611-111",
+    "instruction": "运费改成到付，快递换成顺丰。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:56:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "HY7101-NV-M",
+          "style": "HY7101 速干T恤",
+          "color": "藏青",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-NV-L",
+          "style": "HY7101 速干T恤",
+          "color": "藏青",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-NV-XL",
+          "style": "HY7101 速干T恤",
+          "color": "藏青",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-WH-M",
+          "style": "HY7101 速干T恤",
+          "color": "白",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-WH-L",
+          "style": "HY7101 速干T恤",
+          "color": "白",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-WH-XL",
+          "style": "HY7101 速干T恤",
+          "color": "白",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-GN-M",
+          "style": "HY7101 速干T恤",
+          "color": "荧光绿",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-GN-L",
+          "style": "HY7101 速干T恤",
+          "color": "荧光绿",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "HY7101-GN-XL",
+          "style": "HY7101 速干T恤",
+          "color": "荧光绿",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "HY-2611-111",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "HY7101-GN-M",
+              "ordered_qty": 22,
+              "shipped_qty": 0
+            },
+            {
+              "sku_id": "HY7101-NV-XL",
+              "ordered_qty": 14,
+              "shipped_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [
+        {
+          "sku_id": "HY7101-NV-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-NV-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-NV-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-WH-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-WH-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-WH-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-GN-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-GN-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "HY7101-GN-XL",
+          "available_qty": 500
+        }
+      ],
+      "documents": []
+    }
+  }
+}

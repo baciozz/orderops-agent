@@ -1,0 +1,66 @@
+{
+  "sample_id": "lv1-c07-05",
+  "category": "cross_order",
+  "category_no": 7,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-621",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "消息涉及两张订单，请分别确认各自的处理"
+      ],
+      "summary": ""
+    },
+    {
+      "order_id": "YS-1031-621",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-RD-M",
+          "to_sku": null,
+          "quantity": 5,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 25,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "YS-1031-621 红 M 加 5"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    },
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-RD-M",
+          "old_qty": 20,
+          "new_qty": 25
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "已复核",
+  "reviewed_by": "小八（非 Qi 人工复核）"
+}

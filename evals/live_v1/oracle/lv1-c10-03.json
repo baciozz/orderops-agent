@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c10-03",
+  "category": "colloquial",
+  "category_no": 10,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-357",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "BA8802-BK-XL",
+          "to_sku": null,
+          "quantity": -3,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 17,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黑XL -3"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "BA8802-BK-XL",
+        "old_qty": 20,
+        "new_qty": 17
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "BA8802-BK-XL",
+          "old_qty": 20,
+          "new_qty": 17
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

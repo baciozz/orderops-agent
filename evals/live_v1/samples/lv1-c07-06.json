@@ -1,0 +1,159 @@
+{
+  "sample_id": "lv1-c07-06",
+  "form": "text",
+  "request": {
+    "selected_order_id": "CX-0915-701",
+    "instruction": "分校区那单（CX-0915-702）深蓝 M 改 90 件。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:05:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "CX5010-WH-S",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "S",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-M",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "M",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-L",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "L",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-XL",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "XL",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-S",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "S",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-M",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "M",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-L",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "L",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-XL",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "XL",
+          "fulfillment_mode": "MTO"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "CX-0915-701",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "CX5010-DB-M",
+              "ordered_qty": 120,
+              "shipped_qty": 0,
+              "cut_qty": 0
+            },
+            {
+              "sku_id": "CX5010-WH-M",
+              "ordered_qty": 100,
+              "shipped_qty": 0,
+              "cut_qty": 0
+            }
+          ]
+        },
+        {
+          "order_id": "CX-0915-702",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "CX5010-DB-M",
+              "ordered_qty": 70,
+              "shipped_qty": 0,
+              "cut_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [],
+      "documents": [
+        {
+          "doc_id": "MO-CX-0915-701-CX5010-DB-M",
+          "kind": "MO",
+          "order_id": "CX-0915-701",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-M",
+          "quantity": 120,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "PO-CX-0915-701-CX5010-DB-M",
+          "kind": "PO",
+          "order_id": "CX-0915-701",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-M",
+          "quantity": 120,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "MO-CX-0915-701-CX5010-WH-M",
+          "kind": "MO",
+          "order_id": "CX-0915-701",
+          "order_revision": 1,
+          "sku_id": "CX5010-WH-M",
+          "quantity": 100,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "PO-CX-0915-701-CX5010-WH-M",
+          "kind": "PO",
+          "order_id": "CX-0915-701",
+          "order_revision": 1,
+          "sku_id": "CX5010-WH-M",
+          "quantity": 100,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "MO-CX-0915-702-CX5010-DB-M",
+          "kind": "MO",
+          "order_id": "CX-0915-702",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-M",
+          "quantity": 70,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "PO-CX-0915-702-CX5010-DB-M",
+          "kind": "PO",
+          "order_id": "CX-0915-702",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-M",
+          "quantity": 70,
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  }
+}

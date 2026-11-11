@@ -1,0 +1,63 @@
+{
+  "sample_id": "lv1-c01-08",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-318",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "BA8802-BK-M",
+          "to_sku": null,
+          "quantity": 18,
+          "unit": "件",
+          "before_qty": 30,
+          "after_qty": 18,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黑色 M 那行订多了"
+            },
+            {
+              "line": 2,
+              "quote": "按 18 件算总数"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "BA8802-BK-M",
+        "old_qty": 30,
+        "new_qty": 18
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "BA8802-BK-M",
+          "old_qty": 30,
+          "new_qty": 18
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

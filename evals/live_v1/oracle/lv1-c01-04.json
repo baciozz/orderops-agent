@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c01-04",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-404",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "SJ3307-DG-M",
+          "to_sku": null,
+          "quantity": 72,
+          "unit": "件",
+          "before_qty": 90,
+          "after_qty": 72,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "SJ3307 墨绿 M 原来订 90，现在统一按 72 件出"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-DG-M",
+        "old_qty": 90,
+        "new_qty": 72
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-DG-M",
+          "old_qty": 90,
+          "new_qty": 72
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

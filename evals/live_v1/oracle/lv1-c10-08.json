@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c10-08",
+  "category": "colloquial",
+  "category_no": 10,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-360",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "BA8802-KH-L",
+          "to_sku": null,
+          "quantity": 2,
+          "unit": "件",
+          "before_qty": 12,
+          "after_qty": 14,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "卡其L 再来俩件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "BA8802-KH-L",
+        "old_qty": 12,
+        "new_qty": 14
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "BA8802-KH-L",
+          "old_qty": 12,
+          "new_qty": 14
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

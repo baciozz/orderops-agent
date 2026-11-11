@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c01-03",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-311",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "BA8802-KH-XL",
+          "to_sku": null,
+          "quantity": 64,
+          "unit": "件",
+          "before_qty": 40,
+          "after_qty": 64,
+          "citations": [
+            {
+              "line": 3,
+              "quote": "| BA8802 卡其 XL | 40 | 64 |"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "BA8802-KH-XL",
+        "old_qty": 40,
+        "new_qty": 64
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "BA8802-KH-XL",
+          "old_qty": 40,
+          "new_qty": 64
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

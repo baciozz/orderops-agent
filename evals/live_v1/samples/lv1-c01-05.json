@@ -1,0 +1,211 @@
+{
+  "sample_id": "lv1-c01-05",
+  "form": "text",
+  "request": {
+    "selected_order_id": "YS-1031-512",
+    "instruction": "团服红色 XXL 最后报名人数出来了，一共 33 人，就做 33 件吧。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:04:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "YS6120-RD-M",
+          "style": "YS6120 团建T恤",
+          "color": "红",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-RD-L",
+          "style": "YS6120 团建T恤",
+          "color": "红",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-RD-XL",
+          "style": "YS6120 团建T恤",
+          "color": "红",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-RD-XXL",
+          "style": "YS6120 团建T恤",
+          "color": "红",
+          "size": "XXL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-YL-M",
+          "style": "YS6120 团建T恤",
+          "color": "黄",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-YL-L",
+          "style": "YS6120 团建T恤",
+          "color": "黄",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-YL-XL",
+          "style": "YS6120 团建T恤",
+          "color": "黄",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-YL-XXL",
+          "style": "YS6120 团建T恤",
+          "color": "黄",
+          "size": "XXL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BL-M",
+          "style": "YS6120 团建T恤",
+          "color": "蓝",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BL-L",
+          "style": "YS6120 团建T恤",
+          "color": "蓝",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BL-XL",
+          "style": "YS6120 团建T恤",
+          "color": "蓝",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BL-XXL",
+          "style": "YS6120 团建T恤",
+          "color": "蓝",
+          "size": "XXL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BK-M",
+          "style": "YS6120 团建T恤",
+          "color": "黑",
+          "size": "M",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BK-L",
+          "style": "YS6120 团建T恤",
+          "color": "黑",
+          "size": "L",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BK-XL",
+          "style": "YS6120 团建T恤",
+          "color": "黑",
+          "size": "XL",
+          "fulfillment_mode": "STOCK"
+        },
+        {
+          "sku_id": "YS6120-BK-XXL",
+          "style": "YS6120 团建T恤",
+          "color": "黑",
+          "size": "XXL",
+          "fulfillment_mode": "STOCK"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "YS-1031-512",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "YS6120-RD-XXL",
+              "ordered_qty": 25,
+              "shipped_qty": 0
+            },
+            {
+              "sku_id": "YS6120-BL-M",
+              "ordered_qty": 40,
+              "shipped_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [
+        {
+          "sku_id": "YS6120-RD-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-RD-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-RD-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-RD-XXL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-YL-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-YL-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-YL-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-YL-XXL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BL-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BL-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BL-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BL-XXL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BK-M",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BK-L",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BK-XL",
+          "available_qty": 500
+        },
+        {
+          "sku_id": "YS6120-BK-XXL",
+          "available_qty": 500
+        }
+      ],
+      "documents": []
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "sample_id": "lv1-c02-03",
+  "category": "increment",
+  "category_no": 2,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-523",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "YS6120-YL-L",
+          "to_sku": null,
+          "quantity": 7,
+          "unit": "件",
+          "before_qty": 33,
+          "after_qty": 40,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黄色 L 又多了 7 个人报名"
+            },
+            {
+              "line": 2,
+              "quote": "麻烦在原来的数上加 7 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-YL-L",
+        "old_qty": 33,
+        "new_qty": 40
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-YL-L",
+          "old_qty": 33,
+          "new_qty": 40
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

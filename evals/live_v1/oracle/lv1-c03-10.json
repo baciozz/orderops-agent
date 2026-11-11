@@ -1,0 +1,69 @@
+{
+  "sample_id": "lv1-c03-10",
+  "category": "replace_remaining",
+  "category_no": 3,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-413",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": "SJ3307-DG-S",
+          "to_sku": "SJ3307-OC-S",
+          "quantity": 9,
+          "unit": "件",
+          "before_qty": 21,
+          "after_qty": 12,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "墨绿 S 码还没发的全部 9 件换赭石 S"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-DG-S",
+        "old_qty": 21,
+        "new_qty": 12
+      },
+      {
+        "sku_id": "SJ3307-OC-S",
+        "old_qty": 0,
+        "new_qty": 9
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-DG-S",
+          "old_qty": 21,
+          "new_qty": 12
+        },
+        {
+          "sku_id": "SJ3307-OC-S",
+          "old_qty": 0,
+          "new_qty": 9
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

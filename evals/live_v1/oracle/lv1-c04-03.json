@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c04-03",
+  "category": "cancel_remaining",
+  "category_no": 4,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "CX-0915-606",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "cancel_remaining",
+          "sku_id": "CX5010-DB-S",
+          "to_sku": null,
+          "quantity": null,
+          "unit": "件",
+          "before_qty": 80,
+          "after_qty": 50,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "深蓝 S 码还没开裁的部分取消"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "CX5010-DB-S",
+        "old_qty": 80,
+        "new_qty": 50
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "CX5010-DB-S",
+          "old_qty": 80,
+          "new_qty": 50
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

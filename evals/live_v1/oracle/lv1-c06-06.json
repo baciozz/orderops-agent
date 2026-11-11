@@ -1,0 +1,35 @@
+{
+  "sample_id": "lv1-c06-06",
+  "category": "clarify",
+  "category_no": 6,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "CX-0915-612",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "目录没有 XXL 码，请确认尺码？"
+      ],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [
+    "unknown_sku"
+  ],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "已复核",
+  "reviewed_by": "小八（非 Qi 人工复核）"
+}

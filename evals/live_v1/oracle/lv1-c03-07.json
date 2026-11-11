@@ -1,0 +1,47 @@
+{
+  "sample_id": "lv1-c03-07",
+  "category": "replace_remaining",
+  "category_no": 3,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-327",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "replace_remaining",
+          "sku_id": "BA8802-OL-M",
+          "to_sku": "BA8802-KH-M",
+          "quantity": 30,
+          "unit": "件",
+          "before_qty": 30,
+          "after_qty": 0,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "橄榄 M 未发的 30 件换成卡其 M"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "blocked",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "blocked",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "卡其 M 可用库存 10 不足 30，规则应拦下。",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

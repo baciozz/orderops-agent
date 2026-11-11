@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c04-10",
+  "category": "cancel_remaining",
+  "category_no": 4,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-535",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "cancel_remaining",
+          "sku_id": "YS6120-BK-XXL",
+          "to_sku": null,
+          "quantity": null,
+          "unit": "件",
+          "before_qty": 12,
+          "after_qty": 3,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黑色 XXL 未发的取消"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-BK-XXL",
+        "old_qty": 12,
+        "new_qty": 3
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-BK-XXL",
+          "old_qty": 12,
+          "new_qty": 3
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

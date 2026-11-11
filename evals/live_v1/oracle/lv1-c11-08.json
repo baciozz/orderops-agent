@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c11-08",
+  "category": "pack_unit",
+  "category_no": 11,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-267",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "QH2203-OT-130",
+          "to_sku": null,
+          "quantity": 20,
+          "unit": "件",
+          "before_qty": 16,
+          "after_qty": 36,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "燕麦 130 加 5 手"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "QH2203-OT-130",
+        "old_qty": 16,
+        "new_qty": 36
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "QH2203-OT-130",
+          "old_qty": 16,
+          "new_qty": 36
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

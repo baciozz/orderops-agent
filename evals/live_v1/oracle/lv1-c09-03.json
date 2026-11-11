@@ -1,0 +1,119 @@
+{
+  "sample_id": "lv1-c09-03",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "BA-1102-351",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "BA8802-BK-M",
+          "to_sku": null,
+          "quantity": 4,
+          "unit": "件",
+          "before_qty": 16,
+          "after_qty": 20,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "黑 M 再加 4 件"
+            }
+          ]
+        },
+        {
+          "mode": "increment",
+          "sku_id": "BA8802-KH-L",
+          "to_sku": null,
+          "quantity": -6,
+          "unit": "件",
+          "before_qty": 20,
+          "after_qty": 14,
+          "citations": [
+            {
+              "line": 2,
+              "quote": "卡其 L 少 6 件"
+            }
+          ]
+        },
+        {
+          "mode": "replace_remaining",
+          "sku_id": "BA8802-OL-XL",
+          "to_sku": "BA8802-BK-XL",
+          "quantity": 5,
+          "unit": "件",
+          "before_qty": 15,
+          "after_qty": 10,
+          "citations": [
+            {
+              "line": 3,
+              "quote": "橄榄 XL 剩下没发的 5 件换成黑 XL"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "BA8802-BK-M",
+        "old_qty": 16,
+        "new_qty": 20
+      },
+      {
+        "sku_id": "BA8802-BK-XL",
+        "old_qty": 8,
+        "new_qty": 13
+      },
+      {
+        "sku_id": "BA8802-KH-L",
+        "old_qty": 20,
+        "new_qty": 14
+      },
+      {
+        "sku_id": "BA8802-OL-XL",
+        "old_qty": 15,
+        "new_qty": 10
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "BA8802-BK-M",
+          "old_qty": 16,
+          "new_qty": 20
+        },
+        {
+          "sku_id": "BA8802-BK-XL",
+          "old_qty": 8,
+          "new_qty": 13
+        },
+        {
+          "sku_id": "BA8802-KH-L",
+          "old_qty": 20,
+          "new_qty": 14
+        },
+        {
+          "sku_id": "BA8802-OL-XL",
+          "old_qty": 15,
+          "new_qty": 10
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "换款目标黑 XL 已在本单，规则合计其总量。",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

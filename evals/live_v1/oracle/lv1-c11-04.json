@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c11-04",
+  "category": "pack_unit",
+  "category_no": 11,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "SJ-1110-440",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "SJ3307-IV-L",
+          "to_sku": null,
+          "quantity": -10,
+          "unit": "件",
+          "before_qty": 40,
+          "after_qty": 30,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "米白 L 减 1 包"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "SJ3307-IV-L",
+        "old_qty": 40,
+        "new_qty": 30
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "SJ3307-IV-L",
+          "old_qty": 40,
+          "new_qty": 30
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

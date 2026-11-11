@@ -1,0 +1,44 @@
+{
+  "sample_id": "lv1-c05-02",
+  "category": "new_order",
+  "category_no": 5,
+  "handoff_or_no_proposal": true,
+  "handoff": true,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-228",
+      "disposition": "clarify",
+      "changes": [],
+      "questions": [
+        "此请求超出订单数量变更范围，请转人工处理。"
+      ],
+      "summary": ""
+    },
+    {
+      "order_id": "QH-1108-228",
+      "disposition": "no_change",
+      "changes": [],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "clarify",
+    "rows": []
+  },
+  "expected_check_variants": [
+    {
+      "status": "clarify",
+      "rows": []
+    },
+    {
+      "status": "no_change",
+      "rows": []
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "新建订单不在合同支持范围",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

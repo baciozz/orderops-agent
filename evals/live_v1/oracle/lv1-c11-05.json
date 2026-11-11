@@ -1,0 +1,59 @@
+{
+  "sample_id": "lv1-c11-05",
+  "category": "pack_unit",
+  "category_no": 11,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "YS-1031-568",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "YS6120-RD-XL",
+          "to_sku": null,
+          "quantity": 80,
+          "unit": "件",
+          "before_qty": 60,
+          "after_qty": 80,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "红 XL 总量改为 4 箱"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "YS6120-RD-XL",
+        "old_qty": 60,
+        "new_qty": 80
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "YS6120-RD-XL",
+          "old_qty": 60,
+          "new_qty": 80
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

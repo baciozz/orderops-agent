@@ -1,0 +1,129 @@
+{
+  "sample_id": "lv1-c12-06",
+  "form": "text",
+  "request": {
+    "selected_order_id": "CX-0915-621",
+    "instruction": "校服左胸要加印校徽，刺绣费用另算。",
+    "snapshot": {
+      "synthetic": true,
+      "captured_at": "2026-11-11T09:55:00+08:00 合成快照",
+      "catalog": [
+        {
+          "sku_id": "CX5010-WH-S",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "S",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-M",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "M",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-L",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "L",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-WH-XL",
+          "style": "CX5010 校服POLO",
+          "color": "白",
+          "size": "XL",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-S",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "S",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-M",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "M",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-L",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "L",
+          "fulfillment_mode": "MTO"
+        },
+        {
+          "sku_id": "CX5010-DB-XL",
+          "style": "CX5010 校服POLO",
+          "color": "深蓝",
+          "size": "XL",
+          "fulfillment_mode": "MTO"
+        }
+      ],
+      "orders": [
+        {
+          "order_id": "CX-0915-621",
+          "revision": 1,
+          "lines": [
+            {
+              "sku_id": "CX5010-WH-M",
+              "ordered_qty": 100,
+              "shipped_qty": 0,
+              "cut_qty": 0
+            },
+            {
+              "sku_id": "CX5010-DB-L",
+              "ordered_qty": 80,
+              "shipped_qty": 0,
+              "cut_qty": 0
+            }
+          ]
+        }
+      ],
+      "inventory": [],
+      "documents": [
+        {
+          "doc_id": "MO-CX-0915-621-CX5010-WH-M",
+          "kind": "MO",
+          "order_id": "CX-0915-621",
+          "order_revision": 1,
+          "sku_id": "CX5010-WH-M",
+          "quantity": 100,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "PO-CX-0915-621-CX5010-WH-M",
+          "kind": "PO",
+          "order_id": "CX-0915-621",
+          "order_revision": 1,
+          "sku_id": "CX5010-WH-M",
+          "quantity": 100,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "MO-CX-0915-621-CX5010-DB-L",
+          "kind": "MO",
+          "order_id": "CX-0915-621",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-L",
+          "quantity": 80,
+          "status": "ACTIVE"
+        },
+        {
+          "doc_id": "PO-CX-0915-621-CX5010-DB-L",
+          "kind": "PO",
+          "order_id": "CX-0915-621",
+          "order_revision": 1,
+          "sku_id": "CX5010-DB-L",
+          "quantity": 80,
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "sample_id": "lv1-c09-06",
+  "category": "multi_change",
+  "category_no": 9,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "CX-0915-618",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "increment",
+          "sku_id": "CX5010-WH-S",
+          "to_sku": null,
+          "quantity": 20,
+          "unit": "件",
+          "before_qty": 90,
+          "after_qty": 110,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "白 S 加 20"
+            }
+          ]
+        },
+        {
+          "mode": "set_total",
+          "sku_id": "CX5010-DB-M",
+          "to_sku": null,
+          "quantity": 160,
+          "unit": "件",
+          "before_qty": 140,
+          "after_qty": 160,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "深蓝 M 改成 160 件"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "CX5010-DB-M",
+        "old_qty": 140,
+        "new_qty": 160
+      },
+      {
+        "sku_id": "CX5010-WH-S",
+        "old_qty": 90,
+        "new_qty": 110
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "CX5010-DB-M",
+          "old_qty": 140,
+          "new_qty": 160
+        },
+        {
+          "sku_id": "CX5010-WH-S",
+          "old_qty": 90,
+          "new_qty": 110
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}

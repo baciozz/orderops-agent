@@ -1,0 +1,63 @@
+{
+  "sample_id": "lv1-c01-02",
+  "category": "set_total",
+  "category_no": 1,
+  "handoff_or_no_proposal": false,
+  "handoff": false,
+  "allowed_proposals": [
+    {
+      "order_id": "QH-1108-203",
+      "disposition": "propose",
+      "changes": [
+        {
+          "mode": "set_total",
+          "sku_id": "QH2203-OT-130",
+          "to_sku": null,
+          "quantity": 45,
+          "unit": "件",
+          "before_qty": 70,
+          "after_qty": 45,
+          "citations": [
+            {
+              "line": 1,
+              "quote": "卫衣燕麦色130码我们算错了"
+            },
+            {
+              "line": 2,
+              "quote": "这一行总共要 45 件就够"
+            }
+          ]
+        }
+      ],
+      "questions": [],
+      "summary": ""
+    }
+  ],
+  "expected_check": {
+    "status": "ready",
+    "rows": [
+      {
+        "sku_id": "QH2203-OT-130",
+        "old_qty": 70,
+        "new_qty": 45
+      }
+    ]
+  },
+  "expected_check_variants": [
+    {
+      "status": "ready",
+      "rows": [
+        {
+          "sku_id": "QH2203-OT-130",
+          "old_qty": 70,
+          "new_qty": 45
+        }
+      ]
+    }
+  ],
+  "necessary_fact_codes": [],
+  "rationale": "",
+  "drafted_by": "AI",
+  "human_review_status": "小八一致性复核",
+  "reviewed_by": "小八一致性复核"
+}
