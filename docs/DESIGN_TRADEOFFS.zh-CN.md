@@ -38,7 +38,7 @@
 
 **修法。** 私有开发期修复（[dcd380d](https://github.com/baciozz/orderops-agent/commit/dcd380d9a11cd86bdf2018b4ccf7c4a41c0a510d)）：在提交的同一事务里先把状态标成待核验（`committed_verification_pending=True`），回读通过后再清掉。
 
-**怎么验证。** 先写测试复现（[6e4ec6e](https://github.com/baciozz/orderops-agent/commit/6e4ec6ecc60b4c89d869903c9c2c9f6a00813cfc) 新增 `tests/test_commit_verification_pending.py`，当时共 5 条用例）。其中 3 条分别断言：崩溃后、watchdog 之后、幂等重放之后都应显示 pending；另 2 条覆盖正常通过与核验失败。
+**怎么验证。** 先写测试复现（[6e4ec6e](https://github.com/baciozz/orderops-agent/commit/6e4ec6ecc60b4c89d869903c9c2c9f6a00813cfc) 新增 `tests/test_commit_verification_pending.py`，当时共 5 条用例；该提交信息标了 red，先只加测试，后在 [dcd380d](https://github.com/baciozz/orderops-agent/commit/dcd380d9a11cd86bdf2018b4ccf7c4a41c0a510d) 修复）。其中 3 条分别断言：崩溃后、watchdog 之后、幂等重放之后都应显示 pending；另 2 条覆盖正常通过与核验失败。
 
 **遗留。** `committed_verification_pending` 为 True 时，既表示还没核验，也表示核验失败；任务视图一律显示为 `pending`，界面上分不出来。
 
@@ -48,7 +48,7 @@
 
 **根因。** 减量草稿改了订购量，却没有同步改状态。数量已经相等，还标着部分收货，直接违反约束，提交变成完整性错误。
 
-**修法。** 私有开发期修复（[c732066](https://github.com/baciozz/orderops-agent/commit/c732066012a3f500c26225591e0e89200c1ca43c)）：当订购量正好等于已收量且大于 0 时，把采购单转为 `RECEIVED`，没有选择在预检里拒绝。这是合法的收齐边界，预检拒绝会把本可完成的减量挡掉；状态跟数量走，才能通过约束。减量仍标 `PENDING_SUPPLIER`，等待供应商确认。
+**修法。** 私有开发期修复（[c732066](https://github.com/baciozz/orderops-agent/commit/c732066012a3f500c26225591e0e89200c1ca43c)）：当订购量正好等于已收量且大于 0 时，把采购单转为 `RECEIVED`，没有选择在预检里拒绝。`ck_po_status_qty` 要求 `RECEIVED` 时 `received_qty = ordered_qty` 且 `ordered_qty > 0`，这条边界正好满足。减量仍标 `PENDING_SUPPLIER`，等待供应商确认。
 
 **怎么验证。** 先写测试复现（[04e1f99](https://github.com/baciozz/orderops-agent/commit/04e1f999eeec58081618e92dd5693499fc843191)）。`tests/test_review_po_reduce_to_received.py` 用原订 20、已收 8、改订 8 这条边界，断言提交后为 `(8, 8, RECEIVED)`。这只测了数量正好相等的边界。
 
