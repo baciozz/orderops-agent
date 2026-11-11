@@ -1,5 +1,7 @@
 # 单Agent与双Agent：最小只读比较
 
+S3 真实对照的预登记协议见[AGENT_COMPARISON_PREREG_V1](AGENT_COMPARISON_PREREG_V1.zh-CN.md)。样本规模、预算、指标和有意义差异以该文本为准，不以下文早期 20 条 / 300 次设想为准。本文仍说明评测适配层与三组定义。协议合入前零真实调用。
+
 用户于2026-11-09追加耗时、正确率、费用与失败比较；未预设哪种方案胜出。**评测专用适配层已实现并在MockTransport实测，尚无真实双Agent数据，产品运行架构不变。** 不得在简历写“多Agent更快/更准/节省X%”。
 
 产品新清单入口是一次模型提案加确定性规则与人工确认。旧调度也是parser一次模型，inventory-check/doc-check为`uses_model=False`并顺序执行；FIXTURE trace的0ms/0tokens不是性能证据。不能将函数数目当模型Agent数，或把输入/权限不同的两个入口直接比较。

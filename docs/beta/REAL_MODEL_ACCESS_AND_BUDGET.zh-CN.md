@@ -18,6 +18,14 @@
 - **价格来源**：代码和默认配置里**没有任何模型的单价**，包括强模型 `gpt-6.1-sol`。价格须由操作者按 OpenAI 官方模型页/定价页在调用当天核对后填写到运行时配置，不得凭记忆或旧文档填写；查不到官方价格就不配，该模型即被拒绝调用。
 - **零调用自检**：`env -u OOS_LLM_API_KEY OOS_LIVE_ENABLED=false python -m app.cli check-model-auth` 只逐项输出有/无，新增 `OOS_MODEL_PRICES` 是否配置和「当前模型单价」是否可得两行，不发请求、不打开账本。
 
+- **S3 预登记已确认的运行时单价（2026-11-11，小八确认，不写入代码默认值）**：`gpt-6-luna` 输入 $0.10、输出 $0.50；`gpt-6.1-sol` 输入 $2.00、输出 $10.00（均为 Standard 短上下文，每百万 token）。`gpt-6.1-sol` 以[官方定价页](https://developers.openai.com/api/docs/pricing)为准。运行 S3 前须写入：
+
+  ```
+  OOS_MODEL_PRICES='{"gpt-6-luna":{"in_per_mtok":"0.10","out_per_mtok":"0.50"},"gpt-6.1-sol":{"in_per_mtok":"2.00","out_per_mtok":"10.00"}}'
+  ```
+
+  只使用 Standard（客户端已发送 `service_tier=default`），不用 Fast / Priority。推理 token 已包含在 `usage.output_tokens` 中，按输出单价计费，不得再加 `reasoning_tokens`。详见 [AGENT_COMPARISON_PREREG_V1](AGENT_COMPARISON_PREREG_V1.zh-CN.md)。
+
 ## S2 / 2A：认证诊断入口（仅离线实现）
 
 本阶段只实现认证诊断与 MockTransport 回归，不运行真实模型评测。当前任务无运行时密钥，真实请求次数和 API 消耗均为 0；2B 须在 2A 审核合并后单独开始。以下历史预算与进度不构成本次新增付费授权。

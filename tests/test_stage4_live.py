@@ -496,6 +496,34 @@ def test_request_shape_usage_cost_and_no_credential_leaks(session_factory, caplo
     assert MOCK_CREDENTIAL not in result.model_dump_json() + caplog.text
 
 
+def test_usage_cost_bills_output_tokens_including_reasoning_without_double_counting(
+    session_factory,
+):
+    """Responses usage.output_tokens already includes reasoning_tokens; do not add them."""
+    book = ledger(session_factory)
+    calls = []
+
+    def handle(req):
+        calls.append(json.loads(req.content))
+        return response(input_tokens=1000, output_tokens=200)
+
+    result = LiveLLMClient(
+        settings(),
+        book,
+        transport=httpx.MockTransport(handle),
+        clock=lambda: NOW,
+    ).structured_call(request())
+    assert calls[0]["service_tier"] == "default"
+    # Fixture includes output_tokens_details.reasoning_tokens=80; billing uses 200, not 280.
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (1000, 200)
+    assert result.usage.cost_usd == "0.000200"
+    assert result.usage.cost_usd != "0.000240"
+    with session_factory() as session:
+        row = session.scalar(select(ModelUsage))
+        assert (row.input_tokens, row.output_tokens) == (1000, 200)
+        assert row.cost_usd == Decimal("0.000200")
+
+
 @pytest.mark.parametrize("cap,expected", [("100", "30.00"), ("1", "1.00")])
 def test_budget_breaker_precedes_http_and_caps_config(session_factory, cap, expected):
     configured = settings(live_budget_usd=Decimal(cap))
