@@ -36,11 +36,13 @@ from app.config import Settings  # noqa: E402
 from app.db.models import ModelUsage  # noqa: E402
 from app.db.schema import init_db  # noqa: E402
 from app.db.session import make_engine, make_session_factory  # noqa: E402
-from app.errors import AppError, LiveStartRefused  # noqa: E402
+from app.errors import AppError, LiveStartRefused, PricesNotConfigured  # noqa: E402
 from app.review import service  # noqa: E402
-from app.review.contracts import CreateReview, ExtractRequest, model_schema  # noqa: E402
+from app.review.contracts import CreateReview, ExtractRequest, Snapshot, model_schema  # noqa: E402
+from app.review.rules import check_proposal  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
+from benchmarks.compare_readers import ARMS, run_arm, schedule  # noqa: E402
 from benchmarks.review_baseline import digest, run_once  # noqa: E402
 from benchmarks.score_review import (  # noqa: E402
     from_baseline,
@@ -71,6 +73,32 @@ STABILITY_EXTRA_REPEATS = 2
 STABILITY_REPEATS = 48
 FULL_PLANNED_ATTEMPTS = 168
 STOP_CODES = frozenset({"MODEL_AUTH", "MODEL_RATE_LIMIT", "BUDGET_EXCEEDED"})
+
+S3_MAIN_MODEL = "gpt-6-luna"
+S3_STRONG_MODEL = "gpt-6.1-sol"
+S3_MAIN_CAP_USD = Decimal("10.00")
+S3_STRONG_CAP_USD = Decimal("22.00")
+S3_GLOBAL_CAP_USD = Decimal("25.00")
+S3_REQUIRED_MAX_TOKENS = 3000
+S3_MAIN_PLANNED_CALLS = {
+    "single": 360,
+    "double_same_prompt": 720,
+    "double_roles": 720,
+}
+S3_SMOKE_SAMPLE_IDS = (
+    "lv1-c01-01",
+    "lv1-c05-01",
+    "lv1-c08-01",
+    "lv1-c10-01",
+    "lv1-c12-01",
+)
+PREREG_SCHEDULE_SHA256 = "3105ec4d08e679b1cfd1db5e538a82b1f9c584c4c9ffa25ae5a29c33e46a8020"
+PREREG_SINGLE_SHA256 = "3f29439b83758f7402f9066538a1017c4a0ad8418cccdff1e0fe7657e1f9e883"
+DEFAULT_COMPARISON_SUMMARY = ROOT / "reports" / "agent_comparison_v1" / "summary.json"
+DEFAULT_COMPARISON_RECORDS = ROOT / "reports" / "agent_comparison_v1" / "observations.jsonl"
+DEFAULT_COMPARISON_STATE = ROOT / "reports" / "agent_comparison_v1" / "state.json"
+DEFAULT_LEDGER_DB = Path("/workspace/oos-ledger/ledger.db")
+
 ACCURACY_NOTICE = (
     "开发期新样本、参考待真人复核，不是正式准确率。"
     "⑥⑦⑧⑫ 由小八（非 Qi 人工复核）复核，其余 80 条为小八一致性复核，仍待 Qi 复核。"
@@ -1372,12 +1400,999 @@ def rescore_saved(
     return summary
 
 
+def comparison_index_sha(rows: list[dict]) -> str:
+    """SHA of compare_readers.schedule rows; must match the pre-registration digest."""
+    payload = [
+        {"sample_id": row["sample_id"], "repetition": row["repetition"], "arm": row["arm"]}
+        for row in rows
+    ]
+    return score_sha(payload)
+
+
+def build_comparison_index(
+    manifest: dict, *, arm: str, seed: int = SEED
+) -> tuple[list[dict], str, str]:
+    if arm not in ARMS:
+        raise ValueError(f"arm must be one of {ARMS}")
+    if seed != SEED:
+        raise ValueError(f"S3 schedule seed must be {SEED}")
+    entries = list(manifest["samples"])
+    sample_ids = [row["sample_id"] for row in entries]
+    if len(sample_ids) != len(set(sample_ids)):
+        raise ValueError("manifest sample IDs must be unique")
+    full = schedule(sample_ids, repetitions=3, seed=seed)
+    full_digest = comparison_index_sha(full)
+    if full_digest != PREREG_SCHEDULE_SHA256:
+        raise ValueError(
+            f"SCHEDULE_SHA_MISMATCH expected={PREREG_SCHEDULE_SHA256} actual={full_digest}"
+        )
+    by_id = {row["sample_id"]: row for row in entries}
+    arm_rows = []
+    for item in full:
+        if item["arm"] != arm:
+            continue
+        meta = by_id[item["sample_id"]]
+        arm_rows.append(
+            {
+                **item,
+                "category": meta["category"],
+                "category_no": meta["category_no"],
+                "form": meta["form"],
+                "sample_path": meta["sample_path"],
+                "oracle_path": meta["oracle_path"],
+                "observation_id": (f"s3-{arm}-r{item['repetition']}-{item['sample_id']}"),
+            }
+        )
+    arm_digest = comparison_index_sha(
+        [
+            {"sample_id": r["sample_id"], "repetition": r["repetition"], "arm": r["arm"]}
+            for r in arm_rows
+        ]
+    )
+    if arm == "single" and arm_digest != PREREG_SINGLE_SHA256:
+        raise ValueError(
+            f"SINGLE_SCHEDULE_SHA_MISMATCH expected={PREREG_SINGLE_SHA256} actual={arm_digest}"
+        )
+    return arm_rows, full_digest, arm_digest
+
+
+def s3_smoke_rows(arm_rows: list[dict]) -> list[dict]:
+    found = []
+    for sample_id in S3_SMOKE_SAMPLE_IDS:
+        match = next(
+            (row for row in arm_rows if row["sample_id"] == sample_id and row["repetition"] == 1),
+            None,
+        )
+        if match is None:
+            raise ValueError(f"smoke sample {sample_id} is missing from the frozen single index")
+        found.append(match)
+    return found
+
+
+def s3_stage_cap(model: str, settings: Settings) -> Decimal:
+    if model == S3_MAIN_MODEL:
+        planned = S3_MAIN_CAP_USD
+    elif model == S3_STRONG_MODEL:
+        planned = S3_STRONG_CAP_USD
+    else:
+        raise ValueError(f"S3 model must be {S3_MAIN_MODEL} or {S3_STRONG_MODEL}")
+    return min(planned, S3_GLOBAL_CAP_USD, settings.effective_live_budget_usd)
+
+
+def require_s3_settings(settings: Settings, model: str) -> Settings:
+    updated = settings.model_copy(update={"llm_model": model})
+    if updated.model_max_tokens != S3_REQUIRED_MAX_TOKENS:
+        raise ValueError(
+            f"S3 requires model_max_tokens={S3_REQUIRED_MAX_TOKENS} via config/env, "
+            f"got {updated.model_max_tokens}"
+        )
+    if updated.prices_for(model) is None:
+        raise PricesNotConfigured(model=model)
+    return updated
+
+
+def _arm_ledger_stats(sessions, arm: str) -> tuple[Decimal, int]:
+    prefix = f"EVAL-{arm}-"
+    with sessions() as session:
+        rows = list(
+            session.scalars(select(ModelUsage).where(ModelUsage.agent_id.like(prefix + "%")))
+        )
+    spent = Decimal("0")
+    for row in rows:
+        if isinstance(row.cost_usd, Decimal):
+            cost = row.cost_usd
+        else:
+            cost = Decimal(str(row.cost_usd or 0))
+        spent += cost
+    return spent.quantize(Decimal("0.000001")), len(rows)
+
+
+def project_main_cumulative(
+    *,
+    pre_run_spent: Decimal,
+    sessions,
+    current_arm: str,
+    this_run_calls: int,
+    this_run_spend: Decimal,
+) -> Decimal:
+    """pre-run ledger + projected main-model total after the first 10 calls."""
+    if this_run_calls <= 0:
+        raise ValueError("main-model extrapolation requires at least one call")
+    per_call = this_run_spend / this_run_calls
+    placeholders = Decimal("0")
+    for arm, planned in S3_MAIN_PLANNED_CALLS.items():
+        if arm == current_arm:
+            continue
+        spent, calls = _arm_ledger_stats(sessions, arm)
+        if calls == 0:
+            placeholders += per_call * planned
+        elif calls < planned:
+            placeholders += (spent / calls) * (planned - calls)
+    this_planned = S3_MAIN_PLANNED_CALLS[current_arm]
+    projected = pre_run_spent + (per_call * this_planned) + placeholders
+    return projected.quantize(Decimal("0.000001"))
+
+
+def _s3_rule_check(sample_request: dict):
+    snapshot = Snapshot.model_validate(sample_request["snapshot"])
+    selected = sample_request["selected_order_id"]
+    instruction = sample_request["instruction"]
+
+    def check(payload):
+        return check_proposal(snapshot, selected, instruction, payload)
+
+    return check
+
+
+def _observation_from_arm(
+    record: dict, *, observation_id: str, sample_id: str, form: str, category: str
+) -> dict:
+    merged = record.get("merged_proposal")
+    check = record.get("merged_check")
+    mapping = (check or {}).get("source_map", {}) if isinstance(check, dict) else {}
+    errors = [c.get("error") for c in record.get("calls") or [] if c.get("error")]
+    error = record.get("error") or (errors[0] if errors else None)
+    return {
+        "observation_id": observation_id,
+        "sample_id": sample_id,
+        "form": form,
+        "category": category,
+        "raw_proposal": merged,
+        "schema_valid": merged is not None,
+        "human_corrected": False,
+        "check": check,
+        "error": error,
+        "source_lines": {key: value["text"] for key, value in mapping.items()}
+        if isinstance(mapping, dict)
+        else {},
+        "execution_observation": None,
+        "capture_metadata": record.get("metadata"),
+    }
+
+
+def _call_observation(
+    call: dict,
+    *,
+    observation_id: str,
+    sample_id: str,
+    form: str,
+    category: str,
+    metadata: dict,
+) -> dict:
+    payload = call.get("payload")
+    check = call.get("check")
+    mapping = (check or {}).get("source_map", {}) if isinstance(check, dict) else {}
+    return {
+        "observation_id": observation_id,
+        "sample_id": sample_id,
+        "form": form,
+        "category": category,
+        "raw_proposal": payload,
+        "schema_valid": bool(call.get("schema_valid")),
+        "human_corrected": False,
+        "check": check,
+        "error": call.get("error"),
+        "source_lines": {key: value["text"] for key, value in mapping.items()}
+        if isinstance(mapping, dict)
+        else {},
+        "execution_observation": None,
+        "capture_metadata": metadata,
+    }
+
+
+def _run_comparison_attempt(
+    item: dict,
+    *,
+    arm: str,
+    settings: Settings,
+    clients,
+    ledger_sessions,
+    root: Path,
+    repo_sha: str,
+    manifest_digest: str,
+    evidence_kind: str,
+    records_by_id: dict[str, dict],
+    observations: dict[str, dict],
+    call_observations: dict[str, dict],
+    run_id: str,
+) -> int:
+    sample_request = load_sample_request(root, item["sample_path"])
+    prepared = service._model_request({"input": sample_request}, settings, item["observation_id"])
+    metadata = {
+        "code_sha": repo_sha,
+        "dataset_sha256": manifest_digest,
+        "evidence_kind": evidence_kind,
+        "sample_id": item["sample_id"],
+        "observation_id": item["observation_id"],
+        "run_id": run_id,
+        "arm": arm,
+        "repetition": item["repetition"],
+        "model_max_tokens": settings.model_max_tokens,
+    }
+    try:
+        record = run_arm(
+            prepared,
+            arm=arm,
+            clients=clients,
+            settings=settings,
+            sessions=ledger_sessions,
+            check=_s3_rule_check(sample_request),
+            evidence_kind=evidence_kind,
+        )
+    except AppError as exc:
+        record = {
+            "protocol": "readonly-reader-comparison-v1",
+            "arm": arm,
+            "calls": [],
+            "ledger": [],
+            "merged_proposal": None,
+            "merged_check": None,
+            "error": exc.code,
+            "client_call_attempts": 0,
+            "wall_s": None,
+            "business_intent_agreement": False,
+        }
+    record["metadata"] = metadata
+    record["observation_id"] = item["observation_id"]
+    record["sample_id"] = item["sample_id"]
+    record["call_count"] = int(record.get("client_call_attempts") or len(record.get("calls") or []))
+    records_by_id[item["observation_id"]] = record
+    observations[item["observation_id"]] = _observation_from_arm(
+        record,
+        observation_id=item["observation_id"],
+        sample_id=item["sample_id"],
+        form=item["form"],
+        category=item["category"],
+    )
+    for index, call in enumerate(record.get("calls") or []):
+        call_id = f"{item['observation_id']}#{index}"
+        call_observations[call_id] = _call_observation(
+            call,
+            observation_id=call_id,
+            sample_id=item["sample_id"],
+            form=item["form"],
+            category=item["category"],
+            metadata=metadata,
+        )
+    return int(record.get("call_count") or 0)
+
+
+def build_comparison_summary(
+    *,
+    arm: str,
+    model: str,
+    schedule_rows: list[dict],
+    scored_merged: list[dict],
+    scored_calls: list[dict],
+    records_by_id: dict[str, dict],
+    observations: dict[str, dict],
+    references: dict[str, dict],
+    book: BudgetLedger | None,
+    stop_reason: str | None,
+    mode: str,
+    evidence_kind: str,
+    provider: str | None,
+    price_in_per_mtok: str | None,
+    price_out_per_mtok: str | None,
+    prompt_version: str,
+    schema_digest: str,
+    repo_sha: str,
+    worktree_dirty: bool,
+    manifest_digest: str,
+    full_index_digest: str,
+    arm_index_digest: str,
+    seed: int,
+    cap_usd: Decimal,
+    run_at: str,
+    run_id: str,
+    model_max_tokens: int,
+    pre_run_spent: Decimal | None,
+    projected_main_usd: Decimal | None,
+    projected_strong_usd: Decimal | None,
+    resumes: list[dict] | None = None,
+) -> dict:
+    planned_samples = len(schedule_rows)
+    first = [row for row in schedule_rows if row["repetition"] == 1]
+    first_ids = {row["observation_id"] for row in first}
+    merged_by_id = {row["observation_id"]: row for row in scored_merged}
+    first_merged = [
+        merged_by_id[row["observation_id"]]
+        for row in first
+        if row["observation_id"] in merged_by_id
+    ]
+    first_n = len(first_merged)
+    raw_merged = sum(row["raw_strict_intent_match"] for row in first_merged)
+    effective_merged = sum(row["effective_rows_and_status_match"] for row in first_merged)
+
+    first_call_rows = [
+        row for row in scored_calls if row["observation_id"].rsplit("#", 1)[0] in first_ids
+    ]
+    raw_calls = sum(row["raw_strict_intent_match"] for row in first_call_rows)
+    effective_calls = sum(row["effective_rows_and_status_match"] for row in first_call_rows)
+
+    clarify_rows = [row for row in first_merged if row["category"] == "clarify"]
+    clarification_correct = sum(row["raw_strict_intent_match"] for row in clarify_rows)
+    unnecessary_by_category: dict[str, int] = {}
+    unnecessary = 0
+    for row in first_merged:
+        payload = (observations.get(row["observation_id"]) or {}).get("raw_proposal")
+        if (
+            isinstance(payload, dict)
+            and payload.get("disposition") == "clarify"
+            and not row["raw_strict_intent_match"]
+        ):
+            unnecessary += 1
+            unnecessary_by_category[row["category"]] = (
+                unnecessary_by_category.get(row["category"], 0) + 1
+            )
+
+    handoff_primary = handoff_recall_report(first_merged)
+    dangerous_raw = 0
+    dangerous_effective = 0
+    caught = 0
+    for row in first_merged:
+        payload = (observations.get(row["observation_id"]) or {}).get("raw_proposal")
+        reference = references[row["sample_id"]]
+        raw_flag = automatic_dangerous_raw(row, payload, reference)
+        check = (observations.get(row["observation_id"]) or {}).get("check")
+        effective_flag = automatic_dangerous_effective(raw_flag, check)
+        dangerous_raw += int(raw_flag)
+        dangerous_effective += int(effective_flag)
+        caught += int(rules_caught_dangerous(raw_flag, check))
+
+    by_category: dict[str, dict] = {}
+    for row in first_merged:
+        bucket = by_category.setdefault(
+            row["category"],
+            {"attempts": 0, "raw_matches": 0, "effective_matches": 0, "errors": 0},
+        )
+        bucket["attempts"] += 1
+        bucket["raw_matches"] += int(row["raw_strict_intent_match"])
+        bucket["effective_matches"] += int(row["effective_rows_and_status_match"])
+        bucket["errors"] += int(bool(row.get("error")))
+
+    pack_unit = by_category.get("pack_unit") or {"attempts": 0, "raw_matches": 0}
+    pack_attempts = int(pack_unit.get("attempts") or 0)
+    excl_n = first_n - pack_attempts
+    excl_raw = raw_merged - int(pack_unit.get("raw_matches") or 0)
+
+    by_repetition = {}
+    consistency = {"samples": 0, "matching_repeats": 0, "repeat_consistency": None}
+    fingerprints: dict[str, dict[int, str]] = {}
+    for row in schedule_rows:
+        scored = merged_by_id.get(row["observation_id"])
+        if scored is None:
+            continue
+        fingerprints.setdefault(row["sample_id"], {})[row["repetition"]] = scored["proposal_sha256"]
+    consistent_samples = 0
+    matching = 0
+    compared = 0
+    for _sample_id, reps in fingerprints.items():
+        if 1 not in reps:
+            continue
+        consistency["samples"] += 1
+        ok = True
+        for rep in (2, 3):
+            if rep in reps:
+                compared += 1
+                if reps[rep] == reps[1]:
+                    matching += 1
+                else:
+                    ok = False
+        if ok and 2 in reps and 3 in reps:
+            consistent_samples += 1
+    consistency["matching_repeats"] = matching
+    consistency["consistent_samples"] = consistent_samples
+    consistency["repeat_consistency"] = _ratio(matching, compared) if compared else _null_ratio(0)
+
+    for rep in (1, 2, 3):
+        items = [
+            merged_by_id[r["observation_id"]]
+            for r in schedule_rows
+            if r["repetition"] == rep and r["observation_id"] in merged_by_id
+        ]
+        if not items:
+            continue
+        by_repetition[str(rep)] = {
+            "raw_accuracy": _ratio(sum(r["raw_strict_intent_match"] for r in items), len(items)),
+            "effective_accuracy": _ratio(
+                sum(r["effective_rows_and_status_match"] for r in items), len(items)
+            ),
+        }
+
+    disagreements = 0
+    first_disagreement_n = 0
+    for row in first:
+        record = records_by_id.get(row["observation_id"])
+        if not record:
+            continue
+        first_disagreement_n += 1
+        if record.get("business_intent_agreement") is False and arm != "single":
+            disagreements += 1
+
+    incomplete = 0
+    all_latency: list[float] = []
+    for record in records_by_id.values():
+        wall = record.get("wall_s")
+        if isinstance(wall, (int, float)):
+            all_latency.append(float(wall))
+        for call in record.get("calls") or []:
+            if call.get("error") == "MODEL_INCOMPLETE":
+                incomplete += 1
+
+    attempted = sum(1 for row in schedule_rows if row["observation_id"] in records_by_id)
+    run_spent, run_ledger_calls = this_run_ledger_stats(records_by_id)
+    client_calls = sum(int(record.get("call_count") or 0) for record in records_by_id.values())
+    token_in = sum(
+        int(row.get("input_tokens") or 0)
+        for record in records_by_id.values()
+        for row in record.get("ledger") or []
+    )
+    token_out = sum(
+        int(row.get("output_tokens") or 0)
+        for record in records_by_id.values()
+        for row in record.get("ledger") or []
+    )
+    live = mode != "dry-run"
+    ledger_complete = None if not live else run_ledger_calls == client_calls
+    spent = format(run_spent, "f") if live else None
+    cost_per_sample = format(run_spent / attempted, "f") if live and attempted else None
+    cost_per_correct = format(run_spent / raw_merged, "f") if live and raw_merged else None
+    return {
+        "kind": (
+            "agent_comparison_v1 development diagnostics; not formal accuracy or release approval"
+        ),
+        "formal_qualified": False,
+        "live_results_present": live and evidence_kind == "real_provider" and attempted > 0,
+        "arm": arm,
+        "model_id": model,
+        "provider": provider,
+        "price_in_per_mtok": price_in_per_mtok,
+        "price_out_per_mtok": price_out_per_mtok,
+        "service_tier": "default",
+        "model_max_tokens": model_max_tokens,
+        "planned_attempts": planned_samples,
+        "planned_calls": S3_MAIN_PLANNED_CALLS[arm] if mode != "smoke" else len(schedule_rows),
+        "first_pass_attempts": first_n,
+        "attempted": attempted if live else 0,
+        "not_attempted": (planned_samples - attempted) if live else planned_samples,
+        "stop_reason": stop_reason,
+        "resumes": {
+            "count": len(resumes or []),
+            "starts": list(resumes or []),
+        },
+        "raw_accuracy_merged": _ratio(raw_merged, first_n) if live else _null_ratio(first_n),
+        "effective_accuracy_merged": (
+            _ratio(effective_merged, first_n) if live else _null_ratio(first_n)
+        ),
+        "raw_accuracy_per_call": (
+            _ratio(raw_calls, len(first_call_rows))
+            if live
+            else _null_ratio(len(first_call_rows) or None)
+        ),
+        "effective_accuracy_per_call": (
+            _ratio(effective_calls, len(first_call_rows))
+            if live
+            else _null_ratio(len(first_call_rows) or None)
+        ),
+        "clarification_recall": (
+            _ratio(clarification_correct, len(clarify_rows))
+            if live
+            else _null_ratio(len(clarify_rows))
+        ),
+        "unnecessary_clarification": unnecessary if live else None,
+        "unnecessary_clarification_by_category": unnecessary_by_category if live else None,
+        "handoff_recall": {
+            "primary_20": handoff_primary if live else _null_handoff(handoff_primary),
+            "definition": (
+                "转人工召回只认 clarify；no_change 单独记为静默忽略。"
+                "⑤ 与 ⑫ 分开报告，并另给 20 条主样本合并召回。"
+                "分母 ≤20 的指标只报数字，不下结论。"
+            ),
+        },
+        "dangerous": {
+            "raw": dangerous_raw if live else None,
+            "effective": dangerous_effective if live else None,
+            "rules_caught": caught if live else None,
+        },
+        "disagreement": {
+            "numerator": disagreements if live and arm != "single" else 0 if live else None,
+            "denominator": first_disagreement_n if live else first_n,
+        },
+        "by_category": (
+            by_category if live else {k: _null_category(v) for k, v in by_category.items()}
+        ),
+        "pack_unit_secondary": {
+            "raw_accuracy_excluding_pack_unit": (
+                _ratio(excl_raw, excl_n) if live and excl_n else _null_ratio(excl_n)
+            ),
+            "reason": PACK_UNIT_LIMITATION,
+        },
+        "by_repetition": by_repetition if live else None,
+        "repeat_consistency": consistency if live else None,
+        "model_incomplete": {arm: incomplete} if live else {arm: None},
+        "latency_s": {
+            "all_attempts": {
+                "p50": _percentile(all_latency, 50) if live else None,
+                "p95": _percentile(all_latency, 95) if live else None,
+                "n": len(all_latency) if live else 0,
+            }
+        },
+        "cost": {
+            "ledger_spent_usd": spent,
+            "pre_run_ledger_usd": format(pre_run_spent, "f") if pre_run_spent is not None else None,
+            "projected_main_cumulative_usd": (
+                format(projected_main_usd, "f") if projected_main_usd is not None else None
+            ),
+            "projected_strong_full_usd": (
+                format(projected_strong_usd, "f") if projected_strong_usd is not None else None
+            ),
+            "average_usd_per_sample": cost_per_sample,
+            "average_usd_per_correct_sample": cost_per_correct,
+            "input_tokens": token_in if live else None,
+            "output_tokens": token_out if live else None,
+            "cap_usd": format(cap_usd, "f"),
+            "ledger_calls": run_ledger_calls if live else 0,
+            "client_call_attempts": client_calls if live else 0,
+        },
+        "ledger_complete": ledger_complete,
+        "run_id": run_id,
+        "prompt_version": prompt_version,
+        "schema_sha256": schema_digest,
+        "code_sha": repo_sha,
+        "worktree_dirty": worktree_dirty,
+        "manifest_sha256": manifest_digest,
+        "schedule_sha256": full_index_digest,
+        "arm_schedule_sha256": arm_index_digest,
+        "seed": seed,
+        "mode": mode,
+        "evidence_kind": evidence_kind,
+        "run_at": run_at,
+        "references_review": REFERENCES_REVIEW,
+        "pack_unit_limitation": PACK_UNIT_LIMITATION,
+        "comparison_note": (
+            "S3 在 model_max_tokens=3000 下重测，不得与 S2B 在 1000 上限下的 "
+            "100/120（83.3%）直接对比。分母 ≤20 的指标只报数字，不下结论。"
+        ),
+        "rows": scored_merged,
+        "call_rows": scored_calls,
+    }
+
+
+def comparison_state_path(out: Path | None) -> Path:
+    base = out if out is not None else DEFAULT_COMPARISON_SUMMARY
+    return base.parent / "state.json"
+
+
+def observation_is_complete(record: dict | None) -> bool:
+    """True when the observation must not be resent (success or non-retryable failure)."""
+    if not record:
+        return False
+    errors = [record.get("error")]
+    errors.extend(call.get("error") for call in record.get("calls") or [])
+    return not any(error in STOP_CODES for error in errors if error)
+
+
+def load_comparison_state(path: Path, *, repo_sha: str, arm: str) -> dict:
+    if not path.exists() or path.stat().st_size == 0:
+        return {
+            "code_sha": repo_sha,
+            "arm": arm,
+            "run_id": new_run_id(),
+            "pre_run_ledger_usd": None,
+            "resumes": [],
+            "observations": {},
+        }
+    state = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(state, dict):
+        raise ValueError("comparison state file must be a JSON object")
+    stored = state.get("code_sha")
+    if stored and stored != repo_sha:
+        raise ValueError(f"RESUME_CODE_SHA_MISMATCH expected={stored} actual={repo_sha}")
+    if state.get("arm") and state["arm"] != arm:
+        raise ValueError(f"RESUME_ARM_MISMATCH expected={state['arm']} actual={arm}")
+    state["code_sha"] = repo_sha
+    state["arm"] = arm
+    state.setdefault("resumes", [])
+    state.setdefault("observations", {})
+    if not state.get("run_id"):
+        state["run_id"] = new_run_id()
+    return state
+
+
+def save_comparison_state(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _state_entry_skippable(entry: dict, *, repo_sha: str, arm: str, repetition: int) -> bool:
+    return bool(
+        entry.get("completed")
+        and entry.get("code_sha") == repo_sha
+        and entry.get("arm") == arm
+        and int(entry.get("repetition") or 0) == int(repetition)
+        and observation_is_complete(entry.get("record") or {})
+    )
+
+
+def _store_observation_state(
+    state: dict,
+    item: dict,
+    *,
+    repo_sha: str,
+    arm: str,
+    record: dict,
+    observation: dict | None,
+    call_observations: dict[str, dict],
+) -> None:
+    oid = item["observation_id"]
+    state["observations"][oid] = {
+        "observation_id": oid,
+        "sample_id": item["sample_id"],
+        "arm": arm,
+        "repetition": item["repetition"],
+        "code_sha": repo_sha,
+        "completed": observation_is_complete(record),
+        "error": record.get("error")
+        or next((c.get("error") for c in record.get("calls") or [] if c.get("error")), None),
+        "record": _safe_record(record),
+        "observation": observation,
+        "call_observations": {
+            key: value
+            for key, value in call_observations.items()
+            if key == oid or key.startswith(oid + "#")
+        },
+    }
+
+
+def evaluate_comparison(
+    *,
+    settings: Settings,
+    ledger_db: Path,
+    arm: str,
+    model: str,
+    root: Path = ROOT,
+    repo_root: Path = ROOT,
+    manifest_path: Path = MANIFEST_PATH,
+    sha_path: Path | None = None,
+    smoke: bool = False,
+    dry_run: bool = False,
+    approved_after_smoke: bool = False,
+    seed: int = SEED,
+    limit: int | None = None,
+    state_path: Path | None = None,
+    transport=None,
+    out: Path | None = None,
+    records_path: Path | None = None,
+) -> dict:
+    if arm not in ARMS:
+        raise ValueError(f"arm must be one of {ARMS}")
+    configured = require_s3_settings(settings, model)
+    if smoke and model != S3_STRONG_MODEL:
+        raise ValueError("S3 --smoke is only for the gpt-6.1-sol baseline")
+    if model == S3_STRONG_MODEL and arm != "single":
+        raise ValueError("the strong-model baseline only runs the single arm")
+    if model == S3_STRONG_MODEL and not smoke and not dry_run and not approved_after_smoke:
+        raise ValueError(
+            "the 360-call strong-model run requires --approved-after-smoke after "
+            "the 5-call smoke extrapolation has been reported and approved"
+        )
+
+    manifest, manifest_digest = verify_manifest(manifest_path, sha_path)
+    arm_rows, full_digest, arm_digest = build_comparison_index(manifest, arm=arm, seed=seed)
+    if smoke:
+        schedule_rows = s3_smoke_rows(arm_rows)
+        mode = "smoke"
+    else:
+        schedule_rows = arm_rows
+        mode = "dry-run" if dry_run else "full"
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("--limit must be a positive integer")
+        schedule_rows = schedule_rows[:limit]
+    if dry_run:
+        mode = "dry-run"
+    repo_sha = code_sha(repo_root)
+    dirty = worktree_dirty(repo_root)
+    schema_digest = schema_sha256()
+    evidence_kind = "mock_transport" if transport is not None else "real_provider"
+    run_at = datetime.now(UTC).isoformat()
+    run_id = new_run_id()
+    cap = s3_stage_cap(model, configured)
+    pricing = run_pricing(configured)
+
+    if dry_run:
+        scored = [_dry_run_row({**item, "form": item["form"]}) for item in schedule_rows]
+        summary = build_comparison_summary(
+            arm=arm,
+            model=model,
+            schedule_rows=schedule_rows,
+            scored_merged=scored,
+            scored_calls=[],
+            records_by_id={},
+            observations={},
+            references={
+                item["sample_id"]: {
+                    "allowed_proposals": [],
+                    "expected_check": {"status": "no_change", "rows": []},
+                    "sample_id": item["sample_id"],
+                }
+                for item in schedule_rows
+            },
+            book=None,
+            stop_reason=None,
+            mode=mode,
+            evidence_kind="none",
+            provider=pricing["provider"],
+            price_in_per_mtok=pricing["price_in_per_mtok"],
+            price_out_per_mtok=pricing["price_out_per_mtok"],
+            prompt_version=service.PROMPT_VERSION,
+            schema_digest=schema_digest,
+            repo_sha=repo_sha,
+            worktree_dirty=dirty,
+            manifest_digest=manifest_digest,
+            full_index_digest=full_digest,
+            arm_index_digest=arm_digest,
+            seed=seed,
+            cap_usd=cap,
+            run_at=run_at,
+            run_id=run_id,
+            model_max_tokens=configured.model_max_tokens,
+            pre_run_spent=None,
+            projected_main_usd=None,
+            projected_strong_usd=None,
+            resumes=[],
+        )
+        _write_outputs(summary, [], out=out, records_path=records_path)
+        return summary
+
+    require_live(configured)
+    ledger_db = assert_ledger_outside_repo(ledger_db, repo_root)
+    state_file = state_path if state_path is not None else comparison_state_path(out)
+    existed_state = state_file.exists() and state_file.stat().st_size > 0
+    state = load_comparison_state(state_file, repo_sha=repo_sha, arm=arm)
+    run_id = state["run_id"]
+    resumes = list(state.get("resumes") or [])
+    ledger_engine = None
+    records_by_id: dict[str, dict] = {}
+    observations: dict[str, dict] = {}
+    call_observations: dict[str, dict] = {}
+    stop_reason = None
+    projected_main = None
+    projected_strong = None
+    pre_run_spent = Decimal("0")
+    try:
+        ledger_engine, ledger_sessions, book = _open_ledger(ledger_db, configured, cap)
+        ledger_pre = book.spent()
+        if state.get("pre_run_ledger_usd") in (None, ""):
+            state["pre_run_ledger_usd"] = format(ledger_pre, "f")
+        pre_run_spent = Decimal(str(state["pre_run_ledger_usd"]))
+        skipped = 0
+        for item in schedule_rows:
+            entry = (state.get("observations") or {}).get(item["observation_id"]) or {}
+            if not _state_entry_skippable(
+                entry, repo_sha=repo_sha, arm=arm, repetition=item["repetition"]
+            ):
+                continue
+            record = entry.get("record") or {}
+            records_by_id[item["observation_id"]] = record
+            if entry.get("observation"):
+                observations[item["observation_id"]] = entry["observation"]
+            for key, value in (entry.get("call_observations") or {}).items():
+                call_observations[key] = value
+            skipped += 1
+        starting = next(
+            (
+                item["observation_id"]
+                for item in schedule_rows
+                if item["observation_id"] not in records_by_id
+            ),
+            None,
+        )
+        if existed_state:
+            resume_event = {
+                "starting_observation_id": starting,
+                "at": run_at,
+            }
+            resumes.append(resume_event)
+            state["resumes"] = resumes
+        if pre_run_spent >= cap:
+            stop_reason = "BUDGET_EXCEEDED"
+        count = 1 if arm == "single" else 2
+        clients = [LiveLLMClient(configured, book, transport=transport) for _ in range(count)]
+        _progress("start", book, ledger_sessions, completed=skipped, planned=len(schedule_rows))
+        calls_done = 0
+        save_comparison_state(state_file, state)
+        for item in schedule_rows:
+            if stop_reason is not None:
+                break
+            if item["observation_id"] in records_by_id and observation_is_complete(
+                records_by_id[item["observation_id"]]
+            ):
+                continue
+            if book.spent() >= book.cap_usd:
+                stop_reason = "BUDGET_EXCEEDED"
+                break
+            added = _run_comparison_attempt(
+                item,
+                arm=arm,
+                settings=configured,
+                clients=clients,
+                ledger_sessions=ledger_sessions,
+                root=root,
+                repo_sha=repo_sha,
+                manifest_digest=manifest_digest,
+                evidence_kind=evidence_kind,
+                records_by_id=records_by_id,
+                observations=observations,
+                call_observations=call_observations,
+                run_id=run_id,
+            )
+            calls_done += added
+            record = records_by_id[item["observation_id"]]
+            _store_observation_state(
+                state,
+                item,
+                repo_sha=repo_sha,
+                arm=arm,
+                record=record,
+                observation=observations.get(item["observation_id"]),
+                call_observations=call_observations,
+            )
+            save_comparison_state(state_file, state)
+            errors = [record.get("error")] + [c.get("error") for c in record.get("calls") or []]
+            for error in errors:
+                if error in STOP_CODES:
+                    stop_reason = error
+                    break
+            completed_spend, completed_calls = this_run_ledger_stats(
+                {oid: rec for oid, rec in records_by_id.items() if observation_is_complete(rec)}
+            )
+            if (
+                stop_reason is None
+                and model == S3_MAIN_MODEL
+                and completed_calls >= 10
+                and projected_main is None
+            ):
+                projected_main = project_main_cumulative(
+                    pre_run_spent=pre_run_spent,
+                    sessions=ledger_sessions,
+                    current_arm=arm,
+                    this_run_calls=completed_calls,
+                    this_run_spend=completed_spend,
+                )
+                if projected_main > S3_MAIN_CAP_USD:
+                    stop_reason = "MAIN_COST_EXTRAPOLATION"
+            if calls_done % 20 == 0 or stop_reason or item is schedule_rows[-1]:
+                _progress(
+                    "progress",
+                    book,
+                    ledger_sessions,
+                    completed=skipped + calls_done,
+                    planned=len(schedule_rows),
+                )
+
+        if smoke and model == S3_STRONG_MODEL:
+            completed = {
+                oid: rec for oid, rec in records_by_id.items() if observation_is_complete(rec)
+            }
+            smoke_spend, smoke_calls = this_run_ledger_stats(completed)
+            if smoke_calls:
+                avg = smoke_spend / smoke_calls
+                projected_strong = (pre_run_spent + avg * 360).quantize(Decimal("0.000001"))
+                if projected_strong > S3_STRONG_CAP_USD and stop_reason is None:
+                    stop_reason = "STRONG_COST_EXTRAPOLATION"
+
+        attempted = sum(
+            1
+            for item in schedule_rows
+            if item["observation_id"] in records_by_id
+            and observation_is_complete(records_by_id[item["observation_id"]])
+        )
+        if stop_reason is None and attempted < len(schedule_rows):
+            if limit is not None and attempted == len(schedule_rows):
+                stop_reason = "LIMIT"
+            else:
+                stop_reason = "INCOMPLETE"
+        if stop_reason is None and limit is not None and len(arm_rows) > len(schedule_rows):
+            stop_reason = "LIMIT"
+        save_comparison_state(state_file, state)
+
+        references = {}
+        scored_merged = []
+        scored_calls = []
+        for item in schedule_rows:
+            reference = load_oracle(root, item["oracle_path"], item["sample_id"])
+            reference["sample_id"] = item["sample_id"]
+            if "category" not in reference:
+                reference["category"] = item["category"]
+            references[item["sample_id"]] = reference
+            observation = observations.get(item["observation_id"])
+            if observation is None:
+                observation = _blank_observation(item, stop_reason or "NOT_ATTEMPTED")
+                observations[item["observation_id"]] = observation
+            scored_merged.append(score(observation, reference))
+            for index in range(2 if arm != "single" else 1):
+                call_id = f"{item['observation_id']}#{index}"
+                call_obs = call_observations.get(call_id)
+                if call_obs is None:
+                    continue
+                scored_calls.append(score(call_obs, reference))
+
+        pricing = run_pricing(configured, records_by_id)
+        summary = build_comparison_summary(
+            arm=arm,
+            model=model,
+            schedule_rows=schedule_rows,
+            scored_merged=scored_merged,
+            scored_calls=scored_calls,
+            records_by_id=records_by_id,
+            observations=observations,
+            references=references,
+            book=book,
+            stop_reason=stop_reason,
+            mode=mode,
+            evidence_kind=evidence_kind,
+            provider=pricing["provider"],
+            price_in_per_mtok=pricing["price_in_per_mtok"],
+            price_out_per_mtok=pricing["price_out_per_mtok"],
+            prompt_version=service.PROMPT_VERSION,
+            schema_digest=schema_digest,
+            repo_sha=repo_sha,
+            worktree_dirty=dirty,
+            manifest_digest=manifest_digest,
+            full_index_digest=full_digest,
+            arm_index_digest=arm_digest,
+            seed=seed,
+            cap_usd=cap,
+            run_at=run_at,
+            run_id=run_id,
+            model_max_tokens=configured.model_max_tokens,
+            pre_run_spent=pre_run_spent,
+            projected_main_usd=projected_main,
+            projected_strong_usd=projected_strong,
+            resumes=resumes,
+        )
+        sanitized = [_safe_record(record) for record in records_by_id.values()]
+        _write_outputs(summary, sanitized, out=out, records_path=records_path)
+        return summary
+    finally:
+        if ledger_engine is not None:
+            ledger_engine.dispose()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ledger-db",
         type=Path,
-        help="Persistent SQLite ledger outside the repository (required unless --dry-run)",
+        help=(
+            "Persistent SQLite ledger outside the repository (required unless --dry-run). "
+            "S3 shares the S2B ledger, typically "
+            "/workspace/oos-ledger/ledger.db, or another path you pass."
+        ),
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS)
@@ -1392,6 +2407,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--manifest", type=Path, default=MANIFEST_PATH)
     parser.add_argument("--manifest-sha", type=Path, default=None)
+    parser.add_argument(
+        "--arms",
+        choices=ARMS,
+        help="S3: run exactly one pre-registered arm per invocation",
+    )
+    parser.add_argument(
+        "--model",
+        help="S3 model id (gpt-6-luna or gpt-6.1-sol); required with --arms",
+    )
+    parser.add_argument(
+        "--approved-after-smoke",
+        action="store_true",
+        help="S3: required to start the 360-call gpt-6.1-sol run after smoke approval",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="S3: only the first N schedule rows of this arm (e.g. 10 for the first-10 gate)",
+    )
+    parser.add_argument(
+        "--state",
+        type=Path,
+        default=None,
+        help=(
+            "S3: run-state file for resume/skip (default: state.json next to --out, "
+            "typically reports/agent_comparison_v1/state.json)"
+        ),
+    )
     return parser
 
 
@@ -1402,18 +2446,52 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None, tra
         if not args.dry_run and args.ledger_db is None:
             raise ValueError(" --ledger-db is required unless --dry-run")
         ledger_db = args.ledger_db or Path("/tmp/oos-live-eval-unused-dry-run.db")
-        evaluate(
-            settings=configured,
-            ledger_db=ledger_db,
-            manifest_path=args.manifest,
-            sha_path=args.manifest_sha,
-            smoke=args.smoke,
-            dry_run=args.dry_run,
-            seed=args.seed,
-            transport=transport,
-            out=args.out,
-            records_path=args.records,
-        )
+        if args.arms:
+            if not args.model:
+                raise ValueError("--model is required when --arms is set")
+            out = args.out if args.out != DEFAULT_SUMMARY else DEFAULT_COMPARISON_SUMMARY
+            records = (
+                args.records if args.records != DEFAULT_RECORDS else DEFAULT_COMPARISON_RECORDS
+            )
+            evaluate_comparison(
+                settings=configured,
+                ledger_db=ledger_db,
+                arm=args.arms,
+                model=args.model,
+                manifest_path=args.manifest,
+                sha_path=args.manifest_sha,
+                smoke=args.smoke,
+                dry_run=args.dry_run,
+                approved_after_smoke=args.approved_after_smoke,
+                seed=args.seed,
+                limit=args.limit,
+                state_path=args.state,
+                transport=transport,
+                out=out,
+                records_path=records,
+            )
+        else:
+            if (
+                args.model
+                or args.approved_after_smoke
+                or args.limit is not None
+                or args.state is not None
+            ):
+                raise ValueError(
+                    "--model / --approved-after-smoke / --limit / --state require --arms"
+                )
+            evaluate(
+                settings=configured,
+                ledger_db=ledger_db,
+                manifest_path=args.manifest,
+                sha_path=args.manifest_sha,
+                smoke=args.smoke,
+                dry_run=args.dry_run,
+                seed=args.seed,
+                transport=transport,
+                out=args.out,
+                records_path=args.records,
+            )
         return 0
     except LiveStartRefused as exc:
         print(json.dumps({"error_code": exc.code, "reason": exc.reason}, ensure_ascii=False))

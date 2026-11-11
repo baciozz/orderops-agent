@@ -86,6 +86,7 @@ def business(snapshot):
         "approval",
         "audit_record",
         "model_usage",
+        "call_trace",
         "model_budget_reservation",
         "outbox_delivery",
     }

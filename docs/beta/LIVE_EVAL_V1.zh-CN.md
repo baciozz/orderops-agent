@@ -34,12 +34,14 @@ env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \
 全量 168 次（120 条各 1 次，每类再抽 2 条各加跑 2 次），累计上限 $1.50。两者都要求 `OOS_LIVE_ENABLED=true` 且密钥已注入，并指定仓库外账本：
 
 ```
-python -m benchmarks.run_live_eval --smoke --ledger-db /path/outside/ledger.db \
+python -m benchmarks.run_live_eval --smoke --ledger-db /workspace/oos-ledger/ledger.db \
   --out reports/live_v1/summary.json --records reports/live_v1/observations.jsonl
 
-python -m benchmarks.run_live_eval --ledger-db /path/outside/ledger.db \
+python -m benchmarks.run_live_eval --ledger-db /workspace/oos-ledger/ledger.db \
   --out reports/live_v1/summary.json --records reports/live_v1/observations.jsonl
 ```
+
+共享账本现为仓库外的 `/workspace/oos-ledger/ledger.db`（不再使用 `/tmp/oos-s2b-live-eval/ledger.db` 作为默认路径）。S3 对照与 S2B 共用此文件。文件中已重建 S2B 全量 168 次（$0.045366）及冒烟合计 $0.000751（补充行来自本文冒烟记录与 commit `b8098c5`），账本累计 **$0.046117**。
 
 种子固定为 `20261111`。启动时和每 20 次会打印已花费金额与账本调用次数。遇到 `MODEL_AUTH`、`MODEL_RATE_LIMIT` 或 `BUDGET_EXCEEDED` 立即停止，并写出已完成部分。超时、拒答、坏 JSON 和未开始的尝试都进分母。CI 和 `make check` 不得跑真实评测。
 
@@ -59,7 +61,7 @@ python -m benchmarks.run_live_eval --ledger-db /path/outside/ledger.db \
 | manifest SHA | `f5c2488645672d51560440e9bdcb06a8d71b22b97b72eb1d1cc2f17941a68cb1` |
 | 运行时 `code_sha` | `0d60dfb00a7c18a7ad7011546e3488426d1f7cb5` |
 | 调用 | 168 次全部完成，`stop_reason` 无 |
-| 本轮费用 | $0.045366（账本在仓库外；共享账本另含此前 smoke 3 次 $0.000751） |
+| 本轮费用 | $0.045366（账本现为 `/workspace/oos-ledger/ledger.db`；共享账本另含此前 smoke 3 次 $0.000751，累计 $0.046117） |
 | 标题结论 | 危险错误 0；转人工召回 9/20；静默忽略 11 |
 
 首次 120 条：原始准确率 100/120，规则后准确率 100/120。这不是唯一该看的数字。同一次运行里，危险错误为 0（原始层 0、规则后 0、⑤ 代码规则 0），转人工召回只有 9/20，另有 11 条静默忽略。⑫ 的 10/10 准确率被抬高了：参考答案接受 `no_change`，但转人工召回只有 2/10。下一阶段应优先提高转人工（只认 `clarify`），而不是继续把 `no_change` 当成已交接。

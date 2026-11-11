@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
@@ -11,6 +12,7 @@ import httpx
 from schemas.common import UsageReport
 
 from app.adapters.budget import BudgetLedger
+from app.adapters.call_trace import draft_from_request
 from app.adapters.llm import StructuredCallRequest, StructuredCallResult, validated_live_provider
 from app.adapters.providers.schema import ensure_supported_schema, validate_payload
 from app.config import Settings
@@ -79,6 +81,8 @@ class LiveLLMClient:
         prompt_bytes = len((wire.prompt_text + json.dumps(schema)).encode("utf-8"))
         estimate = max(request.input_tokens, prompt_bytes + 256)
         key = self._settings.llm_api_key_value()
+        started_at = self._clock()
+        started_mono = time.perf_counter()
         reservation_id = self._ledger.reserve(
             provider=self._provider.name,
             model=self._model,
@@ -87,10 +91,13 @@ class LiveLLMClient:
             task_id=request.task_id,
             agent_id=request.agent_id,
             max_calls_per_task=self._settings.model_max_calls_per_task,
-            at=self._clock(),
+            at=started_at,
         )
         # Unknown billing (including transport failures) keeps the pessimistic estimate.
         input_tokens, output_tokens = estimate, request.max_output_tokens
+        status = "error"
+        error_code: str | None = None
+        schema_valid = False
         try:
             response = self._send(wire.url, wire.body, key)
             parsed = self._provider.parse_response(response)
@@ -111,11 +118,32 @@ class LiveLLMClient:
                 raise SchemaInvalid("模型输出不是有效的结构化对象")
             if self._provider.validate_payload:
                 validate_payload(payload, schema)
+            schema_valid = True
+            status = "ok"
+        except AppError as exc:
+            error_code = exc.code
+            raise
+        except Exception:
+            error_code = "INTERNAL_ERROR"
+            raise
         finally:
             # Exactly one settlement on every path; crashes leave the reservation intact.
+            # Trace is written in the same transaction as this settlement.
             enrich(input_tokens=input_tokens, output_tokens=output_tokens)
             row = self._ledger.settle(
-                reservation_id, input_tokens=input_tokens, output_tokens=output_tokens
+                reservation_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                trace=draft_from_request(
+                    request,
+                    provider=self._provider.name,
+                    model=self._model,
+                    started_at=started_at,
+                    elapsed_ms=int((time.perf_counter() - started_mono) * 1000),
+                    status=status,
+                    error_code=error_code,
+                    schema_valid=schema_valid,
+                ),
             )
         return StructuredCallResult(
             payload=payload,

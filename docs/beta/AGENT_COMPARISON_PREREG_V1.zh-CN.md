@@ -171,7 +171,7 @@ oracle 只在调用全部结束（或按上列原因停止）之后加载，用�
 
 ## 6. 流程与产出
 
-运行方式与 S2B 相同，在仓库根目录调用，无需 `PYTHONPATH`：`python -m benchmarks.run_live_eval`（实现后增加 `--arms` 与 `--model`；一次只跑一个组；双组样本内 2 并发，其余单并发；重试 0）。账本由 `--ledger-db` 指向仓库外、跨阶段共用的持久 SQLite。只读进程环境，不读 `.env`。判断密钥是否存在只用存在性检查，不打印、不写进文件或命令行。CI 和 `make check` 不得跑真实评测。
+运行方式与 S2B 相同，在仓库根目录调用，无需 `PYTHONPATH`：`python -m benchmarks.run_live_eval --arms <组> --model <模型> --ledger-db /workspace/oos-ledger/ledger.db`。一次只跑一个组；双组样本内 2 并发，其余单并发。主模型第 10 次外推门禁用 `--limit 10`，由运行器自己停，不要另写临时脚本。续跑状态默认写在 `reports/agent_comparison_v1/state.json`（可用 `--state` 改路径）。同一 `code_sha`、同一组、同一重复序号下，已完成的 `observation_id` 会被跳过；状态文件中的 `code_sha` 与当前 HEAD 不一致则拒绝续跑。只有 `MODEL_AUTH`、`MODEL_RATE_LIMIT`、`BUDGET_EXCEEDED` 视为未完成、续跑时重发；其余（坏 JSON、拒答、`MODEL_INCOMPLETE`、传输或其他错误）都记为已完成的失败，不再重发（重试 0）。摘要记录续跑次数及每次开始的 `observation_id`；同一臂的 `run_id` 在续跑中保持不变。共享账本路径为 `/workspace/oos-ledger/ledger.db`（仓库外、与 S2B 共用）。只读进程环境，不读 `.env`。判断密钥是否存在只用存在性检查，不打印、不写进文件或命令行。CI 和 `make check` 不得跑真实评测。
 
 顺序：① 主模型三组（累计上限 $10.00，含第 10 次外推门禁）；② 强模型：`OOS_MODEL_PRICES` 已写入已确认单价后，先跑 5 条冒烟，外推并报告小八，获准且未超 $22.00 再跑 360 次（累计上限 $22.00）。各组运行时须设置 `model_max_tokens=3000`（仅配置/环境变量，不改 `app/`）。
 
