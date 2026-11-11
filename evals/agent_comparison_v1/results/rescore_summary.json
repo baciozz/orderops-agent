@@ -1,0 +1,3414 @@
+{
+  "arms": {
+    "double_roles": {
+      "all_repetitions": {
+        "by_category": {
+          "cancel_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 20,
+              "value": 0.666667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 20,
+              "value": 0.666667
+            }
+          },
+          "clarify": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "colloquial": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 18,
+              "value": 0.6
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 18,
+              "value": 0.6
+            }
+          },
+          "cross_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            }
+          },
+          "increment": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            }
+          },
+          "multi_change": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 26,
+              "value": 0.866667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 26,
+              "value": 0.866667
+            }
+          },
+          "new_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "out_of_scope": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "pack_unit": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 3,
+              "value": 0.1
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 3,
+              "value": 0.1
+            }
+          },
+          "prompt_injection": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            }
+          },
+          "replace_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "set_total": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            }
+          }
+        },
+        "call_errors": {
+          "INCONSISTENT_PROPOSAL": 2,
+          "none": 718
+        },
+        "clarification_recall": {
+          "denominator": 30,
+          "numerator": 27,
+          "value": 0.9
+        },
+        "dangerous": {
+          "effective": 0,
+          "raw": 0,
+          "rules_caught": 0
+        },
+        "disagreement": {
+          "by_type": {
+            "call_failed_or_invalid": 1,
+            "intent_differs": 23
+          },
+          "denominator": 360,
+          "no_merged_candidate": 24,
+          "numerator": 24,
+          "sample_ids": [
+            "lv1-c01-07",
+            "lv1-c05-08",
+            "lv1-c06-06",
+            "lv1-c08-02",
+            "lv1-c08-07",
+            "lv1-c09-08",
+            "lv1-c09-09",
+            "lv1-c10-03",
+            "lv1-c11-02",
+            "lv1-c11-05",
+            "lv1-c01-07",
+            "lv1-c02-07",
+            "lv1-c04-02",
+            "lv1-c04-07",
+            "lv1-c04-10",
+            "lv1-c05-08",
+            "lv1-c06-06",
+            "lv1-c11-02",
+            "lv1-c02-07",
+            "lv1-c04-10",
+            "lv1-c05-08",
+            "lv1-c06-06",
+            "lv1-c07-10",
+            "lv1-c11-05"
+          ],
+          "value": 0.066667
+        },
+        "effective_accuracy": {
+          "denominator": 360,
+          "numerator": 291,
+          "value": 0.808333
+        },
+        "handoff": {
+          "combined_handoff": {
+            "attempts": 60,
+            "handoff_clarify": 27,
+            "handoff_recall": 0.45,
+            "silent_ignore": 30
+          },
+          "new_order": {
+            "attempts": 30,
+            "handoff_clarify": 21,
+            "handoff_recall": 0.7,
+            "silent_ignore": 6
+          },
+          "out_of_scope": {
+            "attempts": 30,
+            "handoff_clarify": 6,
+            "handoff_recall": 0.2,
+            "silent_ignore": 24
+          }
+        },
+        "model_incomplete_calls": 0,
+        "n": 360,
+        "needs_human": {
+          "denominator": 360,
+          "numerator": 69,
+          "value": 0.191667
+        },
+        "observation_errors": {
+          "INCONSISTENT_PROPOSAL": 1,
+          "none": 359
+        },
+        "pack_unit_secondary_raw_excluding_pack_unit": {
+          "denominator": 330,
+          "numerator": 288,
+          "value": 0.872727
+        },
+        "per_path": {
+          "path_0": {
+            "dangerous_raw": 0,
+            "effective_accuracy": {
+              "denominator": 360,
+              "numerator": 309,
+              "value": 0.858333
+            },
+            "raw_accuracy": {
+              "denominator": 360,
+              "numerator": 309,
+              "value": 0.858333
+            }
+          },
+          "path_1": {
+            "dangerous_raw": 0,
+            "effective_accuracy": {
+              "denominator": 360,
+              "numerator": 301,
+              "value": 0.836111
+            },
+            "raw_accuracy": {
+              "denominator": 360,
+              "numerator": 301,
+              "value": 0.836111
+            }
+          }
+        },
+        "raw_accuracy": {
+          "denominator": 360,
+          "numerator": 291,
+          "value": 0.808333
+        },
+        "unnecessary_clarification": 45,
+        "unnecessary_clarification_by_category": {
+          "cancel_remaining": 6,
+          "colloquial": 11,
+          "multi_change": 2,
+          "pack_unit": 23,
+          "replace_remaining": 3
+        }
+      },
+      "arm_schedule_sha256": "3fa293b1a2a238464e59c6a98afb2bcbcd24451fd88a7d39c7a1b5210fa53edf",
+      "by_repetition": {
+        "1": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "INCONSISTENT_PROPOSAL": 2,
+            "none": 238
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 9,
+            "value": 0.9
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "call_failed_or_invalid": 1,
+              "intent_differs": 9
+            },
+            "denominator": 120,
+            "no_merged_candidate": 10,
+            "numerator": 10,
+            "sample_ids": [
+              "lv1-c01-07",
+              "lv1-c05-08",
+              "lv1-c06-06",
+              "lv1-c08-02",
+              "lv1-c08-07",
+              "lv1-c09-08",
+              "lv1-c09-09",
+              "lv1-c10-03",
+              "lv1-c11-02",
+              "lv1-c11-05"
+            ],
+            "value": 0.083333
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 97,
+            "value": 0.808333
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 10
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 2
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 23,
+            "value": 0.191667
+          },
+          "observation_errors": {
+            "INCONSISTENT_PROPOSAL": 1,
+            "none": 119
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 96,
+            "value": 0.872727
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 104,
+                "value": 0.866667
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 104,
+                "value": 0.866667
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 97,
+            "value": 0.808333
+          },
+          "unnecessary_clarification": 13,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 3,
+            "pack_unit": 7,
+            "replace_remaining": 1
+          }
+        },
+        "2": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 5,
+                "value": 0.5
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 5,
+                "value": 0.5
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "none": 240
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 9,
+            "value": 0.9
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "intent_differs": 8
+            },
+            "denominator": 120,
+            "no_merged_candidate": 8,
+            "numerator": 8,
+            "sample_ids": [
+              "lv1-c01-07",
+              "lv1-c02-07",
+              "lv1-c04-02",
+              "lv1-c04-07",
+              "lv1-c04-10",
+              "lv1-c05-08",
+              "lv1-c06-06",
+              "lv1-c11-02"
+            ],
+            "value": 0.066667
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 96,
+            "value": 0.8
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 10
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 2
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 24,
+            "value": 0.2
+          },
+          "observation_errors": {
+            "none": 120
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 95,
+            "value": 0.863636
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 103,
+                "value": 0.858333
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 103,
+                "value": 0.858333
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 98,
+                "value": 0.816667
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 98,
+                "value": 0.816667
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 96,
+            "value": 0.8
+          },
+          "unnecessary_clarification": 16,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 4,
+            "multi_change": 1,
+            "pack_unit": 8,
+            "replace_remaining": 1
+          }
+        },
+        "3": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            }
+          },
+          "call_errors": {
+            "none": 240
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 9,
+            "value": 0.9
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "intent_differs": 6
+            },
+            "denominator": 120,
+            "no_merged_candidate": 6,
+            "numerator": 6,
+            "sample_ids": [
+              "lv1-c02-07",
+              "lv1-c04-10",
+              "lv1-c05-08",
+              "lv1-c06-06",
+              "lv1-c07-10",
+              "lv1-c11-05"
+            ],
+            "value": 0.05
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 98,
+            "value": 0.816667
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 10
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 2
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 22,
+            "value": 0.183333
+          },
+          "observation_errors": {
+            "none": 120
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 97,
+            "value": 0.881818
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 98,
+            "value": 0.816667
+          },
+          "unnecessary_clarification": 16,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 4,
+            "multi_change": 1,
+            "pack_unit": 8,
+            "replace_remaining": 1
+          }
+        }
+      },
+      "client_calls": 720,
+      "cost": {
+        "ledger": {
+          "by_status": {
+            "SETTLED": {
+              "cost_usd": "0.196374",
+              "rows": 720
+            }
+          },
+          "cost_usd": "0.196374",
+          "input_tokens": 1508340,
+          "output_tokens": 91085,
+          "rows": 720
+        },
+        "record_attached_usd": "0.196374",
+        "usd_per_observation": "0.0005454833333333333333333333333",
+        "usd_per_raw_correct_observation": "0.0006748247422680412371134020619"
+      },
+      "latency_s": {
+        "all_attempts": {
+          "n": 360,
+          "p50": 3.1996217329997307,
+          "p95": 6.74637014200016
+        },
+        "definition": "每条观测取各路 calls[].elapsed_s 的最大值（并行两路≈墙钟，不含本地合并）",
+        "success_only": {
+          "n": 359,
+          "p50": 3.1996217329997307,
+          "p95": 6.857561587001328
+        }
+      },
+      "mean_effective_accuracy": 0.808333,
+      "mean_raw_accuracy": 0.808333,
+      "observations": 360,
+      "planned_calls": 720,
+      "pre_run_ledger_usd": "0.339958",
+      "repeat_consistency": {
+        "identical_payload_all_3": {
+          "denominator": 120,
+          "numerator": 3,
+          "value": 0.025
+        },
+        "same_business_intent_all_3": {
+          "denominator": 120,
+          "numerator": 107,
+          "value": 0.891667
+        },
+        "same_correctness_all_3": {
+          "denominator": 120,
+          "numerator": 111,
+          "value": 0.925
+        },
+        "samples": 120
+      },
+      "resumes": [],
+      "run_id": "4f5d35be6bbd4427ac2dbf2c52ed3697",
+      "runner_crosscheck": {
+        "fields_compared": 16,
+        "mismatched": []
+      },
+      "saved_summary_cap_usd": "5.00",
+      "saved_summary_worktree_dirty": true,
+      "schedule_sha256": "3105ec4d08e679b1cfd1db5e538a82b1f9c584c4c9ffa25ae5a29c33e46a8020",
+      "timeouts": []
+    },
+    "double_same_prompt": {
+      "all_repetitions": {
+        "by_category": {
+          "cancel_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 21,
+              "value": 0.7
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 21,
+              "value": 0.7
+            }
+          },
+          "clarify": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "colloquial": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 17,
+              "value": 0.566667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 17,
+              "value": 0.566667
+            }
+          },
+          "cross_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            }
+          },
+          "increment": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "multi_change": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 25,
+              "value": 0.833333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 25,
+              "value": 0.833333
+            }
+          },
+          "new_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            }
+          },
+          "out_of_scope": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "pack_unit": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 3,
+              "value": 0.1
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 3,
+              "value": 0.1
+            }
+          },
+          "prompt_injection": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            }
+          },
+          "replace_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "set_total": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          }
+        },
+        "call_errors": {
+          "INCONSISTENT_PROPOSAL": 2,
+          "none": 718
+        },
+        "clarification_recall": {
+          "denominator": 30,
+          "numerator": 30,
+          "value": 1.0
+        },
+        "dangerous": {
+          "effective": 0,
+          "raw": 0,
+          "rules_caught": 0
+        },
+        "disagreement": {
+          "by_type": {
+            "call_failed_or_invalid": 1,
+            "intent_differs": 18
+          },
+          "denominator": 360,
+          "no_merged_candidate": 19,
+          "numerator": 19,
+          "sample_ids": [
+            "lv1-c04-10",
+            "lv1-c10-02",
+            "lv1-c02-05",
+            "lv1-c02-07",
+            "lv1-c04-02",
+            "lv1-c09-02",
+            "lv1-c09-08",
+            "lv1-c10-01",
+            "lv1-c11-02",
+            "lv1-c11-09",
+            "lv1-c01-07",
+            "lv1-c04-10",
+            "lv1-c05-07",
+            "lv1-c07-08",
+            "lv1-c08-07",
+            "lv1-c09-02",
+            "lv1-c09-08",
+            "lv1-c09-09",
+            "lv1-c10-02"
+          ],
+          "value": 0.052778
+        },
+        "effective_accuracy": {
+          "denominator": 360,
+          "numerator": 294,
+          "value": 0.816667
+        },
+        "handoff": {
+          "combined_handoff": {
+            "attempts": 60,
+            "handoff_clarify": 27,
+            "handoff_recall": 0.45,
+            "silent_ignore": 32
+          },
+          "new_order": {
+            "attempts": 30,
+            "handoff_clarify": 21,
+            "handoff_recall": 0.7,
+            "silent_ignore": 8
+          },
+          "out_of_scope": {
+            "attempts": 30,
+            "handoff_clarify": 6,
+            "handoff_recall": 0.2,
+            "silent_ignore": 24
+          }
+        },
+        "model_incomplete_calls": 0,
+        "n": 360,
+        "needs_human": {
+          "denominator": 360,
+          "numerator": 66,
+          "value": 0.183333
+        },
+        "observation_errors": {
+          "INCONSISTENT_PROPOSAL": 1,
+          "none": 359
+        },
+        "pack_unit_secondary_raw_excluding_pack_unit": {
+          "denominator": 330,
+          "numerator": 291,
+          "value": 0.881818
+        },
+        "per_path": {
+          "path_0": {
+            "dangerous_raw": 0,
+            "effective_accuracy": {
+              "denominator": 360,
+              "numerator": 304,
+              "value": 0.844444
+            },
+            "raw_accuracy": {
+              "denominator": 360,
+              "numerator": 304,
+              "value": 0.844444
+            }
+          },
+          "path_1": {
+            "dangerous_raw": 0,
+            "effective_accuracy": {
+              "denominator": 360,
+              "numerator": 304,
+              "value": 0.844444
+            },
+            "raw_accuracy": {
+              "denominator": 360,
+              "numerator": 304,
+              "value": 0.844444
+            }
+          }
+        },
+        "raw_accuracy": {
+          "denominator": 360,
+          "numerator": 294,
+          "value": 0.816667
+        },
+        "unnecessary_clarification": 47,
+        "unnecessary_clarification_by_category": {
+          "cancel_remaining": 6,
+          "colloquial": 10,
+          "increment": 1,
+          "pack_unit": 25,
+          "replace_remaining": 3,
+          "set_total": 2
+        }
+      },
+      "arm_schedule_sha256": "cd776211aed53c3244a506be803222cfc5a0c63d03935c3aa0ec9f359d502a05",
+      "by_repetition": {
+        "1": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 5,
+                "value": 0.5
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 5,
+                "value": 0.5
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "none": 240
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "intent_differs": 2
+            },
+            "denominator": 120,
+            "no_merged_candidate": 2,
+            "numerator": 2,
+            "sample_ids": [
+              "lv1-c04-10",
+              "lv1-c10-02"
+            ],
+            "value": 0.016667
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 101,
+            "value": 0.841667
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 11
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 3
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 19,
+            "value": 0.158333
+          },
+          "observation_errors": {
+            "none": 120
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 100,
+            "value": 0.909091
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 102,
+                "value": 0.85
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 101,
+            "value": 0.841667
+          },
+          "unnecessary_clarification": 17,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 4,
+            "pack_unit": 9,
+            "replace_remaining": 1,
+            "set_total": 1
+          }
+        },
+        "2": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "none": 240
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "intent_differs": 8
+            },
+            "denominator": 120,
+            "no_merged_candidate": 8,
+            "numerator": 8,
+            "sample_ids": [
+              "lv1-c02-05",
+              "lv1-c02-07",
+              "lv1-c04-02",
+              "lv1-c09-02",
+              "lv1-c09-08",
+              "lv1-c10-01",
+              "lv1-c11-02",
+              "lv1-c11-09"
+            ],
+            "value": 0.066667
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 98,
+            "value": 0.816667
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 11
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 3
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 22,
+            "value": 0.183333
+          },
+          "observation_errors": {
+            "none": 120
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 97,
+            "value": 0.881818
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 103,
+                "value": 0.858333
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 103,
+                "value": 0.858333
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 98,
+            "value": 0.816667
+          },
+          "unnecessary_clarification": 14,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 3,
+            "pack_unit": 7,
+            "replace_remaining": 1,
+            "set_total": 1
+          }
+        },
+        "3": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "INCONSISTENT_PROPOSAL": 2,
+            "none": 238
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "disagreement": {
+            "by_type": {
+              "call_failed_or_invalid": 1,
+              "intent_differs": 8
+            },
+            "denominator": 120,
+            "no_merged_candidate": 9,
+            "numerator": 9,
+            "sample_ids": [
+              "lv1-c01-07",
+              "lv1-c04-10",
+              "lv1-c05-07",
+              "lv1-c07-08",
+              "lv1-c08-07",
+              "lv1-c09-02",
+              "lv1-c09-08",
+              "lv1-c09-09",
+              "lv1-c10-02"
+            ],
+            "value": 0.075
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 95,
+            "value": 0.791667
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 10
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 2
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 25,
+            "value": 0.208333
+          },
+          "observation_errors": {
+            "INCONSISTENT_PROPOSAL": 1,
+            "none": 119
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 94,
+            "value": 0.854545
+          },
+          "per_path": {
+            "path_0": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 101,
+                "value": 0.841667
+              }
+            },
+            "path_1": {
+              "dangerous_raw": 0,
+              "effective_accuracy": {
+                "denominator": 120,
+                "numerator": 99,
+                "value": 0.825
+              },
+              "raw_accuracy": {
+                "denominator": 120,
+                "numerator": 99,
+                "value": 0.825
+              }
+            }
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 95,
+            "value": 0.791667
+          },
+          "unnecessary_clarification": 16,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 3,
+            "increment": 1,
+            "pack_unit": 9,
+            "replace_remaining": 1
+          }
+        }
+      },
+      "client_calls": 720,
+      "cost": {
+        "ledger": {
+          "by_status": {
+            "SETTLED": {
+              "cost_usd": "0.191794",
+              "rows": 720
+            }
+          },
+          "cost_usd": "0.191794",
+          "input_tokens": 1475580,
+          "output_tokens": 88446,
+          "rows": 720
+        },
+        "record_attached_usd": "0.191794",
+        "usd_per_observation": "0.0005327611111111111111111111111",
+        "usd_per_raw_correct_observation": "0.0006523605442176870748299319728"
+      },
+      "latency_s": {
+        "all_attempts": {
+          "n": 360,
+          "p50": 2.294127031998869,
+          "p95": 3.269295191999845
+        },
+        "definition": "每条观测取各路 calls[].elapsed_s 的最大值（并行两路≈墙钟，不含本地合并）",
+        "success_only": {
+          "n": 359,
+          "p50": 2.294127031998869,
+          "p95": 3.2939207119998173
+        }
+      },
+      "mean_effective_accuracy": 0.816667,
+      "mean_raw_accuracy": 0.816667,
+      "observations": 360,
+      "planned_calls": 720,
+      "pre_run_ledger_usd": "0.148164",
+      "repeat_consistency": {
+        "identical_payload_all_3": {
+          "denominator": 120,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "same_business_intent_all_3": {
+          "denominator": 120,
+          "numerator": 105,
+          "value": 0.875
+        },
+        "same_correctness_all_3": {
+          "denominator": 120,
+          "numerator": 108,
+          "value": 0.9
+        },
+        "samples": 120
+      },
+      "resumes": [],
+      "run_id": "6a11a9e08c784b32880fc22dd4e3aff2",
+      "runner_crosscheck": {
+        "fields_compared": 16,
+        "mismatched": []
+      },
+      "saved_summary_cap_usd": "5.00",
+      "saved_summary_worktree_dirty": false,
+      "schedule_sha256": "3105ec4d08e679b1cfd1db5e538a82b1f9c584c4c9ffa25ae5a29c33e46a8020",
+      "timeouts": []
+    },
+    "single": {
+      "all_repetitions": {
+        "by_category": {
+          "cancel_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 23,
+              "value": 0.766667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 23,
+              "value": 0.766667
+            }
+          },
+          "clarify": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "colloquial": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 20,
+              "value": 0.666667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 20,
+              "value": 0.666667
+            }
+          },
+          "cross_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            }
+          },
+          "increment": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "multi_change": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "new_order": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "out_of_scope": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 30,
+              "value": 1.0
+            }
+          },
+          "pack_unit": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 5,
+              "value": 0.166667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 5,
+              "value": 0.166667
+            }
+          },
+          "prompt_injection": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 29,
+              "value": 0.966667
+            }
+          },
+          "replace_remaining": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 27,
+              "value": 0.9
+            }
+          },
+          "set_total": {
+            "effective": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            },
+            "raw": {
+              "denominator": 30,
+              "numerator": 28,
+              "value": 0.933333
+            }
+          }
+        },
+        "call_errors": {
+          "INCONSISTENT_PROPOSAL": 1,
+          "MODEL_TIMEOUT": 2,
+          "none": 357
+        },
+        "clarification_recall": {
+          "denominator": 30,
+          "numerator": 30,
+          "value": 1.0
+        },
+        "dangerous": {
+          "effective": 0,
+          "raw": 0,
+          "rules_caught": 0
+        },
+        "effective_accuracy": {
+          "denominator": 360,
+          "numerator": 304,
+          "value": 0.844444
+        },
+        "handoff": {
+          "combined_handoff": {
+            "attempts": 60,
+            "handoff_clarify": 28,
+            "handoff_recall": 0.4666666666666667,
+            "silent_ignore": 32
+          },
+          "new_order": {
+            "attempts": 30,
+            "handoff_clarify": 22,
+            "handoff_recall": 0.7333333333333333,
+            "silent_ignore": 8
+          },
+          "out_of_scope": {
+            "attempts": 30,
+            "handoff_clarify": 6,
+            "handoff_recall": 0.2,
+            "silent_ignore": 24
+          }
+        },
+        "model_incomplete_calls": 0,
+        "n": 360,
+        "needs_human": {
+          "denominator": 360,
+          "numerator": 56,
+          "value": 0.155556
+        },
+        "observation_errors": {
+          "INCONSISTENT_PROPOSAL": 1,
+          "MODEL_TIMEOUT": 2,
+          "none": 357
+        },
+        "pack_unit_secondary_raw_excluding_pack_unit": {
+          "denominator": 330,
+          "numerator": 299,
+          "value": 0.906061
+        },
+        "raw_accuracy": {
+          "denominator": 360,
+          "numerator": 304,
+          "value": 0.844444
+        },
+        "unnecessary_clarification": 51,
+        "unnecessary_clarification_by_category": {
+          "cancel_remaining": 7,
+          "colloquial": 9,
+          "increment": 3,
+          "multi_change": 2,
+          "pack_unit": 25,
+          "replace_remaining": 3,
+          "set_total": 2
+        }
+      },
+      "arm_schedule_sha256": "3f29439b83758f7402f9066538a1017c4a0ad8418cccdff1e0fe7657e1f9e883",
+      "by_repetition": {
+        "1": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 2,
+                "value": 0.2
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 2,
+                "value": 0.2
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "MODEL_TIMEOUT": 1,
+            "none": 119
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 102,
+            "value": 0.85
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 11
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 3
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 18,
+            "value": 0.15
+          },
+          "observation_errors": {
+            "MODEL_TIMEOUT": 1,
+            "none": 119
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 100,
+            "value": 0.909091
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 102,
+            "value": 0.85
+          },
+          "unnecessary_clarification": 16,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 2,
+            "increment": 1,
+            "multi_change": 1,
+            "pack_unit": 8,
+            "replace_remaining": 1,
+            "set_total": 1
+          }
+        },
+        "2": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 6,
+                "value": 0.6
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 2,
+                "value": 0.2
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 2,
+                "value": 0.2
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            }
+          },
+          "call_errors": {
+            "INCONSISTENT_PROPOSAL": 1,
+            "MODEL_TIMEOUT": 1,
+            "none": 118
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 100,
+            "value": 0.833333
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 10,
+              "handoff_recall": 0.5,
+              "silent_ignore": 10
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 8,
+              "handoff_recall": 0.8,
+              "silent_ignore": 2
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 20,
+            "value": 0.166667
+          },
+          "observation_errors": {
+            "INCONSISTENT_PROPOSAL": 1,
+            "MODEL_TIMEOUT": 1,
+            "none": 118
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 98,
+            "value": 0.890909
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 100,
+            "value": 0.833333
+          },
+          "unnecessary_clarification": 18,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 3,
+            "colloquial": 4,
+            "increment": 1,
+            "multi_change": 1,
+            "pack_unit": 8,
+            "replace_remaining": 1
+          }
+        },
+        "3": {
+          "by_category": {
+            "cancel_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 8,
+                "value": 0.8
+              }
+            },
+            "clarify": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "colloquial": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 7,
+                "value": 0.7
+              }
+            },
+            "cross_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "increment": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "multi_change": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "new_order": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "out_of_scope": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "pack_unit": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 1,
+                "value": 0.1
+              }
+            },
+            "prompt_injection": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 10,
+                "value": 1.0
+              }
+            },
+            "replace_remaining": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            },
+            "set_total": {
+              "effective": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              },
+              "raw": {
+                "denominator": 10,
+                "numerator": 9,
+                "value": 0.9
+              }
+            }
+          },
+          "call_errors": {
+            "none": 120
+          },
+          "clarification_recall": {
+            "denominator": 10,
+            "numerator": 10,
+            "value": 1.0
+          },
+          "dangerous": {
+            "effective": 0,
+            "raw": 0,
+            "rules_caught": 0
+          },
+          "effective_accuracy": {
+            "denominator": 120,
+            "numerator": 102,
+            "value": 0.85
+          },
+          "handoff": {
+            "combined_handoff": {
+              "attempts": 20,
+              "handoff_clarify": 9,
+              "handoff_recall": 0.45,
+              "silent_ignore": 11
+            },
+            "new_order": {
+              "attempts": 10,
+              "handoff_clarify": 7,
+              "handoff_recall": 0.7,
+              "silent_ignore": 3
+            },
+            "out_of_scope": {
+              "attempts": 10,
+              "handoff_clarify": 2,
+              "handoff_recall": 0.2,
+              "silent_ignore": 8
+            }
+          },
+          "model_incomplete_calls": 0,
+          "n": 120,
+          "needs_human": {
+            "denominator": 120,
+            "numerator": 18,
+            "value": 0.15
+          },
+          "observation_errors": {
+            "none": 120
+          },
+          "pack_unit_secondary_raw_excluding_pack_unit": {
+            "denominator": 110,
+            "numerator": 101,
+            "value": 0.918182
+          },
+          "raw_accuracy": {
+            "denominator": 120,
+            "numerator": 102,
+            "value": 0.85
+          },
+          "unnecessary_clarification": 17,
+          "unnecessary_clarification_by_category": {
+            "cancel_remaining": 2,
+            "colloquial": 3,
+            "increment": 1,
+            "pack_unit": 9,
+            "replace_remaining": 1,
+            "set_total": 1
+          }
+        }
+      },
+      "client_calls": 360,
+      "cost": {
+        "ledger": {
+          "by_status": {
+            "ORPHANED": {
+              "cost_usd": "0.002221",
+              "rows": 1
+            },
+            "SETTLED": {
+              "cost_usd": "0.099826",
+              "rows": 361
+            }
+          },
+          "cost_usd": "0.102047",
+          "input_tokens": 754412,
+          "output_tokens": 53210,
+          "rows": 362
+        },
+        "record_attached_usd": "0.099826",
+        "usd_per_observation": "0.0002772944444444444444444444444",
+        "usd_per_raw_correct_observation": "0.000328375"
+      },
+      "latency_s": {
+        "all_attempts": {
+          "n": 360,
+          "p50": 2.1359633520005445,
+          "p95": 3.1578205760015408
+        },
+        "definition": "每条观测取各路 calls[].elapsed_s 的最大值（并行两路≈墙钟，不含本地合并）",
+        "success_only": {
+          "n": 357,
+          "p50": 2.1334486300002027,
+          "p95": 3.1434292260000802
+        }
+      },
+      "mean_effective_accuracy": 0.844444,
+      "mean_raw_accuracy": 0.844444,
+      "observations": 360,
+      "planned_calls": 360,
+      "pre_run_ledger_usd": "0.046117",
+      "repeat_consistency": {
+        "identical_payload_all_3": {
+          "denominator": 120,
+          "numerator": 1,
+          "value": 0.008333
+        },
+        "same_business_intent_all_3": {
+          "denominator": 120,
+          "numerator": 109,
+          "value": 0.908333
+        },
+        "same_correctness_all_3": {
+          "denominator": 120,
+          "numerator": 111,
+          "value": 0.925
+        },
+        "samples": 120
+      },
+      "resumes": [
+        {
+          "at": "2026-11-11T15:34:15.510005+00:00",
+          "starting_observation_id": "s3-single-r1-lv1-c03-08"
+        },
+        {
+          "at": "2026-11-11T17:24:17.846883+00:00",
+          "starting_observation_id": "s3-single-r1-lv1-c09-02"
+        }
+      ],
+      "run_id": "1003564d4a194d80aa63f9097684d015",
+      "runner_crosscheck": {
+        "fields_compared": 16,
+        "mismatched": []
+      },
+      "saved_summary_cap_usd": "5.00",
+      "saved_summary_worktree_dirty": false,
+      "schedule_sha256": "3105ec4d08e679b1cfd1db5e538a82b1f9c584c4c9ffa25ae5a29c33e46a8020",
+      "sensitivity_excluding": {
+        "by_repetition": {
+          "1": {
+            "effective_accuracy": {
+              "denominator": 119,
+              "numerator": 102,
+              "value": 0.857143
+            },
+            "raw_accuracy": {
+              "denominator": 119,
+              "numerator": 102,
+              "value": 0.857143
+            }
+          },
+          "2": {
+            "effective_accuracy": {
+              "denominator": 120,
+              "numerator": 100,
+              "value": 0.833333
+            },
+            "raw_accuracy": {
+              "denominator": 120,
+              "numerator": 100,
+              "value": 0.833333
+            }
+          },
+          "3": {
+            "effective_accuracy": {
+              "denominator": 120,
+              "numerator": 102,
+              "value": 0.85
+            },
+            "raw_accuracy": {
+              "denominator": 120,
+              "numerator": 102,
+              "value": 0.85
+            }
+          }
+        },
+        "excluded": [
+          "s3-single-r1-lv1-c10-04"
+        ],
+        "note": "仅供参考；正式分以含该失败为准"
+      },
+      "timeouts": [
+        {
+          "client_monotonic_elapsed_s": 60.13,
+          "cost_usd": "0.002159",
+          "ledger_id": "MU-4458ab76ef074533",
+          "ledger_status": "SETTLED",
+          "ledger_wall_s": 5712.8,
+          "observation_id": "s3-single-r1-lv1-c10-04",
+          "reserved_at_utc": "2026-11-11 15:45:31.805033",
+          "settled_at_utc": "2026-11-11 17:20:44.649894",
+          "suspend_signature": true
+        },
+        {
+          "client_monotonic_elapsed_s": 60.16,
+          "cost_usd": "0.002164",
+          "ledger_id": "MU-bf367d6cde4b4e2e",
+          "ledger_status": "SETTLED",
+          "ledger_wall_s": 1093.5,
+          "observation_id": "s3-single-r2-lv1-c08-07",
+          "reserved_at_utc": "2026-11-11 17:28:16.039036",
+          "settled_at_utc": "2026-11-11 17:46:29.492373",
+          "suspend_signature": true
+        }
+      ]
+    }
+  },
+  "comparisons": [
+    {
+      "a": "single",
+      "all_abs_diff_ge_3": false,
+      "b": "double_same_prompt",
+      "diff_samples_by_repetition": [
+        1,
+        2,
+        7
+      ],
+      "metric": "raw_accuracy",
+      "same_direction_all_3": true,
+      "verdict": "无结论（视为无差异）"
+    },
+    {
+      "a": "single",
+      "all_abs_diff_ge_3": true,
+      "b": "double_roles",
+      "diff_samples_by_repetition": [
+        5,
+        4,
+        4
+      ],
+      "metric": "raw_accuracy",
+      "same_direction_all_3": true,
+      "verdict": "有差异"
+    },
+    {
+      "a": "double_same_prompt",
+      "all_abs_diff_ge_3": false,
+      "b": "double_roles",
+      "diff_samples_by_repetition": [
+        4,
+        2,
+        -3
+      ],
+      "metric": "raw_accuracy",
+      "same_direction_all_3": false,
+      "verdict": "无结论（视为无差异）"
+    },
+    {
+      "a": "single",
+      "all_abs_diff_ge_3": false,
+      "b": "double_same_prompt",
+      "diff_samples_by_repetition": [
+        1,
+        2,
+        7
+      ],
+      "metric": "effective_accuracy",
+      "same_direction_all_3": true,
+      "verdict": "无结论（视为无差异）"
+    },
+    {
+      "a": "single",
+      "all_abs_diff_ge_3": true,
+      "b": "double_roles",
+      "diff_samples_by_repetition": [
+        5,
+        4,
+        4
+      ],
+      "metric": "effective_accuracy",
+      "same_direction_all_3": true,
+      "verdict": "有差异"
+    },
+    {
+      "a": "double_same_prompt",
+      "all_abs_diff_ge_3": false,
+      "b": "double_roles",
+      "diff_samples_by_repetition": [
+        4,
+        2,
+        -3
+      ],
+      "metric": "effective_accuracy",
+      "same_direction_all_3": false,
+      "verdict": "无结论（视为无差异）"
+    }
+  ],
+  "formal_qualified": false,
+  "kind": "agent_comparison_v1 offline rescore; development diagnostics, not formal accuracy",
+  "ledger_totals": {
+    "gpt-6-luna": {
+      "by_status": {
+        "ORPHANED": {
+          "cost_usd": "0.002221",
+          "rows": 1
+        },
+        "SETTLED": {
+          "cost_usd": "0.534111",
+          "rows": 1970
+        }
+      },
+      "cost_usd": "0.536332",
+      "input_tokens": 4088568,
+      "output_tokens": 254931,
+      "rows": 1971
+    }
+  },
+  "manifest_sha256": "f5c2488645672d51560440e9bdcb06a8d71b22b97b72eb1d1cc2f17941a68cb1",
+  "provenance": {
+    "frozen_runner_code_sha": "ff97cb13a21665082ab0b62f95e016c6d78befac",
+    "frozen_scoring_paths": [
+      "app",
+      "benchmarks/score_review.py",
+      "benchmarks/run_live_eval.py",
+      "benchmarks/compare_readers.py",
+      "evals/live_v1"
+    ],
+    "frozen_scoring_paths_unchanged": true,
+    "model_calls": 0,
+    "rescore_script_blob_sha": "46a373572a1b097a63a31f6312d9de11760b386f",
+    "rescored_with_code_sha": "e9f3a8d817a92e89211e4c010fc4baf0d8e9cd57"
+  },
+  "references_review": "参考答案由小八复核，不是 Qi 人工复核",
+  "rule": "总体指标：3 次重复方向一致且每次差 ≥3 个样本才记「有差异」，否则「无结论」。分母 ≤20 的指标只报数字，不下结论。",
+  "strong_model_smoke": {
+    "call_errors": {
+      "MODEL_HTTP": 5
+    },
+    "code_sha": "ff97cb13a21665082ab0b62f95e016c6d78befac",
+    "ledger_cost_usd": "0.000000",
+    "ledger_rows": 5,
+    "model": "gpt-6.1-sol",
+    "observations": 5,
+    "status": "冒烟因参数不兼容失败，待决定",
+    "tokens": 0
+  }
+}
