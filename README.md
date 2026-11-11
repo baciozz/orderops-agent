@@ -24,6 +24,29 @@
 - ⑪ 0/10
 - 不必要澄清偏多（⑪ 占 9 条）
 
+```mermaid
+flowchart TB
+  subgraph Input["① 本地输入"]
+    direction LR
+    File[本机原件或文字] --> Reader[限时读取子进程] --> Confirm[用户确认角色、字段与范围] --> Snapshot[导入快照并明确选单]
+  end
+  subgraph Review["核对与确认"]
+    direction LR
+    subgraph Model["② 模型只提案"]
+      Proposal["真实模型结构提案<br/>只提案、无批准/执行权"]
+    end
+    subgraph Rules["③ 确定性规则核对"]
+      Check["数量 / 库存 / 已发<br/>版本检查"]
+    end
+    subgraph Human["④ 人工确认"]
+      direction TB
+      Fix["人工纠正及重新核对<br/>确认失效与重新核对"] --> Checklist[确认清单并导出CSV/XLSX]
+    end
+    Model --> Rules --> Human
+  end
+  Input --> Review
+```
+
 单角色、双角色、强模型对照（S3）按预登记方案进行中。
 
 ![离线演示：保留 SYN-2401 预填资料，人工改为 36 件，核对并确认后下载 CSV](docs/assets/offline-demo.gif)
