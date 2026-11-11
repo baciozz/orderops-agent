@@ -1,6 +1,6 @@
 # 本轮逐项进度（开发预览，未达到可用测试版门槛）
 
-保留集不随本仓库公开，只公布冻结文件 SHA256 作为承诺：`b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43`。本仓库不含 `benchmarks/datasets/` 与 `tests/test_beta_dataset.py`。
+保留集不随本仓库公开，只公布 `provisional-v3.FREEZE.json` 的 SHA256 作为承诺：`b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43`。本仓库不含 `benchmarks/datasets/` 与 `tests/test_beta_dataset.py`。
 
 原方案逐项保留于 [方案快照](ACCEPTANCE_PLAN_SOURCE.zh-CN.md)，源 Page 日期 2026-11-09；未降低任何门槛。主线基线 `4f0536c50d95fc77d0bb2fa4f8fc8100ffcede90`。新工作隔离分支 `codex/local-beta-g0-g1-20261109`；负责人 Codex（AI 工程执行），独立用户/授权人由用户提供。未创建正式发布、公开仓库或 tag。
 

@@ -50,7 +50,7 @@ OOS_LIVE_ENABLED=false make eval-offline
 make check-wheel WHEELHOUSE="<wheelhouse>" WHEEL_OUTPUT="<new-evidence-directory>"
 ```
 
-保留集不随本仓库公开。对外只公布冻结文件的 SHA256 作为承诺：`b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43`。本仓库不含 `benchmarks/datasets/` 与 `tests/test_beta_dataset.py`。普通 CI 不持有、不读取保留集，也**不验证数据集完整性**。不要把受保护内容加入本仓库。持有私有副本的独立维护者按[保留集协议](beta/HELDOUT_INDEPENDENCE.zh-CN.md)在隔离条件下安排后续工作。
+保留集不随本仓库公开。对外只公布 `provisional-v3.FREEZE.json` 的 SHA256 作为承诺：`b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43`。本仓库不含 `benchmarks/datasets/` 与 `tests/test_beta_dataset.py`。普通 CI 不持有、不读取保留集，也**不验证数据集完整性**。不要把受保护内容加入本仓库。持有私有副本的独立维护者按[保留集协议](beta/HELDOUT_INDEPENDENCE.zh-CN.md)在隔离条件下安排后续工作。
 
 实际中文 OCR 另需 Tesseract 及固定版本中文语言数据，安装和测试方法见[输入支持](beta/INPUT_SUPPORT.zh-CN.md)；缺少可选数据时应报告跳过，不能把 mock 或跳过写成真实 OCR 通过。`make eval-offline` 测的是固定答案下的管线与规则，不是自由语言理解准确率。
 
