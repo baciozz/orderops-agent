@@ -1,0 +1,14 @@
+{
+  "source_sha": "510ce29ff52518161f03bc5c0752b9bde69eb47a",
+  "candidate_packaging_closure": "corrected allowlist, application unchanged",
+  "status": "passed",
+  "stage": "complete",
+  "wheel_sha256": "f0be2a04f14048f5ede63e50fb7c583414a36a43e8ef5fc2c244090979f2dc8a",
+  "verified_installed_files": 147,
+  "repeat_init": "passed",
+  "source_editable_install": false,
+  "targeted_candidate_tests": 26,
+  "targeted_elapsed_s": 6.31,
+  "paid_model": false,
+  "public_release_approved": false
+}

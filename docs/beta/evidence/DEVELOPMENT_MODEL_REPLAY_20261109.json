@@ -1,0 +1,97 @@
+{
+  "base_head": "07a4c13e7f721772dfe5e1a351032cb25bc162cd",
+  "prompt_candidate": "local-review-v3-quantity-context",
+  "actual_local_http": {
+    "kind": "actual local HTTP with controlled responses; not real-model reproduction",
+    "prompt_version": "local-review-v3-quantity-context",
+    "cases": [
+      {
+        "case_id": "case-005-1",
+        "rule_states": [
+          "clarify",
+          "ready"
+        ],
+        "export": [
+          [
+            "00104-藏蓝-M",
+            39
+          ]
+        ],
+        "xlsx_sha256": "186846b2ba9b5b294a1ab2c3e89449a568c23db38401dd14dbbbdd16ebdb660b",
+        "review_id": "RV-09bcf65b2e4b452c96f660a4167c9889",
+        "xlsx_values_checked": true
+      },
+      {
+        "case_id": "case-113-1",
+        "rule_states": [
+          "blocked",
+          "ready"
+        ],
+        "export": [
+          [
+            "00212-白-L",
+            59
+          ],
+          [
+            "00212-藏蓝-M",
+            76
+          ]
+        ],
+        "xlsx_sha256": "b92e3c5f9de766cf99b37c5f348775e4d361cf76b7b64cdef884d4f3eb07fdf5",
+        "review_id": "RV-545280b389ba44269f241f69513eb2db",
+        "xlsx_values_checked": true
+      }
+    ],
+    "real_external_model_calls": 0,
+    "controlled_provider_requests": 4,
+    "business_tables_unchanged": true
+  },
+  "development_asset_provenance": {
+    "archive_sha256": "e9f6c2b8b91d43d89b514129a44207b55d50c07fbb5983d29ddad0c33dc01d47",
+    "cases": [
+      "case-005-1",
+      "case-113-1"
+    ],
+    "split_verified": "dev",
+    "oracle_read": false,
+    "new_formal_heldout_read": false,
+    "files": [
+      {
+        "file": "tests/fixtures/review_development/pdf-wrapped/baseline.json",
+        "sha256": "0b6a0bec4698b58ae1948b1ac42a8851176e9d77a5c9259466a45d2d6865d05c"
+      },
+      {
+        "file": "tests/fixtures/review_development/pdf-wrapped/request.pdf",
+        "sha256": "86ed485c0626bf54de72564ec68126bc8fb07a796d854da64d98302527b7903e"
+      },
+      {
+        "file": "tests/fixtures/review_development/replacement/baseline.json",
+        "sha256": "26f5c9aa6ce5e9d15f504ef0e0c7fa5f7a66c6b1dd9b6c234ff461f6e03a9308"
+      },
+      {
+        "file": "tests/fixtures/review_development/replacement/request.txt",
+        "sha256": "f2e3d0df4f7c56feca64874bdc8fb452d41db1c963ab062f4fc1132f3c6c8d7a"
+      }
+    ]
+  },
+  "prior_model_observation": {
+    "source": "parent independent evaluation parsed-result report",
+    "model_alias": "gpt-6-luna",
+    "reasoning_effort": "none",
+    "max_output_tokens": 1000,
+    "store": false,
+    "tools": false,
+    "retries": 0,
+    "raw_original_http_preserved": false,
+    "original_model_snapshot_preserved": false,
+    "independent_human_reference_review": false
+  },
+  "validation": {
+    "targeted_passed": 71,
+    "model_output_reproduction_proven": false,
+    "real_model_improvement_proven": false,
+    "new_real_api_calls": 0,
+    "safety_checks_weakened": false,
+    "status": "prompt/schema candidate; unified configured environment real retest required"
+  }
+}

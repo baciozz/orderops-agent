@@ -1,0 +1,11 @@
+# Third-party component review
+
+This is a declaration inventory for a private candidate review, not permission to publish. The repository already contains an MIT license naming its owner; the owner must confirm copyright, maintainer identity and the proposed public scope before publication.
+
+Runtime dependencies are installed separately from the locked requirements. The ordinary application wheel does not vendor their code. The installed metadata inventory, including license-file hashes, is in [DEPENDENCY_LICENSE_DECLARATIONS.json](beta/evidence/DEPENDENCY_LICENSE_DECLARATIONS.json). Most declarations are MIT, BSD, Apache or Python Software Foundation terms; certifi declares MPL-2.0, Pillow declares MIT-CMU. Some packages provide classifiers rather than a license expression, and openpyxl/et-xmlfile have no license file recorded in this installed distribution. These omissions need package-source verification before bundling dependencies; a metadata scan is not a complete redistribution review.
+
+ReportLab and charset-normalizer are development dependencies used to generate synthetic text PDFs. ReportLab declares BSD terms and includes separate license notices for bundled material. Preserve those notices if distributing its files. The dataset generator uses a system Noto CJK font; the installed font copyright file identifies SIL Open Font License 1.1 for the font. No font binary or ReportLab dependency is copied into the application wheel or planned source candidate. Rendered synthetic images are marked as simulated data, not customer chat records.
+
+Optional OCR runs an independently installed Tesseract executable. The preparation script fetches pinned tessdata_fast Chinese/English data and its Apache-2.0 license, verifies hashes, and stores them outside the source tree. Neither OCR language weights nor model weights belong in the candidate. A remote model API supplies no redistributable model weights; API use, pricing and data transfer require the operator's authorization.
+
+This inventory does not resolve contributor ownership, patents, trademarks or the redistribution terms of every development tool. Do not publish the private development history or raw CI/browser/acceptance logs on the strength of this document. Keep LICENSE and any applicable component notices with any subsequently approved distribution.

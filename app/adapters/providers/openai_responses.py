@@ -56,6 +56,7 @@ class OpenAIResponsesProvider:
             "max_output_tokens": request.max_output_tokens,
             "reasoning": {"effort": self._settings.model_reasoning_effort},
             "store": False,
+            "service_tier": "default",
         }
 
         return ProviderRequest(

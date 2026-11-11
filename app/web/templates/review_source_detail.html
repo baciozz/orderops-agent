@@ -1,0 +1,72 @@
+{% extends "review_base.html" %}
+{% block content %}
+<h1>检查原件：{{ asset.filename }}</h1>
+<p><a href="/ui/reviews/{{ item.id }}">返回处理任务</a> · 来源 {{ asset.id }} · {{ asset.size }}字节 · SHA256 {{ asset.sha256 }}</p>
+{% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+{% if request.query_params.get('duplicate') %}<p class="notice">相同内容已保存，此次返回原件，没有重复新增或作废原确认。</p>{% endif %}
+{% if not asset.available %}<p class="error">原件缺失或内容变化，不能继续采用。下方可恢复与保留哈希完全相同的文件；不同内容必须作为新原件上传。</p>{% endif %}
+{% if duplicate_names %}<p class="error">存在同名不同内容的原件，系统没有把新文件当作覆盖。请核对关系，必要时明确排除旧件。</p>{% endif %}
+<p><a href="/reviews/{{ item.id }}/sources/{{ asset.id }}/original" target="_blank" rel="noopener">打开/下载保留原件</a>（PDF在独立页或下载后对照，不执行文件中的指令）</p>
+{% for warning in document.warnings %}<p class="notice">{{ warning }}</p>{% endfor %}
+{% if document.kind == 'image' and document.ocr_size_crosscheck is none %}
+<p class="notice">这是旧版OCR结果，尚未进行新的尺码字符交叉核对。同一任务重复上传同名同内容会复用旧原件，不会重读；请新建任务重新读取，或在下方对照原图完整转录。结果仍须逐项核对，旧结果不会自动改写。</p>
+{% endif %}
+{% if document.kind == 'image' and document.ocr_cjk_confidence is none %}
+<p class="notice">这是旧版OCR结果，尚未进行低分中文检查。同一任务重复上传同名同内容会复用旧原件；请新建任务重新读取，或对照原图完整转录。</p>
+{% endif %}
+{% if document.kind == 'image' %}
+<p class="notice">请对照完整原图逐一核对编号、数量、金额、日期及未读出的内容。识别分数、没有提示或勾选均不能证明文字正确；发现错误或无法判断时请先完整转录。</p>
+{% if document.ocr_numeric_check is none %}<p class="error" id="ocr-numeric-review">旧图片尚未进行数字低分检查。原确认和原件保留；同一任务重传相同文件不会重读，请新建任务重新读取或对照原图完整转录。</p>
+{% elif document.ocr_numeric_check == 'unavailable' %}<p class="error" id="ocr-numeric-review">数字低分检查不可用；请对照原图完整转录后再确认。</p>
+{% elif document.ocr_numeric_low_count %}<p class="error" id="ocr-numeric-review">发现 {{ document.ocr_numeric_low_count }} 个含数字的低分片段，预览区域：{{ document.ocr_numeric_low_regions }}{% if document.ocr_numeric_low_count > document.ocr_numeric_low_regions|length %}（仅列出前25处）{% endif %}。请对照完整原图转录后再确认；低分不一定代表数字出错。</p>{% endif %}
+{% endif %}
+{% if asset.document.kind == 'image' %}<h2>实际读取的校正预览</h2>
+<p>坐标空间 {{ asset.document.image_width }} × {{ asset.document.image_height }}，逆时针旋转{{ asset.rotation }}°。{{ asset.document.ocr_version }}；不是视觉模型验收。</p>
+{% if asset.document.get('ocr_language_sha256') %}<details><summary>查看识别数据版本</summary><pre>{{ asset.document.ocr_language_sha256 }}</pre></details>{% endif %}
+<img src="/reviews/{{ item.id }}/sources/{{ asset.id }}/original?preview=true" alt="用于OCR的校正图像，区域坐标参照此图" style="max-width:100%;height:auto">
+{% endif %}
+{% if document.kind == 'image' and document.ocr_cjk_confidence == 'review' %}<p class="notice">低分中文预览区域：{{ document.ocr_cjk_low_regions }}{% if document.ocr_cjk_low_count > document.ocr_cjk_low_regions|length %}（仅列出前25处，请核对全部原图）{% endif %}。识别错误或不确定时请先完整转录。</p>{% endif %}
+<h2>提取预览与原件定位</h2>
+{% if document.kind == 'human_transcription' %}<p class="notice">当前显示人工转录，不能将其当成自动OCR/模型识别成绩。原始读取保留在下方。</p>{% endif %}
+<div class="table-scroll"><table><tr><th>真实定位</th><th>读取文字</th><th>提示</th></tr>
+{% for span in document.spans[:200] %}<tr><td>{{ span.locator }}</td><td style="white-space:pre-wrap">{{ span.text }}</td><td>{{ '隐藏行，仍读取' if span.hidden else '' }}{{ 'OCR最低词分数 ' ~ span.confidence if span.confidence is not none else '' }}</td></tr>{% endfor %}</table></div>
+{% if document.spans|length > 200 %}<p>预览前200项，共{{ document.spans|length }}项，实际读取没有截断。请下载原件完整核对；超出支持范围会整份拒绝。</p>{% endif %}
+{% if item.status != 'CANCELLED' %}
+<h2>角色、工作表与布局</h2>
+<form method="get" class="input-form">
+<label for="role">这份文件是什么</label><select id="role" name="role">{% for key,label in roles.items() %}<option value="{{ key }}" {{ 'selected' if key == role else '' }}>{{ label }}</option>{% endfor %}</select>
+{% if document.tables %}<label for="table-id">采用的工作表/表格（不会默认读取其他工作表）</label><select id="table-id" name="table_id">{% for t in document.tables %}<option value="{{ t.table_id }}" {{ 'selected' if table_id == t.table_id else '' }}>{{ t.label }} · {{ t.rows|length }}行</option>{% endfor %}</select>
+<label for="header-row">表头所在行（从1开始）</label><input id="header-row" name="header_row" type="number" min="1" value="{{ header_row }}">
+<label for="layout">表格布局</label><select id="layout" name="layout">{% for key,label in [('rows','逐行SKU'),('sizes','尺码横排：每行一个款色'),('matrix','颜色尺码矩阵：款号等在人工常量中明确')] %}<option value="{{ key }}" {{ 'selected' if key == layout else '' }}>{{ label }}</option>{% endfor %}</select>{% endif %}
+<button>更新映射预览（尚未确认采用）</button></form>
+{% if table %}
+<h2>{{ table.label }} · 所选表头第{{ header_row }}行</h2><p>隐藏行：{{ table.hidden_rows or '无' }}，仍包含在读取中。合并范围：{{ table.merged_ranges or '无' }}。</p>
+<div class="table-scroll"><table><tr>{% for header in headers %}<th>列{{ loop.index }}：{{ header or '空表头' }}</th>{% endfor %}</tr>
+{% for row in table.rows[:30] %}<tr>{% for value in row %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</table></div>
+{% if table.rows|length > 30 %}<p>此处展示前30行，读取共{{ table.rows|length }}行；请从原件核对剩余行，不能把未看的行视为已确认。</p>{% endif %}
+{% endif %}
+<form method="post" action="/ui/reviews/{{ item.id }}/sources/{{ asset.id }}/confirm" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}"><input type="hidden" name="role" value="{{ role }}">
+{% if table %}<input type="hidden" name="table_id" value="{{ table_id }}"><input type="hidden" name="header_row" value="{{ header_row }}"><input type="hidden" name="layout" value="{{ layout }}">
+{% if fields %}<h2>确认列映射</h2><p>下列只是按表头建议的映射。空白数量保持未知；没有版本或履约方式时必须明确补充。常量是人工输入，不能冒充文件读取。</p>
+<div class="table-scroll"><table><tr><th>业务字段</th><th>原件列</th><th>缺列时人工常量</th></tr>{% for field in fields %}<tr><th>{{ field_labels[field] }}</th><td><select name="column_{{ field }}"><option value="-1">不映射/未知</option>{% for header in headers %}<option value="{{ loop.index0 }}" {{ 'selected' if columns.get(field) == loop.index0 else '' }}>列{{ loop.index }}：{{ header or '空表头' }}</option>{% endfor %}</select></td><td><input name="constant_{{ field }}" aria-label="{{ field_labels[field] }}人工常量" value="{{ submitted.get('constant_' ~ field, constants.get(field,'')) }}"></td></tr>{% endfor %}</table></div>
+<label for="first-data">数据开始行（留空为表头下一行；备注行需明确排除）</label><input id="first-data" name="first_data_row" type="number" min="1" value="{{ submitted.get('first_data_row','') }}">
+<label for="last-data">数据结束行（留空为全部）</label><input id="last-data" name="last_data_row" type="number" min="1" value="{{ submitted.get('last_data_row','') }}">
+{% if layout != 'rows' %}<label for="size-cols">尺码数量列号，从1开始、逗号分隔（例如5,6,7）</label><input id="size-cols" name="quantity_columns" required value="{{ submitted.get('quantity_columns','') }}">
+<label for="quantity-field">这些尺码格的数量含义</label><select id="quantity-field" name="quantity_field">{% for key,label in [('ordered_qty','订购总量'),('available_qty','可用现货库存'),('shipped_qty','已发总量'),('cut_qty','已裁总量')] %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>{% endif %}
+<label><input type="checkbox" name="expand_merged" value="yes" checked>按标明的合并范围使用左上角静态值，保留真实合并区定位</label>{% endif %}{% endif %}
+<label for="note">核对说明、来源关系或排除原因（低OCR分数/排除时必填）</label><textarea id="note" name="note" rows="3">{{ submitted.get('note',asset.note) }}</textarea>
+{% if role != 'excluded' and document.kind == 'image' and document.ocr_cjk_confidence == 'review' %}<label><input type="checkbox" name="cjk_low_confidence_checked" value="yes" required>我已逐一对照原图核对低分中文，确认读取无误；有误或不确定时先完整转录。</label>{% endif %}
+{% if role != 'excluded' and document.kind == 'image' and document.ocr_numeric_check == 'available' and not document.ocr_numeric_low_count %}<label><input type="checkbox" name="numeric_fields_checked" value="yes" required>我已对照完整原图核对所有编号、数量、金额、日期和可能漏读的内容；有误或不确定时已先完整转录。</label>{% endif %}
+<label><input type="checkbox" name="fields_checked" value="yes" required>我已对照原件核对关键订单、款色码、数量、金额、日期与映射；有误已先纠正</label>
+<label><input type="checkbox" name="context_complete" value="yes" required>我已核对上下文、页/行完整性与明确的采用范围</label>
+<button{% if role != 'excluded' and document.kind == 'image' and (document.ocr_numeric_check != 'available' or document.ocr_numeric_low_count) %} disabled{% endif %}>确认这个角色与字段（不执行订单）</button></form>
+<h2>需要纠正读取文字时</h2><p>填写完整正确文字；表格可用制表符或Markdown。不会改动原件或抹掉原OCR结果，纠正后须重新选角色/映射确认。</p>
+<form method="post" action="/ui/reviews/{{ item.id }}/sources/{{ asset.id }}/correct" class="input-form"><input type="hidden" name="revision" value="{{ item.revision }}">
+<label for="corrected-text">人工纠正/转录全文</label><textarea id="corrected-text" name="text" rows="6" required>{{ submitted.get('text',asset.get('corrected_text','')) }}</textarea>
+<label for="reason">修改理由</label><input id="reason" name="reason" value="{{ submitted.get('reason','') }}" required><button>保存人工转录并重新预览</button></form>
+{% endif %}
+<h2>恢复缺失的相同原件</h2><p>只接受与保留大小/哈希一致的文件，不静默替换成新内容。新资料请回任务页另行上传。</p>
+<form method="post" enctype="multipart/form-data" action="/ui/reviews/{{ item.id }}/sources/{{ asset.id }}/restore" class="input-form"><input type="hidden" name="revision" value="{{ item.revision }}"><input type="hidden" name="key" value="{{ upload_key }}"><label>选择可信备份原件<input name="file" type="file" required></label><button>核验哈希后恢复</button></form>
+<details><summary>原始自动读取结果（纠正后仍保留）</summary><pre>{{ asset.document }}</pre></details>
+{% endblock %}

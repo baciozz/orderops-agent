@@ -1,0 +1,35 @@
+{
+  "source_sha": "738c9098e15d92ab7221e4bc5dc9ccd51cca06d6",
+  "source": "trusted parent independent configured-environment retest summary",
+  "library_reference": "libfile_b5ba18b17b50819187008d77adf09114",
+  "library_metadata_confirmed": {
+    "name": "order-ops-retest-738c909.zip",
+    "size_bytes": 61860,
+    "mime_type": "application/zip"
+  },
+  "archive_unpacked_in_this_worker": false,
+  "model_alias": "gpt-6-luna",
+  "specific_model_snapshot": null,
+  "reported_cumulative_real_calls": 42,
+  "reported_conservative_ledger_usd": "0.009299",
+  "case_113_1": {
+    "repetitions": 3,
+    "all_source_90_to_76_and_target_45_to_59": true,
+    "generalization_metric": false
+  },
+  "case_005_1": {
+    "repetitions": 3,
+    "clarify_count": 2,
+    "propose_count": 1,
+    "propose_had_extra_white_45_to_45_action": true,
+    "effective_diff_after_rules_correct_in_propose": true,
+    "fully_fixed": false,
+    "generalization_metric": false
+  },
+  "reference_independent_human_review": false,
+  "decision": "retain known PDF reliability limit; freeze prompt and avoid single-case tuning",
+  "worker_additional_real_external_calls": 0,
+  "new_formal_heldout_accessed": false,
+  "actual_recovery_evidence": "PDF_RECOVERY_20261109.json",
+  "reopen_for": "broader development/user evidence of business error, bad provenance, failed manual recovery or repeated usability obstruction"
+}

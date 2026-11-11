@@ -1,0 +1,95 @@
+{
+  "base_sha": "d12e12329a3ef1f00f73c9a2a7d7af374986e169",
+  "state": "B051 app changes under test, later commit recorded by Git",
+  "before": [
+    {
+      "id": "RV-e5a2a62b835040d3afbb803aa6d83c50",
+      "duplicate_hint_present": false,
+      "distinct_task_saved": true
+    },
+    {
+      "id": "RV-ec2c9d2ee15c4b129d4f7c49a62879fd",
+      "duplicate_hint_present": false,
+      "distinct_task_saved": true
+    }
+  ],
+  "after_create": [
+    {
+      "id": "RV-4f44ee807b6247128c819d3a1d2f2b0a",
+      "hint_present": false,
+      "matches": [],
+      "revision": 1,
+      "status": "DRAFT"
+    },
+    {
+      "id": "RV-b5e87d8453504366be057185344fdc8b",
+      "hint_present": true,
+      "matches": [
+        {
+          "id": "RV-4f44ee807b6247128c819d3a1d2f2b0a",
+          "status": "DRAFT"
+        }
+      ],
+      "revision": 1,
+      "status": "DRAFT"
+    }
+  ],
+  "browser_old_task": {
+    "id": "RV-4f44ee807b6247128c819d3a1d2f2b0a",
+    "status": "DRAFT",
+    "revision": 1,
+    "proposal": null
+  },
+  "browser_new_task": {
+    "id": "RV-b5e87d8453504366be057185344fdc8b",
+    "status": "CONFIRMED",
+    "revision": 3,
+    "rows": [
+      {
+        "sku_id": "00123-藏蓝-M",
+        "old_qty": 50,
+        "new_qty": 37,
+        "delta": -13,
+        "baseline_source": "snapshot:/orders/0/lines/0/ordered_qty",
+        "origin": "人工纠正",
+        "style": "00123",
+        "color": "藏蓝",
+        "size": "M",
+        "baseline_origin": {
+          "locator": "snapshot:/orders/0/lines/0/ordered_qty"
+        }
+      }
+    ]
+  },
+  "all_business_tables_empty": true,
+  "actual_browser_xlsx_sha256": "63d2e22ae991cfa0b1b0aaa124799df645300c3b90cb5e5d64e75fc4cfc90d38",
+  "tests": "8 similarity + 9 paired baseline tests passed; Mock is not model quality evidence",
+  "recording": {
+    "filename": "capture0001.mov",
+    "bytes": 1736578,
+    "sha256": "d647bc24e2ce440edf7822293906302850b69a1857d95ba1cb3cc7be2e9b67b1",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1364,
+          "height": 1024,
+          "r_frame_rate": "15/1"
+        }
+      ],
+      "format": {
+        "duration": "269.133333"
+      }
+    },
+    "kind": "actual desktop manual synthetic workflow with setup/wait",
+    "qualifying_final_model_recording": false
+  },
+  "real_calls_added_by_this_worker": 0,
+  "formal_new_heldout_accessed": false,
+  "open_model_failures": [
+    "Original PDF cross-line development input/response not provided",
+    "Original replacement quantity development input/response not provided"
+  ]
+}

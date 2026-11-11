@@ -1,0 +1,85 @@
+{
+  "synthetic": true,
+  "captured_at": "2026-11-09T00:00:00Z",
+  "catalog": [
+    {
+      "sku_id": "00212-藏蓝-M",
+      "style": "00212",
+      "color": "藏蓝",
+      "size": "M",
+      "fulfillment_mode": "STOCK"
+    },
+    {
+      "sku_id": "00212-白-L",
+      "style": "00212",
+      "color": "白",
+      "size": "L",
+      "fulfillment_mode": "STOCK"
+    },
+    {
+      "sku_id": "00212-藏蓝-L",
+      "style": "00212",
+      "color": "藏蓝",
+      "size": "L",
+      "fulfillment_mode": "STOCK"
+    },
+    {
+      "sku_id": "00212-白-M",
+      "style": "00212",
+      "color": "白",
+      "size": "M",
+      "fulfillment_mode": "STOCK"
+    }
+  ],
+  "orders": [
+    {
+      "order_id": "SYN-3512",
+      "revision": 1,
+      "lines": [
+        {
+          "sku_id": "00212-藏蓝-M",
+          "ordered_qty": 90,
+          "shipped_qty": 10,
+          "cut_qty": null
+        },
+        {
+          "sku_id": "00212-白-L",
+          "ordered_qty": 45,
+          "shipped_qty": 0,
+          "cut_qty": null
+        },
+        {
+          "sku_id": "00212-藏蓝-L",
+          "ordered_qty": 0,
+          "shipped_qty": 0,
+          "cut_qty": null
+        },
+        {
+          "sku_id": "00212-白-M",
+          "ordered_qty": 0,
+          "shipped_qty": 0,
+          "cut_qty": null
+        }
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "sku_id": "00212-藏蓝-M",
+      "available_qty": 25
+    },
+    {
+      "sku_id": "00212-白-L",
+      "available_qty": 50
+    },
+    {
+      "sku_id": "00212-藏蓝-L",
+      "available_qty": 0
+    },
+    {
+      "sku_id": "00212-白-M",
+      "available_qty": 0
+    }
+  ],
+  "documents": []
+}

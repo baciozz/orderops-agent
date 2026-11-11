@@ -1,0 +1,391 @@
+{
+  "schema_version": 1,
+  "kind": "read-only heuristic publication inventory; not security clearance",
+  "head": "1e63f7c7a83c3ac44289727d408956d01d56e489",
+  "shallow": "false",
+  "commits": 165,
+  "refs": [
+    "refs/remotes/audit-pr/1 b01e2ab29083d153a2930a72370a2c294d1ea17a",
+    "refs/remotes/audit-pr/10 7bdc22bb0bb01e66ea07b0237ceeb8dc6902ec3a",
+    "refs/remotes/audit-pr/11 1bead7de08f2d410f30925d79729246e77b78144",
+    "refs/remotes/audit-pr/12 c4ef2257e56c39dd40cf9521ffee7d3ab907498e",
+    "refs/remotes/audit-pr/13 51e7132a33f7a5a92f4875323ec3c4676eedead2",
+    "refs/remotes/audit-pr/14 3fbb78c7e8ba32ce6bc68a54f194acc5cfc9af02",
+    "refs/remotes/audit-pr/15 28c35a18d4e9beaaf1e87a7a69159a75bd5d962d",
+    "refs/remotes/audit-pr/16 2adce88f6bf7026704d3e8d42fb83b2ea2a80924",
+    "refs/remotes/audit-pr/17 c4eeb4a6f852d1f09abccde8f5891c58b3f9e53b",
+    "refs/remotes/audit-pr/18 52b6c78275c7ee0ebbc8969f588f433b00935253",
+    "refs/remotes/audit-pr/19 c0c330c971b77fa1e3a7e750052b8971715cb8e9",
+    "refs/remotes/audit-pr/2 599abcaf235768107fb7a966b3af31b5097f5f68",
+    "refs/remotes/audit-pr/21 d22d995abaae555a2d22251fb1da63a2cad99891",
+    "refs/remotes/audit-pr/22 a814c2ffb3f6f602534cdad1efcbb3c4f37929be",
+    "refs/remotes/audit-pr/23 31434375eb508955b714e18b36ce407078091029",
+    "refs/remotes/audit-pr/24 d15674bc4447062068116aa510caaf0d84c7c3cf",
+    "refs/remotes/audit-pr/25 3a3631b5be5ee9f450092672b555bbb9fbf568b7",
+    "refs/remotes/audit-pr/26 a0a4d56e385747edbdb36f942d3fb59a37995bcc",
+    "refs/remotes/audit-pr/27 f4c141a99265702615d123bd4bc4b532ebdac246",
+    "refs/remotes/audit-pr/28 54531902477d40032b17e19bb47e3fa078165538",
+    "refs/remotes/audit-pr/29 3a89848c7f2db058e59d53bda6164acd0dd40a5a",
+    "refs/remotes/audit-pr/3 b85ffcc7e0f80f4bc1aca3ebe10aed81e3886744",
+    "refs/remotes/audit-pr/30 2ec182962e97e93467b0b5ecab7eae9226ec3af1",
+    "refs/remotes/audit-pr/31 15a0caf2e1292ed78245c7fb939f13154d5f78a3",
+    "refs/remotes/audit-pr/32 f311bd244a26d172c8f800cd1368341a20a322cf",
+    "refs/remotes/audit-pr/33 3c69279425902d78f8c5d12082860eb3c3bb03b3",
+    "refs/remotes/audit-pr/34 cb38053326755d4af955774c7a10e4612a664fe3",
+    "refs/remotes/audit-pr/35 416eac553a512670f4eaeaef1bb039bb5633ccf3",
+    "refs/remotes/audit-pr/36 2c5a7faa4af1fd41fc44814cb9560c211c5d1ea5",
+    "refs/remotes/audit-pr/37 24b6606fd1e796af3eee2a719c87f1f97ec6ef1c",
+    "refs/remotes/audit-pr/38 05f6a4693ea04d45c85399d794e69998e02f738a",
+    "refs/remotes/audit-pr/39 f15dd3795355efe62f4ff5c9b75f6f481c5863c7",
+    "refs/remotes/audit-pr/4 c70c2b37d032fef36e730f9ee2503b028d829b5d",
+    "refs/remotes/audit-pr/40 b658b03413c110f70aa3bf99000bc0fa4780f83a",
+    "refs/remotes/audit-pr/41 8a4303c31d6ba8d143fa95d09a1bdd0069b8356e",
+    "refs/remotes/audit-pr/42 4bc157fba3ac55c73f899111499e778c77be8af6",
+    "refs/remotes/audit-pr/43 185c260d7838d86efac5cec4dfe7dcb6e347ad1a",
+    "refs/remotes/audit-pr/44 254cdbe0a7eda8f236179fabbd7b1bf6d0d6d231",
+    "refs/remotes/audit-pr/45 a1b1a03fd91f2e5bba306c441e4842c7c94ffba9",
+    "refs/remotes/audit-pr/46 51dc5283e310405a0f822257f0bcb1c77bf23543",
+    "refs/remotes/audit-pr/47 26eb74ca2cf6ab41ddd7c792b86ed8a7ef647b8c",
+    "refs/remotes/audit-pr/48 b8160814b3deeae537f1c2003afd8b027d9baa76",
+    "refs/remotes/audit-pr/49 7b493ac07929a373c85b0b30f798336f0d46ec8a",
+    "refs/remotes/audit-pr/5 6c7f74761f745619e7186c16f332e215a21317f1",
+    "refs/remotes/audit-pr/50 efb5a078f3572448507e04e187d81a30ae436fcc",
+    "refs/remotes/audit-pr/51 24b6606fd1e796af3eee2a719c87f1f97ec6ef1c",
+    "refs/remotes/audit-pr/52 ddc00e26132adcfc875ec7c721891e536ce3a0a2",
+    "refs/remotes/audit-pr/53 5a57949b91c87584cd6ade88dfd6068873ea8a60",
+    "refs/remotes/audit-pr/54 61830d3673148297da7a81e38bf8427850830744",
+    "refs/remotes/audit-pr/55 a0c05cb9f28be926bbdd5467470e3bf0f5dba878",
+    "refs/remotes/audit-pr/56 dcb1dee7189c0d57b499998e55ebaaeb15469aa6",
+    "refs/remotes/audit-pr/57 ddbdd4244ac09561351046f83c176c9febaf243e",
+    "refs/remotes/audit-pr/58 f6ef82014e620f019ed5adc947eb42b1c4a6c6b3",
+    "refs/remotes/audit-pr/59 f6ef82014e620f019ed5adc947eb42b1c4a6c6b3",
+    "refs/remotes/audit-pr/6 a4b89e797b860015d5095bd177f47959fbb09094",
+    "refs/remotes/audit-pr/60 1de016e54669a8c98877cec738ff025c1b469746",
+    "refs/remotes/audit-pr/61 2ce3efefe81756f6bfcbefbe6df7bdb8543ea15b",
+    "refs/remotes/audit-pr/62 1e63f7c7a83c3ac44289727d408956d01d56e489",
+    "refs/remotes/audit-pr/7 9580af08409e5874549c99b051e2fa4b6ffb127a",
+    "refs/remotes/audit-pr/8 ce33febe0038b39991440bb229edaabd44f85621",
+    "refs/remotes/audit-pr/9 5527d64619293f7b002b6a3e6ae2f950f3c5d97a",
+    "refs/remotes/origin/HEAD 4f0536c50d95fc77d0bb2fa4f8fc8100ffcede90",
+    "refs/remotes/origin/codex/local-beta-g0-g1-20261109 1e63f7c7a83c3ac44289727d408956d01d56e489",
+    "refs/remotes/origin/codex/review-safety-fixes-20261106 2ce3efefe81756f6bfcbefbe6df7bdb8543ea15b",
+    "refs/remotes/origin/codex/stage-2-durable-exec 6c7f74761f745619e7186c16f332e215a21317f1",
+    "refs/remotes/origin/cursor/architecture-doc c4ef2257e56c39dd40cf9521ffee7d3ab907498e",
+    "refs/remotes/origin/cursor/cleanup-placeholders 28c35a18d4e9beaaf1e87a7a69159a75bd5d962d",
+    "refs/remotes/origin/cursor/demo-web-ui a814c2ffb3f6f602534cdad1efcbb3c4f37929be",
+    "refs/remotes/origin/cursor/eval-50-offline 5527d64619293f7b002b6a3e6ae2f950f3c5d97a",
+    "refs/remotes/origin/cursor/eval-observability 31434375eb508955b714e18b36ce407078091029",
+    "refs/remotes/origin/cursor/openai-compatible-adapter 3fbb78c7e8ba32ce6bc68a54f194acc5cfc9af02",
+    "refs/remotes/origin/cursor/post-merge-cleanup 2adce88f6bf7026704d3e8d42fb83b2ea2a80924",
+    "refs/remotes/origin/cursor/qty-zero-po-change-verify-retry c0c330c971b77fa1e3a7e750052b8971715cb8e9",
+    "refs/remotes/origin/cursor/review-fixes-2-4 52b6c78275c7ee0ebbc8969f588f433b00935253",
+    "refs/remotes/origin/cursor/robustness-errors-concurrency 1bead7de08f2d410f30925d79729246e77b78144",
+    "refs/remotes/origin/cursor/stage-0-skeleton-9fd8 b01e2ab29083d153a2930a72370a2c294d1ea17a",
+    "refs/remotes/origin/cursor/stage-1a-kernel-9fd8 599abcaf235768107fb7a966b3af31b5097f5f68",
+    "refs/remotes/origin/cursor/stage-1b-downstream-9fd8 b85ffcc7e0f80f4bc1aca3ebe10aed81e3886744",
+    "refs/remotes/origin/cursor/stage-1c-subagents-9fd8 c70c2b37d032fef36e730f9ee2503b028d829b5d",
+    "refs/remotes/origin/cursor/stage-3-review-fixes 9580af08409e5874549c99b051e2fa4b6ffb127a",
+    "refs/remotes/origin/cursor/stage-3-understanding-ui a4b89e797b860015d5095bd177f47959fbb09094",
+    "refs/remotes/origin/cursor/stage-4-openai-live ce33febe0038b39991440bb229edaabd44f85621",
+    "refs/remotes/origin/cursor/stage-5-freeze-handoff d22d995abaae555a2d22251fb1da63a2cad99891",
+    "refs/remotes/origin/cursor/structured-logging 51e7132a33f7a5a92f4875323ec3c4676eedead2",
+    "refs/remotes/origin/cursor/typecheck-ci 7bdc22bb0bb01e66ea07b0237ceeb8dc6902ec3a",
+    "refs/remotes/origin/cursor/verification-pending-until-readback c4eeb4a6f852d1f09abccde8f5891c58b3f9e53b",
+    "refs/remotes/origin/dot/acceptance-snapshot-20261105 24b6606fd1e796af3eee2a719c87f1f97ec6ef1c",
+    "refs/remotes/origin/dot/approval-business-comparison-20261105 26eb74ca2cf6ab41ddd7c792b86ed8a7ef647b8c",
+    "refs/remotes/origin/dot/approval-upload-hardening-20261105 d15674bc4447062068116aa510caaf0d84c7c3cf",
+    "refs/remotes/origin/dot/bounded-sheet-order-corrections-20261106 ddbdd4244ac09561351046f83c176c9febaf243e",
+    "refs/remotes/origin/dot/bounded-task-update-notices-20261106 24b6606fd1e796af3eee2a719c87f1f97ec6ef1c",
+    "refs/remotes/origin/dot/bounded-worker-ci-20261105 54531902477d40032b17e19bb47e3fa078165538",
+    "refs/remotes/origin/dot/chronological-late-bound-intent-20261106 5a57949b91c87584cd6ade88dfd6068873ea8a60",
+    "refs/remotes/origin/dot/clarification-input-fence-20261105 f4c141a99265702615d123bd4bc4b532ebdac246",
+    "refs/remotes/origin/dot/create-intent-supersession-20261106 a0c05cb9f28be926bbdd5467470e3bf0f5dba878",
+    "refs/remotes/origin/dot/demo-fixture-order-guard-20261106 ddc00e26132adcfc875ec7c721891e536ce3a0a2",
+    "refs/remotes/origin/dot/demo-input-workflows-20261105 a0a4d56e385747edbdb36f942d3fb59a37995bcc",
+    "refs/remotes/origin/dot/direct-plan-request-binding-20261105 51dc5283e310405a0f822257f0bcb1c77bf23543",
+    "refs/remotes/origin/dot/duplicate-new-order-confirmation-20261106 7b493ac07929a373c85b0b30f798336f0d46ec8a",
+    "refs/remotes/origin/dot/durable-stock-regressions-20261105 a1b1a03fd91f2e5bba306c441e4842c7c94ffba9",
+    "refs/remotes/origin/dot/evidence-retention-notice-20261105 2c5a7faa4af1fd41fc44814cb9560c211c5d1ea5",
+    "refs/remotes/origin/dot/failed-task-recovery-guidance-20261106 efb5a078f3572448507e04e187d81a30ae436fcc",
+    "refs/remotes/origin/dot/fixture-acceptance-20261105 416eac553a512670f4eaeaef1bb039bb5633ccf3",
+    "refs/remotes/origin/dot/merge-reviewed-pr58-f6ef820-20261106 f6ef82014e620f019ed5adc947eb42b1c4a6c6b3",
+    "refs/remotes/origin/dot/new-order-fixture-acceptance-20261105 254cdbe0a7eda8f236179fabbd7b1bf6d0d6d231",
+    "refs/remotes/origin/dot/new-stock-fixture-entry-20261105 b8160814b3deeae537f1c2003afd8b027d9baa76",
+    "refs/remotes/origin/dot/ordinary-wheel-ci-20261105 b658b03413c110f70aa3bf99000bc0fa4780f83a",
+    "refs/remotes/origin/dot/partial-tail-quantity-rescue-20261106 1de016e54669a8c98877cec738ff025c1b469746",
+    "refs/remotes/origin/dot/preserve-split-growth-20261105 4bc157fba3ac55c73f899111499e778c77be8af6",
+    "refs/remotes/origin/dot/preserve-split-reductions-20261105 185c260d7838d86efac5cec4dfe7dcb6e347ad1a",
+    "refs/remotes/origin/dot/preserve-untouched-mto-20261105 8a4303c31d6ba8d143fa95d09a1bdd0069b8356e",
+    "refs/remotes/origin/dot/pure-plan-snapshots-20261105 15a0caf2e1292ed78245c7fb939f13154d5f78a3",
+    "refs/remotes/origin/dot/quantity-boolean-boundary-20261105 f15dd3795355efe62f4ff5c9b75f6f481c5863c7",
+    "refs/remotes/origin/dot/read-only-task-audit-20261105 f311bd244a26d172c8f800cd1368341a20a322cf",
+    "refs/remotes/origin/dot/safe-demo-language-contracts-20261106 f6ef82014e620f019ed5adc947eb42b1c4a6c6b3",
+    "refs/remotes/origin/dot/schema-column-guard-20261105 3c69279425902d78f8c5d12082860eb3c3bb03b3",
+    "refs/remotes/origin/dot/schema-diagnostics-20261105 cb38053326755d4af955774c7a10e4612a664fe3",
+    "refs/remotes/origin/dot/selected-order-new-kind-clarification-20261106 61830d3673148297da7a81e38bf8427850830744",
+    "refs/remotes/origin/dot/structured-source-prompts-20261106 dcb1dee7189c0d57b499998e55ebaaeb15469aa6",
+    "refs/remotes/origin/dot/upload-receipts-20261105 3a89848c7f2db058e59d53bda6164acd0dd40a5a",
+    "refs/remotes/origin/dot/verification-browser-hardening-20261105 3a3631b5be5ee9f450092672b555bbb9fbf568b7",
+    "refs/remotes/origin/dot/wheel-migration-resources-20261105 05f6a4693ea04d45c85399d794e69998e02f738a",
+    "refs/remotes/origin/dot/xlsx-value-integrity-20261105 2ec182962e97e93467b0b5ecab7eae9226ec3af1",
+    "refs/remotes/origin/main 4f0536c50d95fc77d0bb2fa4f8fc8100ffcede90",
+    "refs/tags/v1.0.0rc1 f426f1fada018e2fa74d09349199b6308c710424"
+  ],
+  "ref_count": 125,
+  "reachable_objects": 2123,
+  "blobs": 1154,
+  "text_blobs_scanned": 1153,
+  "binary_blobs_not_content_scanned": [
+    {
+      "blob": "150b70fc23f471c31d12f4335afb27de80344ca7",
+      "path": "benchmarks/datasets/provisional-v3.tar.gz",
+      "size": 1939924
+    }
+  ],
+  "oversized_unscanned": [],
+  "findings": [
+    {
+      "kind": "credential-shaped",
+      "blob": "147b9430b93ad04c48ddcd299a469ee0db25e1e6",
+      "path": "tests/test_observability.py",
+      "lines": [
+        70,
+        139,
+        201,
+        477,
+        478
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "18d41b136c2891c87791be12254de948566ab9d1",
+      "path": "docs/evidence/cancel-journeys-20261106.json",
+      "lines": [
+        190,
+        199,
+        200,
+        203,
+        227,
+        241,
+        255
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "3c16ed7d4bc45e8a8a981b3b2bab8d7b7a713225",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        124
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "47b27951cafbfe1ce8406f1c43300d356d828943",
+      "path": "docs/evidence/shared-pilot-baseline-20261106.json",
+      "lines": [
+        242
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "497dbbd3385c5fd6618ca076b633b973a8383102",
+      "path": "tests/test_schema_errors.py",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "4a98c13ca9a9c89e5815975afdacd5422048a85a",
+      "path": "tests/test_schema_errors.py",
+      "lines": [
+        17
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "5fb55ff64d013b2ac5dc0bd5d7b70e93559b4590",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        170
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "68a56676f17b424a4cbf423e8dfddf619e0428f8",
+      "path": "tests/test_observability.py",
+      "lines": [
+        77,
+        146,
+        208,
+        489,
+        490
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "68ca1c251815d80e85f9fa1c54f28a555dd3af67",
+      "path": "tests/test_compat_provider.py",
+      "lines": [
+        433
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "70baa3b93f31c099ee26bc9d53cfeed9a370e2e6",
+      "path": "tests/test_observability.py",
+      "lines": [
+        77,
+        146,
+        208,
+        491,
+        492
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "90316ef47ae78f0b59ac236651a7f90a4aaa5928",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        168
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "9212e63609c78c98f5428ec7a0881797b1a1039c",
+      "path": "tests/test_observability.py",
+      "lines": [
+        77,
+        146,
+        208,
+        491,
+        492
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "9704a4705c6665ea6a3bcece35617036c11aaac1",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        165
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "9df6ced6c588a2f6872b4819b7496edfb106086e",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        166
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "c50e37a25f4db040cb2c1ecd7e30062fd50972ae",
+      "path": "tests/test_compat_provider.py",
+      "lines": [
+        433
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "d1f96622fb901ba05027b172c66594843eaecb40",
+      "path": "docs/OBSERVABILITY.md",
+      "lines": [
+        166
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "d6027cf70120421320ab8d7e4564c191ef6ed013",
+      "path": "docs/evidence/baseline-20836d7-check.log",
+      "lines": [
+        1,
+        3,
+        5,
+        7,
+        10,
+        65
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "e213ae2cd7f8b7addb8cead89c5549abd3e79456",
+      "path": "tests/test_compat_provider.py",
+      "lines": [
+        433
+      ]
+    },
+    {
+      "kind": "credential-shaped",
+      "blob": "e6129f235909cc51abe56a31ab4b92a7fa0050a0",
+      "path": "tests/test_observability.py",
+      "lines": [
+        60,
+        129,
+        188
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "e920d6ca0b21f1ed1f09e8d939ae31ce75e3855b",
+      "path": "docs/evidence/acceptance-20261106.json",
+      "lines": [
+        39,
+        49,
+        59,
+        69,
+        79,
+        89,
+        99,
+        109,
+        119,
+        129,
+        139,
+        149,
+        159,
+        163
+      ]
+    },
+    {
+      "kind": "email-shaped",
+      "blob": "ef0a81fa46791f7b7295006ffe4136361764ba69",
+      "path": "tests/test_compat_provider.py",
+      "lines": [
+        415
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "f71825c9968d103c03651447519a11f7025cf3a5",
+      "path": "docs/evidence/baseline-20836d7-eval.log",
+      "lines": [
+        1
+      ]
+    },
+    {
+      "kind": "private-path",
+      "blob": "f82d2865bf1f0054f73e242e2bf4488d2c74e6c3",
+      "path": "docs/evidence/worker-loop-cancel-20261107.json",
+      "lines": [
+        86,
+        87,
+        88,
+        89
+      ]
+    }
+  ],
+  "counts": {
+    "credential-shaped": 11,
+    "private-path": 6,
+    "email-shaped": 6
+  },
+  "distinct_commit_emails": 4,
+  "personal_commit_email_count": 3,
+  "publication_recommendation": "Keep development repository private; prepare curated no-history snapshot for separate review",
+  "not_covered": [
+    "unreachable/deleted objects not advertised by GitHub",
+    "all binary embedded content",
+    "GitHub discussions/logs/assets audited separately",
+    "ownership/license decisions"
+  ]
+}

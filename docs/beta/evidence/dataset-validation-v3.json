@@ -1,0 +1,30 @@
+{
+  "structure": "PASS",
+  "story_counts": {
+    "dev": 60,
+    "validation": 20,
+    "heldout": 40
+  },
+  "cases": 360,
+  "risks": 60,
+  "heldout_forms": {
+    "text": 18,
+    "chat": 18,
+    "table": 17,
+    "csv": 17,
+    "xlsx": 16,
+    "pdf": 17,
+    "image": 17
+  },
+  "arithmetic_and_rules_consistency": {
+    "ready": 50,
+    "clarify": 30,
+    "blocked": 30,
+    "no_change": 10
+  },
+  "human_review": "PENDING; not qualified",
+  "model_calls": 0,
+  "fee_usd": 0,
+  "real_model_metrics": null,
+  "freeze_sha256": "b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43"
+}

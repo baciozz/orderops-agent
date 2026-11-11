@@ -83,11 +83,15 @@ class BudgetLedger:
         cap_usd: Decimal,
         price_in_per_mtok: Decimal | None,
         price_out_per_mtok: Decimal | None,
+        max_total_calls: int | None = None,
     ) -> None:
         self._sessions = session_factory
         self.cap_usd = effective_cap(cap_usd)
         self.price_in_per_mtok = price_in_per_mtok
         self.price_out_per_mtok = price_out_per_mtok
+        if max_total_calls is not None and max_total_calls < 1:
+            raise ValueError("总调用上限须为正整数")
+        self.max_total_calls = max_total_calls
 
     def spent(self) -> Decimal:
         session = self._sessions()
@@ -160,6 +164,14 @@ class BudgetLedger:
         session = self._sessions()
         try:
             with begin_immediate(session):
+                if self.max_total_calls is not None:
+                    total_calls = session.scalar(select(func.count()).select_from(ModelUsage))
+                    assert total_calls is not None
+                    if total_calls >= self.max_total_calls:
+                        raise CallLimitExceeded(
+                            "本轮账本已达到模型总调用次数上限",
+                            details={"calls": total_calls, "limit": self.max_total_calls},
+                        )
                 if task_id is not None and max_calls_per_task is not None:
                     used = session.scalar(
                         select(func.count())

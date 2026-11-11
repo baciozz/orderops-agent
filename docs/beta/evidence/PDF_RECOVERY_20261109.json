@@ -1,0 +1,61 @@
+{
+  "source_sha": "738c9098e15d92ab7221e4bc5dc9ccd51cca06d6",
+  "kind": "actual native Chromium recovery; controlled HTTP response preconditions",
+  "real_model_retest_in_this_environment": false,
+  "new_real_external_calls": 0,
+  "model_ledger_rows_for_local_mock_only": 2,
+  "manual_clarify_recovery_passed": true,
+  "original_clarify_preserved_in_history": true,
+  "noop_raw_proposal_retained": true,
+  "white_line_not_exported_as_change": true,
+  "all_business_tables_unchanged": true,
+  "downloads": [
+    {
+      "name": "checklist (10).csv",
+      "review_id": "RV-60f12f14c08546c094831bb841fb4a2f",
+      "sha256": "f0c837d412e1a63ad4d9122858480f8514a898dfaf5b88e50322e2187b29797e",
+      "rows": 1,
+      "suffix": ".csv",
+      "origin": "模型提取"
+    },
+    {
+      "name": "checklist (11).xlsx",
+      "review_id": "RV-60f12f14c08546c094831bb841fb4a2f",
+      "sha256": "f7e6629b8f417f2efd663e850f357f47bae8fd5a5c1e438c0e2b9b2f7f8e6189",
+      "rows": 1,
+      "suffix": ".xlsx",
+      "origin": "模型提取"
+    },
+    {
+      "name": "checklist (9).csv",
+      "review_id": "RV-143773bfba7342abafa216e424ba1345",
+      "sha256": "020e3709c54f4421ac379cfe23bcf6d056f443871630e58978a7dd7f86b7ee96",
+      "rows": 1,
+      "suffix": ".csv",
+      "origin": "人工纠正"
+    },
+    {
+      "name": "checklist (10).xlsx",
+      "review_id": "RV-143773bfba7342abafa216e424ba1345",
+      "sha256": "fcea8e6799073e214f759aa0df9991b4a91f4f47610bc380efdddc6ffcc3efc2",
+      "rows": 1,
+      "suffix": ".xlsx",
+      "origin": "人工纠正"
+    }
+  ],
+  "tasks": [
+    {
+      "scenario": "clarify",
+      "id": "RV-143773bfba7342abafa216e424ba1345",
+      "url": "http://127.0.0.1:41986/ui/reviews/RV-143773bfba7342abafa216e424ba1345",
+      "rule_status": "clarify"
+    },
+    {
+      "scenario": "noop",
+      "id": "RV-60f12f14c08546c094831bb841fb4a2f",
+      "url": "http://127.0.0.1:41986/ui/reviews/RV-60f12f14c08546c094831bb841fb4a2f",
+      "rule_status": "ready"
+    }
+  ],
+  "not_independent_human_trial": true
+}

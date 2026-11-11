@@ -1,0 +1,25 @@
+name: 可复现业务问题
+description: 使用合成资料报告实际阻碍
+body:
+  - type: markdown
+    attributes:
+      value: 请勿附密钥、真实订单、客户聊天、生产数据库或内部原始日志。安全问题先参阅 SECURITY.md。
+  - type: input
+    id: version
+    attributes:
+      label: 版本与运行环境
+      description: 提交SHA、Python/系统、手工/fixture/真实模型模式（不要填密钥）
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 合成输入与复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 预期、实际结果与业务影响
+    validations:
+      required: true

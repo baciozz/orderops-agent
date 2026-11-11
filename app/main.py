@@ -29,6 +29,8 @@ from app.api.errors import json_error
 from app.api.health import router as health_router
 from app.api.inputs import router as inputs_router
 from app.api.orders import router as orders_router
+from app.api.review_sources import router as review_sources_router
+from app.api.reviews import router as reviews_router
 from app.api.sources import router as sources_router
 from app.api.tasks import router as task_router
 from app.config import Settings, get_settings
@@ -236,6 +238,8 @@ def _create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(inputs_router)
     application.include_router(sources_router)
     application.include_router(demo_ui_router)
+    application.include_router(reviews_router)
+    application.include_router(review_sources_router)
     application.mount(
         "/ui/static",
         StaticFiles(directory=str(Path(__file__).parent / "web" / "static")),

@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     model_reasoning_effort: str = "none"
     database_url: str = "sqlite:///./data/oos.db"
     source_storage_dir: Path | None = None
+    ocr_data_dir: Path | None = None
     approval_ttl_seconds: int = 600
     worker_max_active: int = 2
     model_timeout_s: int = 60

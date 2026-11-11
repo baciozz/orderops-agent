@@ -1,0 +1,47 @@
+{
+  "application_sha": "1e63f7c7a83c3ac44289727d408956d01d56e489",
+  "synthetic": true,
+  "utility_cases": [
+    {
+      "case": "missing-stop-ack",
+      "exit": 2,
+      "passed": true
+    },
+    {
+      "case": "refuse-existing-source-root",
+      "exit": 1,
+      "passed": true
+    },
+    {
+      "case": "damaged-original-rejected-before-writing",
+      "exit": 1,
+      "passed": true
+    },
+    {
+      "case": "trusted-backup-restore",
+      "exit": 0,
+      "result": {
+        "restore": "verified",
+        "files": 12,
+        "referenced": 12
+      },
+      "passed": true
+    }
+  ],
+  "restored": {
+    "all_table_rows_unchanged": true,
+    "restored_tasks": [
+      "CONFIRMED",
+      "CANCELLED",
+      "NEEDS_REVIEW"
+    ],
+    "export_new_qty": 38,
+    "delta": -12,
+    "api_http": true,
+    "browser": false,
+    "real_model": false,
+    "database_relocated": true,
+    "originals_relocated": false,
+    "browser_reopened_list_and_export": true
+  }
+}

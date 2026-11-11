@@ -59,6 +59,22 @@ class Customer(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class ReviewWorkspace(Base):
+    """Imported checklist data, intentionally unrelated to executable orders/plans."""
+
+    __tablename__ = "review_workspace"
+    __table_args__ = (CheckConstraint("revision >= 1", name="ck_review_revision"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    request_key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Warehouse(Base):
     __tablename__ = "warehouse"
 

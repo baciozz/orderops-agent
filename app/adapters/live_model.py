@@ -30,6 +30,7 @@ class LiveLLMClient:
         *,
         transport: httpx.BaseTransport | None = None,
         clock: Callable[[], datetime] | None = None,
+        trust_env: bool = False,
     ) -> None:
         protect_http_logging()
         self._provider = validated_live_provider(settings)
@@ -39,6 +40,7 @@ class LiveLLMClient:
         self._settings = settings
         self._ledger = ledger
         self._transport = transport
+        self._trust_env = trust_env
         self._clock = clock or (lambda: datetime.now(UTC))
         logger.info(
             "live model provider=%s host=%s",
@@ -134,7 +136,7 @@ class LiveLLMClient:
             with httpx.Client(
                 transport=self._transport,
                 timeout=self._settings.model_timeout_s,
-                trust_env=False,
+                trust_env=self._trust_env,
                 follow_redirects=False,
             ) as client:
                 return client.post(

@@ -13,8 +13,20 @@ jobs:
     timeout-minutes: 20
     env:
       OOS_LIVE_ENABLED: "false"
+      # This private evaluation set must stay sealed during normal CI.
+      PYTEST_ADDOPTS: "--ignore=tests/test_beta_dataset.py"
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/benchmarks/datasets/
+          sparse-checkout-cone-mode: false
+      - name: Verify protected dataset remains sealed
+        run: |
+          test ! -e benchmarks/datasets
+          git ls-tree -r --name-only HEAD -- benchmarks/datasets/provisional-v3.FREEZE.json | grep -Fx benchmarks/datasets/provisional-v3.FREEZE.json
+          git ls-tree -r --name-only HEAD -- benchmarks/datasets/provisional-v3.tar.gz | grep -Fx benchmarks/datasets/provisional-v3.tar.gz
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -22,7 +34,7 @@ jobs:
         run: |
           python -m pip install -r requirements-dev.lock
           python -m pip install --no-deps -e .
-      - name: Check formatting, lint, types, and coverage
+      - name: Check formatting, lint, types, and coverage (protected dataset excluded)
         run: make check
       - name: Evaluate offline fixtures
         run: make eval-offline

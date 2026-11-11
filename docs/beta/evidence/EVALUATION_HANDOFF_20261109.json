@@ -1,0 +1,117 @@
+{
+  "kind": "evaluation handoff mechanics and no-key HTTP preparation; not formal acceptance",
+  "date": "2026-11-09",
+  "source_parent_sha": "46d2aa797f635149e848f55b0cf59b4ba0dc2778",
+  "application_prompt_schema_frozen_sha": "738c9098e15d92ab7221e4bc5dc9ccd51cca06d6",
+  "application_changes_since_frozen_sha": [],
+  "python": "3.12.14",
+  "policy": {
+    "status": "PENDING_INDEPENDENT_HUMAN_CONFIRMATION",
+    "sha256": "5ec512f4a1470c2ac907a2dd6a5571fc87da74f5b5bc316d63b6b7ac90e128cf",
+    "formal_qualified": false
+  },
+  "tests": {
+    "new_mechanics": 23,
+    "with_existing_baseline_and_development_regressions": 35,
+    "passed": 35,
+    "failed": 0,
+    "seconds": 3.67,
+    "log_sha256": "d1e37b7bd7914b75e16586acc8f6545ea08047f2d83b4ea45865b5da63bc4c9e",
+    "limits": "MockTransport/test-only human metadata; not actual model quality or speed"
+  },
+  "failures_retained": [
+    {
+      "action": "initial targeted pytest selection",
+      "result": "collection aborted: nonexistent test_review_development.py; corrected to test_review_development_failures.py",
+      "log_sha256": "0a4b59ff1ba0db4aa423d6d04877658dedba862bb0710777d741f06c2d77ba39"
+    },
+    {
+      "action": "pending approval template dry run",
+      "result": "reproduced null hash TypeError; fixed to return precise gate blockers; regression and actual CLI handoff now reject pending approval"
+    },
+    {
+      "action": "actual injected clarification merge delay",
+      "result": "reproduced old reported wall excluding150ms merge; moved finish measurement after merge and added deterministic clock regression; fixed runtime retains injected delay"
+    }
+  ],
+  "risk_handoff": {
+    "actual_new_formal_set_created": false,
+    "actual_new_formal_inputs_or_labels_read": false,
+    "only_disposable_development_fixtures_used": true,
+    "dummy_cases_in_export_mechanics_test": 30,
+    "pending_approval_blocks_release": true,
+    "oracle_files_exported_by_positive_unit_fixture": 0,
+    "semantic_independence_or_human_identity_proven_by_tool": false
+  },
+  "offline_scoring_cli": {
+    "attempts": 2,
+    "raw_matches": 1,
+    "errors": 1,
+    "completion_unknown": 1,
+    "formal_qualified": false,
+    "labels": "disposable development mechanics, not formal truth",
+    "private_run_sha256": "14ddbad29d50a645b548d525d98a9b3bdf23726331ca56e46d4ce136d2f7ffd5"
+  },
+  "comparison": {
+    "arms": [
+      "single",
+      "double_same_prompt",
+      "double_roles"
+    ],
+    "production_multi_model_architecture_added": false,
+    "real_model_runs": 0,
+    "mock_mechanism_tests": 8,
+    "optional_plan_calls": 300,
+    "optional_conservative_cost_upper_estimate_usd": "1.20",
+    "estimate_not_actual_spend": true,
+    "same_round_ledger_required": true,
+    "latency_scope": "model clients and deterministic merge; not browser end-to-end",
+    "accuracy": null,
+    "advantage": null,
+    "merge_timing_actual_runtime": {
+      "kind": "actual offline delayed merge runtime, not model speed comparison",
+      "delay_s": 0.15,
+      "before_fix_reported_wall_s": 0.05298815900096088,
+      "before_fix_outer_s": 0.20957009599806042,
+      "after_fix_reported_wall_s": 0.18338766700253473,
+      "after_fix_outer_s": 0.19696060400019633,
+      "after_fix_counted_delay": true,
+      "real_api_calls": 0
+    }
+  },
+  "recording": {
+    "status": "NOT_RECORDED",
+    "qualified_recording": false,
+    "fresh_synthetic_assets_prepared": true,
+    "actual_no_key_http_preflight": {
+      "html_status": 200,
+      "extract_status": 503,
+      "error_code": "REVIEW_MODEL_NOT_READY",
+      "state_after": "DRAFT",
+      "export_refused": true,
+      "model_usage_rows": 0,
+      "business_tables": 38,
+      "before_business_sha256": "7add2e3e816f3c96298cb8b99e703e06c76d904c9f08ecb026ead73b96d6acc5",
+      "after_business_sha256": "7add2e3e816f3c96298cb8b99e703e06c76d904c9f08ecb026ead73b96d6acc5",
+      "server_stopped": true
+    },
+    "browser_or_real_model_proven_by_this_preflight": false
+  },
+  "cost": {
+    "this_worker_real_calls": 0,
+    "this_worker_actual_api_spend_usd": "0",
+    "parent_latest_reported_total_calls": 42,
+    "parent_latest_conservative_ledger_usd": "0.009299",
+    "round_cap_usd": 5,
+    "revoke_dedicated_key_after_whole_real_batch": true
+  },
+  "blockers": [
+    "Independent author environment and owner-verified isolation, not same-UID directories",
+    "Actual >=30 new risk stories and real human review of 20 development/validation stories and all new risks",
+    "Human approval of scoring definitions and provisional references",
+    "Unified configured instance: freeze and reconcile complete formal sample/attempt schedule, current model parameters, remaining shared budget and call slots",
+    "Formal real-model/baseline and optional fair comparison, actual full browser matrix and 3-5 minute recording",
+    "Independent real user trial, ownership/license and maintainer confirmation"
+  ],
+  "published_merged_or_deployed": false
+}

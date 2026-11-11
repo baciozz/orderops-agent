@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — local checklist preview
+
+- Added a separate imported-snapshot review workspace: model proposals, deterministic checks, explicit source confirmation, full multi-action human correction and CSV/XLSX checklists. It has no order execution permission.
+- Added actual text/Markdown/CSV/static XLSX/text PDF/image readers, persistent originals, provenance and same-content recovery. Optional local Chinese OCR data is not bundled.
+- Added bounded persistent model usage, version/nonce protection, cancellation, recovery, safe error handling and a stopped local review backup procedure.
+- Recorded synthetic component, business-fault, actual Chromium and clean source-install checks. Fixed the browser's single-action editing limitation and archive acceptance helper's Git-metadata failure after reproducing them.
+
+This is not a formal release. The package's existing 1.0.0rc1 identifier predates this work; no new tag or Release has been created. Full real-model held-out evaluation, human reference review, independent usability, ownership and publication approval remain pending. Development-set observations are not advertised accuracy or multi-Agent superiority.
+
+
 - 将既有迁移资源原样移入 order_ops_migrations 包，修复普通 wheel 安装后的迁移定位；保留源码 CLI 与合成验收指纹。
 
 按 Keep a Changelog 风格记录面向使用者的变更，PR 标题保留原文。

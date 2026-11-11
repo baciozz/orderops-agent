@@ -46,6 +46,8 @@ openpyxl==3.1.5
     # via order-ops-superagent (pyproject.toml)
 opentelemetry-api==1.45.2
     # via fastapi
+pillow==13.0.0
+    # via order-ops-superagent (pyproject.toml)
 pydantic==2.14.2
     # via
     #   order-ops-superagent (pyproject.toml)
@@ -54,6 +56,8 @@ pydantic==2.14.2
 pydantic-core==2.50.2
     # via pydantic
 pydantic-settings==2.16.2
+    # via order-ops-superagent (pyproject.toml)
+pypdf==7.0.0
     # via order-ops-superagent (pyproject.toml)
 python-dotenv==1.2.4
     # via pydantic-settings

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}本机订单处理清单 · 开发预览{% endblock %}</title>
+<link rel="stylesheet" href="/ui/static/demo.css"></head>
+<body>
+<nav><a href="/ui/reviews">处理任务</a><a href="/ui/reviews/new">导入新快照</a><a href="/ui">FIXTURE 演示（独立数据库提交入口）</a></nav>
+<p class="notice">清单工作区 · 开发预览 · 未达到本轮测试版验收门槛。只导出建议，不执行订单或 ERP，不预占库存。</p>
+<main>{% block content %}{% endblock %}</main>
+<footer>仅本机单用户使用，无身份与授权。模型凭据只在服务端环境设置；不要写在订单资料中。真实模型实测和独立用户试用仍待验收。</footer>
+</body></html>

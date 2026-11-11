@@ -1,0 +1,8 @@
+{
+  "purpose": "independent_risk_candidate",
+  "synthetic": true,
+  "author_environment": null,
+  "developer_environment": null,
+  "cases": [],
+  "template_note": "PENDING. Independently author at least 30 distinct synthetic risk stories outside this developer environment. Each case needs case_id, story_id, synthetic=true, input_files under public_inputs/ and oracle_file under private_oracle/. Do not commit private material or substitute renamed development fixtures."
+}

@@ -1,0 +1,35 @@
+<section id="review-sources" aria-label="资料与来源">
+<h2>1. 上传并确认原件</h2>
+<p>最多6份，每份5 MiB。订单/库存/履约基线与客户要求分别选择角色；不按文件名或出现数字自动判断。支持矩阵与限制见项目说明，超限不会截断后继续。</p>
+{% if item.status != 'CANCELLED' %}
+<form method="post" enctype="multipart/form-data" action="/ui/reviews/{{ item.id }}/sources/upload" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}"><input type="hidden" name="key" value="{{ upload_key }}">
+<label for="source-file">选择一个原件</label><input id="source-file" name="file" type="file" accept=".txt,.md,.csv,.xlsx,.pdf,.png,.jpg,.jpeg" required>
+<label for="encoding">CSV编码（不猜测中文编码）</label><select id="encoding" name="encoding"><option value="utf-8-sig">UTF-8（含BOM）</option><option value="gb18030">GB18030</option></select>
+<label for="rotation">图片读取前逆时针旋转</label><select id="rotation" name="rotation"><option value="0">不旋转</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select>
+<button>上传并查看实际读取结果</button></form>
+{% endif %}
+{% if data.assets %}<ul>{% for asset in data.assets %}<li>
+<a href="/ui/reviews/{{ item.id }}/sources/{{ asset.id }}">{{ asset.filename }} · {{ '已确认角色/字段' if asset.confirmed else '待确认角色/字段' }}</a>
+{% if not asset.available %}<strong class="error">原件缺失或变化，提取/确认/导出会阻断；可恢复相同哈希原件</strong>{% endif %}
+{% if asset.role == 'excluded' %}（明确未采用：{{ asset.note }}）{% endif %}
+</li>{% endfor %}</ul>{% else %}<p>尚未上传文件；也可使用文字和明确JSON快照。</p>{% endif %}
+{% if item.status != 'CANCELLED' %}
+<h2>2. 应用基线并明确选单</h2>
+<p>确认订单/库存/履约文件的映射后，再应用。缺已发/已裁/库存事实保留为“未知”；同SKU数量冲突或重复行不会自动合并。应用新基线使旧提案与确认失效。</p>
+{% if data.baseline_dirty %}<p class="error">基线来源或映射已变化，尚未应用新版本。</p>{% endif %}
+<form method="post" action="/ui/reviews/{{ item.id }}/sources/apply-baseline" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}"><label for="captured-at">你确认的业务快照时间（不是上传时间）</label>
+<input id="captured-at" name="captured_at" value="{{ submitted.get('captured_at', baseline_time) }}" placeholder="例如 2026-11-09T09:00:00+08:00" required>
+<label><input type="checkbox" name="synthetic" value="yes">这些是合成演示资料</label><button>应用已确认的基线</button></form>
+{% if data.input.snapshot %}
+<form method="post" action="/ui/reviews/{{ item.id }}/sources/select-order" class="input-form"><input type="hidden" name="revision" value="{{ item.revision }}">
+<label for="selected-order">从基线明确选择目标订单</label><select id="selected-order" name="order_id" required><option value="">请选择，不自动选择</option>
+{% for order in data.input.snapshot.orders %}<option value="{{ order.order_id }}" {{ 'selected' if data.input.selected_order_id == order.order_id else '' }}>{{ order.order_id }} · 版本{{ order.revision }} · {{ order.lines|length }}行</option>{% endfor %}</select><button>确认目标订单，使旧提案失效</button></form>
+{% endif %}
+<h2>3. 客户文字、聊天或补充说明</h2>
+<p>可保留发言人、时间、引用及撤回标记。追加说明后须重新提取；客户要求文件在原件页单独确认。</p>
+<form method="post" action="/ui/reviews/{{ item.id }}/sources/instruction" class="input-form"><input type="hidden" name="revision" value="{{ item.revision }}">
+<label for="source-instruction">原始需求与本任务澄清</label><textarea id="source-instruction" name="instruction" rows="4">{{ submitted.get('instruction',data.input.instruction) }}</textarea><button>保存本任务文字，不执行订单</button></form>
+{% endif %}
+</section>

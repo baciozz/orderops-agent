@@ -1,0 +1,24 @@
+{% extends "review_base.html" %}
+{% block content %}
+<h1>导入快照，保存处理任务</h1>
+<p>可从CSV、静态XLSX、文字/聊天、Markdown、文本PDF或PNG/JPEG开始。文件先预览、选角色和映射，再确认基线；图片使用本机OCR，关键字段必须人工核对。</p>
+<form method="post" action="/ui/reviews/draft"><input type="hidden" name="request_key" value="{{ values.request_key }}-files"><button>从文件开始（空白工作区，不带示例订单）</button></form>
+<p>也可使用下方JSON合成示例。真实模型及完整多格式保留集指标仍未验收，尚不可用作已通过测试版的证明。</p>
+<p>预填内容完全合成，可换成你自己的本机测试快照。缺少已发/已裁/库存事实会显示未知，不视为零。保存不会调用模型。</p>
+<aside class="notice" id="offline-example-help" aria-label="无需模型的合成示例">
+<strong>第一次试用：无需模型</strong>
+<p>不修改下方预填内容，先保存资料。打开任务后选择“人工输入/纠正”，将原SKU选为 00123 · 藏蓝 · M，数量语义选“总量改成”，填 36 件和核对理由，再保存。</p>
+<p>核对结果应为 50 → 36、差量 −14；确认清单后可下载 CSV 或 XLSX。这是人工录入的合成示例，不是模型识别结果，也不会执行订单。</p>
+</aside>
+{% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+<form method="post" class="input-form">
+<input type="hidden" name="request_key" value="{{ values.request_key }}">
+<label for="snapshot">订单、目录、库存和履约快照（JSON）</label>
+<textarea id="snapshot" name="snapshot" rows="18" required>{{ values.snapshot }}</textarea>
+<label for="order">你确认要处理的订单号</label>
+<input id="order" name="selected_order_id" value="{{ values.selected_order_id }}" required>
+<label for="instruction">客户原始需求（可分多行）</label>
+<textarea id="instruction" name="instruction" rows="5" required>{{ values.instruction }}</textarea>
+<button type="submit">保存资料，不执行订单</button>
+</form>
+{% endblock %}

@@ -1,0 +1,104 @@
+{
+  "application_sha": "1e63f7c7a83c3ac44289727d408956d01d56e489",
+  "synthetic": true,
+  "actual_browser_downloads": true,
+  "model_evaluation": false,
+  "verified_readback": [
+    {
+      "download": 1,
+      "review_id": "RV-80a87b907b134eb7b38f7a19251176fd",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 32,
+      "delta": -18,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行",
+      "csv_sha256": "592367347714bceffffca512ef1416b9a90dfe35bc30c3ae47cfc7ab01d1e1fe",
+      "xlsx_sha256": "20566aa0f86828a40d928f1f066d46fdc6fffa1d0d32196afc1490e410b8e74d"
+    },
+    {
+      "download": 2,
+      "review_id": "RV-c174d32de8484e15ab098beb2a915d8e",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 37,
+      "delta": -13,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-fd4bcfb034dd4dfe92299d127028ff10 CSV记录1（物理行1–1）; RVS-fd4bcfb034dd4dfe92299d127028ff10 CSV记录2（物理行2–2）",
+      "csv_sha256": "9c043c85f5b4fe1ce6e089f481a8b28affe08e58bef1b6fd524728a4458d31d2",
+      "xlsx_sha256": "e3d129ef0f26684e4b376c1a21d8943d228a99b00ccfbfde1aa24be36d87a828"
+    },
+    {
+      "download": 3,
+      "review_id": "RV-86c1baf6443b4a19b52bbcfaf410757b",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 38,
+      "delta": -12,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-a9e0d519795f44ca81b0f8f5ea4a7e2e 客户消息!A1 / 客户消息!B1; RVS-a9e0d519795f44ca81b0f8f5ea4a7e2e 客户消息!A2 / 客户消息!B2",
+      "csv_sha256": "286d783a99aa5226001e0167c2fdcbfcb3f6f0f916157ae10dc80b4ed25892e5",
+      "xlsx_sha256": "686795d6010f25962513dd290580aa7577c84df86d75769ed67e7547eace793f"
+    },
+    {
+      "download": 4,
+      "review_id": "RV-fcc17f24465f4e67ad87e37deca8f458",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 39,
+      "delta": -11,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-29c5ceca35ed460ca30fb34754897536 PDF第1页，提取行1; RVS-29c5ceca35ed460ca30fb34754897536 PDF第1页，提取行2; RVS-29c5ceca35ed460ca30fb34754897536 PDF第1页，提取行3",
+      "csv_sha256": "6b2713cf278e4d7ecaa4d66ff8613a31d5bcc150743b362f798925ea54a10b4a",
+      "xlsx_sha256": "0d0c25be3abbda9d5a71f49c9e2ab25c43d777f1be296e34961674bdba8de63d"
+    },
+    {
+      "download": 5,
+      "review_id": "RV-c78f0bfefaf54f949e38f0232cdebad1",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 40,
+      "delta": -10,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-35560ab1d69845bc823ca8b50bee5d0a 人工转录，原文第1行（对照原件；无自动字段坐标）; RVS-35560ab1d69845bc823ca8b50bee5d0a 人工转录，原文第2行（对照原件；无自动字段坐标）; RVS-35560ab1d69845bc823ca8b50bee5d0a 人工转录，原文第3行（对照原件；无自动字段坐标）",
+      "csv_sha256": "fb6811c95fdc2dc7f862ff603b080a5d43935fdb77de8f4e43226bde0dfc0bc5",
+      "xlsx_sha256": "7024100f0c24d8723ddabedd162b32c16512b680e59a2273cd1ac239ad26a51b"
+    },
+    {
+      "download": 6,
+      "review_id": "RV-2676cfc65e1a4d6493276bab11fe63b4",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 41,
+      "delta": -9,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-6fce8eb4d4b447b48c649b8f195aab4c 原文第1行; RVS-6fce8eb4d4b447b48c649b8f195aab4c 原文第2行; RVS-6fce8eb4d4b447b48c649b8f195aab4c 原文第3行; RVS-6fce8eb4d4b447b48c649b8f195aab4c 原文第4行",
+      "csv_sha256": "db84d2bcf1af7b764d8e6e005fd1fb7db33eaa6828034b9b2cab5245f9d3c00e",
+      "xlsx_sha256": "c263c24077669486e0085e9da2e0fd9626274edf900a7bf75c9125881e5ecbc5"
+    },
+    {
+      "download": 7,
+      "review_id": "RV-027049b233924d9e9034d82c9130d704",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 12,
+      "delta": -38,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; INPUT 客户文字第2行",
+      "csv_sha256": "6dfe80b842b8af5f66bb6d48238e8ccdec855069b31fa8feeb94813986d29bcb",
+      "xlsx_sha256": "40b2158e822cfd577f3e7fec7f5dc7dd8931976d61fa5b8e2256e4d30facc1ac"
+    },
+    {
+      "download": 8,
+      "review_id": "RV-86c1baf6443b4a19b52bbcfaf410757b",
+      "row_count": 1,
+      "old_qty": 50,
+      "new_qty": 38,
+      "delta": -12,
+      "origin": "人工纠正",
+      "source": "人工提案，非模型引用；参考资料范围：INPUT 客户文字第1行; RVS-a9e0d519795f44ca81b0f8f5ea4a7e2e 客户消息!A1 / 客户消息!B1; RVS-a9e0d519795f44ca81b0f8f5ea4a7e2e 客户消息!A2 / 客户消息!B2",
+      "csv_sha256": "d95d91b4e080c72e62165f52b1261308bb98266dec07dc60168870915dc27a68",
+      "xlsx_sha256": "a0b739a82c375ca5c0fcf57a57d82c0bf43101085a1a31c1c61554ee6f355372"
+    }
+  ]
+}

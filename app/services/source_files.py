@@ -12,13 +12,18 @@ from app.errors import AppError
 
 
 def original_content(source: InputSource) -> bytes:
-    path = Path(source.storage_ref)
+    return read_original(source.storage_ref, source.id, source.size, source.sha256)
+
+
+def read_original(storage_ref: str, source_id: str, size: int, digest: str) -> bytes:
+    """The same immutable readback guard for server-owned checklist source metadata."""
+    path = Path(storage_ref)
     valid = (
         path.is_absolute()
-        and path.name == source.id
+        and path.name == source_id
         and not path.is_symlink()
-        and type(source.size) is int
-        and 0 <= source.size <= MAX_FILE_BYTES
+        and type(size) is int
+        and 0 <= size <= MAX_FILE_BYTES
     )
     content = b""
     if valid:
@@ -29,7 +34,7 @@ def original_content(source: InputSource) -> bytes:
                 content = stream.read(MAX_FILE_BYTES + 1)
         except OSError:
             valid = False
-    if not valid or len(content) != source.size or sha256(content).hexdigest() != source.sha256:
+    if not valid or len(content) != size or sha256(content).hexdigest() != digest:
         raise AppError(
             "原始来源文件缺失或已变化，请恢复可信原件或重新创建任务并上传",
             code="SOURCE_UNAVAILABLE",

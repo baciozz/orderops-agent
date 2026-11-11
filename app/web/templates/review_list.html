@@ -1,0 +1,9 @@
+{% extends "review_base.html" %}
+{% block content %}
+<h1>订单处理清单</h1>
+<p>导入快照、输入变更、核对提案、人工确认后导出。任何“已确认”都只指这份处理清单，订单尚未执行。</p>
+<p><a class="button" href="/ui/reviews/new">开始导入</a></p>
+{% if items %}<ul>{% for row in items %}
+<li><a href="/ui/reviews/{{ row.id }}">{{ row.order_id or '尚未选单' }} · {{ labels[row.status] }}</a> · {{ row.updated_at }}</li>
+{% endfor %}</ul>{% else %}<p>还没有处理任务。这里不显示旧 FIXTURE 任务。</p>{% endif %}
+{% endblock %}

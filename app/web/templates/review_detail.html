@@ -1,0 +1,91 @@
+{% extends "review_base.html" %}
+{% block content %}
+<h1>{{ data.input.selected_order_id or '尚未选单' }} · {{ label }}</h1>
+<p>任务 {{ item.id }} · 资料/提案版本 {{ item.revision }}</p>
+<p class="notice">业务状态：未执行。此任务没有批准业务或写入订单的权限。</p>
+{% if item.recheck_required %}<div class="error" role="alert"><strong>历史确认需重新核对。</strong> {% if item.recheck_reason == 'source' %}原件或基线不可用，请先恢复来源。{% elif item.recheck_reason == 'source_review' %}图片文字、数值或日期尚需对照原图复核，请查看来源、重新读取或完整转录后重新确认。{% else %}当前核对结果与历史确认不一致，规则或资料条件可能已变化；请核对提案，必要时人工纠正或明确选择无需变更，再重新确认。{% endif %} 旧确认记录保留，暂不可导出。</div>{% endif %}
+{% if item.possible_duplicates %}
+<aside class="notice" aria-label="相似请求提示">
+<p>近期有同订单、同快照及相同数量词的相似请求，请核对是否已处理。</p>
+<ul>{% for previous in item.possible_duplicates %}<li><a href="/ui/reviews/{{ previous.id }}">查看任务 {{ previous.id }}</a></li>{% endfor %}</ul>
+<p>这只是文字相似提示，不是语义去重结论。当前任务已独立保存，旧任务未改变；若是新的追加或修改，继续核对即可。</p>
+</aside>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error.code }}：{{ error.message }}</p>{% endif %}
+{% if data.error %}<p class="error">{{ data.error }}：本次提取未完成。资料仍在；检查模型配置与预算后，用新调用标识重试（默认每任务最多3次）。不会回退 FIXTURE，也不会使用半成品审批。</p>{% endif %}
+<p><a href="#review-result">查看差异与导出</a> · <a href="#review-human">人工输入/纠正</a> · <a href="#review-sources">资料与原件</a> · <a href="#review-recovery">中断与取消</a></p>
+{% if item.status not in ['CANCELLED','RUNNING'] and data.input.snapshot and data.input.selected_order_id %}
+<p class="notice" id="offline-manual-hint">不调用模型也可<a href="#review-human">人工输入或纠正动作</a>：先核对原始需求，保存完整动作后重新确认清单。人工录入不代表模型理解。</p>
+{% endif %}
+{% include "review_sources.html" %}
+<h2>原始需求</h2><pre>{{ data.input.instruction }}</pre>
+<h2>真实模型提取</h2>
+<p>提供方 {{ provider }} / 模型 {{ model }}；本地累计费用上限 ${{ cap }}，还受剩余额度和调用上限限制。实际用量见结果；断线可能已计费，不自动重试。</p>
+<p>点击会把本任务的完整导入快照和需求发送到服务端配置的提供方。模型可能误判，请逐项核对；开发验证不代表完整效果或生产验收通过。</p>
+{% if item.status not in ['CANCELLED','RUNNING','CONFIRMED'] %}
+<form method="post" action="/ui/reviews/{{ item.id }}/extract" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}"><input type="hidden" name="request_key" value="{{ call_key }}">
+<label><input type="checkbox" name="acknowledge_transmission" value="yes" required>我确认资料范围、提供方及费用设置，允许本次调用</label>
+<button>调用真实模型提取（不执行订单）</button></form>
+{% endif %}
+{% if data.usage %}<p>最近成功提取用量：{{ data.usage.provider }} / {{ data.usage.model }}，输入 {{ data.usage.input_tokens }}、输出 {{ data.usage.output_tokens }} token，${{ data.usage.cost_usd }}。失败调用也可能计费，完整记录保存在本地 model_usage 账本。</p>{% endif %}
+{% if data.proposal %}
+<h2>{{ '人工输入/纠正的提案' if data.human else '模型原始提案（未确认）' }}</h2>
+<p>{{ data.proposal.summary }}</p>
+<ul>{% for question in data.proposal.questions %}<li>{{ question }}</li>{% endfor %}</ul>
+<div class="table-scroll"><table><caption>提案数量语义与客户来源</caption><tr><th>SKU</th><th>动作</th><th>数量</th><th>目标SKU</th><th>原始引用</th></tr>
+{% for change in data.proposal.changes %}<tr><td>{{ change.sku_id }}</td><td>{{ {'set_total':'总量改成','increment':'增加/减少','replace_remaining':'换未执行部分','cancel_remaining':'取消剩余未执行'}[change.mode] }}</td><td>{{ change.quantity if change.quantity is not none else '按未执行量计算' }} {{ change.unit }}</td><td>{{ change.to_sku or '—' }}</td><td>{% for ref in change.citations %}原文第{{ ref.line }}行：{{ ref.quote }}<br>{% endfor %}{{ '人工输入，未宣称模型引用' if data.human else '' }}</td></tr>{% endfor %}</table></div>
+{% endif %}
+{% if data.check %}
+<h2 id="review-result">规则核对：{{ {'ready':'可确认处理清单','blocked':'请先解决约束或缺失事实','clarify':'需要补充或澄清','no_change':'没有订单变更'}[data.check.status] }}</h2>
+<p>{{ data.check.scope }}</p>
+<ul>{% for issue in data.check.issues %}<li>{{ issue }}</li>{% endfor %}</ul>
+{% if data.check.warnings %}<div class="notice"><p>请核对未产生数量变化的动作：</p><ul>{% for warning in data.check.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="table-scroll"><table><caption>规则计算的逐行差异（件；未执行）</caption><tr><th>SKU</th><th>原数量</th><th>新数量</th><th>差量</th><th>快照定位</th><th>提案来源</th></tr>
+{% for row in data.check.rows %}<tr><td>{{ row.sku_id }}</td><td>{{ row.old_qty }}</td><td>{{ row.new_qty }}</td><td>{{ row.delta }}</td><td>{{ row.baseline_source }}</td><td>{{ row.origin }}</td></tr>{% endfor %}</table></div>
+<ul>{% for note in data.check.downstream %}<li>{{ note }}</li>{% endfor %}</ul>
+{% endif %}
+{% if item.status == 'NEEDS_REVIEW' and data.check and data.check.status in ['ready','no_change'] %}
+<form method="post" action="/ui/reviews/{{ item.id }}/confirm"><input type="hidden" name="revision" value="{{ item.revision }}"><button>确认这份处理清单（不提交订单）</button></form>
+{% endif %}
+{% if item.status == 'CONFIRMED' and not item.recheck_required %}<h2>清单已确认，订单未执行</h2>
+<p><a class="button" href="/reviews/{{ item.id }}/export?fmt=csv">下载 CSV 清单</a> <a class="button" href="/reviews/{{ item.id }}/export?fmt=xlsx">下载 XLSX 清单</a></p>
+<p>库存和外部资料可能已变化，使用清单前仍需重新核对；本系统没有向 ERP 提交。</p>{% endif %}
+{% if item.status not in ['CANCELLED','RUNNING'] %}
+{% if data.input.snapshot and data.input.selected_order_id %}<h2 id="review-human">人工输入或纠正</h2>
+<p>下方列出全部动作，可增加、删除或纠正；保存会替换完整提案。原始提取和修改理由保留，纠正后须重新确认。数量单位为件，不自动换算手/包。</p>
+<form id="review-editor" method="post" action="/ui/reviews/{{ item.id }}/correct" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}">
+<input type="hidden" id="review-changes" name="changes_json" value="{{ manual_rows|tojson|forceescape }}">
+<div id="review-actions"></div>
+<template id="review-action-template"><fieldset><legend>动作</legend>
+<label>订单中的原SKU<select data-field="sku_id" required><option value="">请选择</option>{% for sku in manual_skus %}<option value="{{ sku.sku_id }}">{{ sku.style }} · {{ sku.color }} · {{ sku.size }}（{{ sku.sku_id }}）</option>{% endfor %}</select></label>
+<label>数量语义<select data-field="mode">{% for mode, text in [('set_total','总量改成'),('increment','再增加（减少请输入负数）'),('replace_remaining','将未执行的指定数量换款'),('cancel_remaining','取消该行剩余未执行部分')] %}<option value="{{ mode }}">{{ text }}</option>{% endfor %}</select></label>
+<label>数量（件；取消剩余时忽略）<input data-field="quantity" type="number" step="1"></label>
+<label>换款目标SKU（仅换款时填写）<input data-field="to_sku" list="review-target-skus"></label>
+<button type="button" data-remove>删除这项动作</button></fieldset></template>
+<datalist id="review-target-skus">{% for sku in data.input.snapshot.catalog %}<option value="{{ sku.sku_id }}">{{ sku.style }} · {{ sku.color }} · {{ sku.size }}</option>{% endfor %}</datalist>
+<button type="button" id="review-add-action" disabled>增加一项动作</button>
+<label for="reason">人工输入/修改理由</label><textarea id="reason" name="reason" rows="3" required>{{ submitted.get('reason','') }}</textarea>
+<p id="review-editor-error" class="error" role="alert" hidden></p>
+<button id="review-save-actions" disabled>保存全部人工动作并重新核对</button>
+<noscript><p>此多动作编辑器需要JavaScript；请启用后刷新。已有资料和提案保留。</p></noscript>
+</form><script src="/ui/static/review-editor.js" defer></script>{% endif %}
+{% if data.input.snapshot and data.input.selected_order_id %}<h3>人工提出无需变更</h3>
+<p>仅在核对客户要求后选择；原提案和理由会保留，新提案仍须再次确认。</p>
+<form method="post" action="/ui/reviews/{{ item.id }}/no-change" class="input-form">
+<input type="hidden" name="revision" value="{{ item.revision }}">
+<label for="no-change-reason">核对理由</label><textarea id="no-change-reason" name="no_change_reason" rows="3" required>{{ submitted.get('no_change_reason','') }}</textarea>
+<label><input type="checkbox" name="acknowledge_no_change" value="yes" required>我已核对客户要求，明确提出无需变更；仍需再次确认。</label>
+<button>保存人工无变更提案</button></form>{% endif %}
+{% endif %}
+{% if item.status != 'CANCELLED' %}
+<h2>补充澄清或更新快照</h2><p>在下方保留原需求并追加说明。更新会使现有提案与清单确认失效；必须重新提取或人工纠正，不会影响其他任务。</p>
+<form method="post" action="/ui/reviews/{{ item.id }}/evidence" class="input-form"><input type="hidden" name="revision" value="{{ item.revision }}">
+<label for="instruction">完整需求与澄清</label><textarea id="instruction" name="instruction" rows="5">{{ submitted.get('instruction',data.input.instruction) }}</textarea>
+<details><summary>查看或更新业务快照 JSON</summary><textarea name="snapshot" rows="15" aria-label="业务快照 JSON">{{ submitted.get('snapshot',snapshot_json) }}</textarea></details>
+<button>保存新资料，使旧确认失效</button></form>
+<h2 id="review-recovery">中断与取消</h2><form method="post" action="/ui/reviews/{{ item.id }}/cancel"><input type="hidden" name="revision" value="{{ item.revision }}"><button>取消此处理任务</button></form>
+{% if item.status == 'RUNNING' %}<p>刷新可查看完成状态。服务中断后等调用时限和60秒缓冲结束，再恢复；不会自动重发可能计费的请求。取消不能保证提供方未收到或未计费。</p><form method="post" action="/ui/reviews/{{ item.id }}/recover"><input type="hidden" name="revision" value="{{ item.revision }}"><button>超时后恢复为可重试</button></form>{% endif %}
+{% endif %}
+<details><summary>本地快照与提案历史</summary><pre>{{ snapshot_json }}</pre><pre>{{ history_json }}</pre></details>
+{% endblock %}

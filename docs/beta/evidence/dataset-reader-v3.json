@@ -1,0 +1,51 @@
+{
+  "kind": "actual byte reading only; not extraction accuracy or model evaluation",
+  "model_calls": 0,
+  "total": 420,
+  "outcomes": {
+    "READ": 420
+  },
+  "failure_cases": [],
+  "latency_ms": {
+    "text": {
+      "n": 112,
+      "p50": 219.43,
+      "p95": 268.143
+    },
+    "chat": {
+      "n": 52,
+      "p50": 222.38799999999998,
+      "p95": 282.508
+    },
+    "table": {
+      "n": 52,
+      "p50": 226.339,
+      "p95": 294.469
+    },
+    "csv": {
+      "n": 51,
+      "p50": 228.417,
+      "p95": 289.068
+    },
+    "xlsx": {
+      "n": 51,
+      "p50": 232.144,
+      "p95": 291.856
+    },
+    "pdf": {
+      "n": 51,
+      "p50": 281.701,
+      "p95": 347.011
+    },
+    "image": {
+      "n": 51,
+      "p50": 495.968,
+      "p95": 622.694
+    }
+  },
+  "model_ms": null,
+  "rules_ms": null,
+  "human_wait_ms": null,
+  "fee_usd": 0,
+  "freeze_sha256": "b93d35c2b02533a10f3ce1e6543c12acbd4a2bc3d738b59d8b61d1d29bad4f43"
+}

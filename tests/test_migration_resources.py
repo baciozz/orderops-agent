@@ -22,6 +22,7 @@ CHAIN = [
     "execution_evidence",
     "execution_evidence_binding",
     "execution_verification_guard",
+    "local_review_workspace",
 ]
 
 

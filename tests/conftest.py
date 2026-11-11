@@ -12,6 +12,14 @@ from app.db.session import make_engine, make_session_factory
 from app.metrics import reset_for_tests
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--ocr-data-dir",
+        default=None,
+        help="Optional local verified chi_sim tessdata path for actual OCR tests",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_metrics():
     reset_for_tests()
