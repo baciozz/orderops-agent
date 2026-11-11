@@ -107,7 +107,7 @@ def run_arm(request, *, arm, clients, settings, sessions, check, evidence_kind):
         suffix = "\n" + ROLES[index] if arm == "double_roles" else ""
         candidate = request.model_copy(
             update={
-                "agent_id": "EVAL-" + uuid4().hex,
+                "agent_id": f"EVAL-{arm}-" + uuid4().hex,
                 "task_id": None,
                 "fixture_key": None,
                 "system_prompt": request.system_prompt + suffix,
