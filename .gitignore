@@ -20,3 +20,4 @@ htmlcov/
 local-preview/
 reports/live_v1/
 reports/agent_comparison_v1/
+out/

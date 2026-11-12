@@ -216,7 +216,7 @@
 env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \
   python -m benchmarks.rescore_comparison \
     --inputs reports/agent_comparison_v1/inputs \
-    --ledger-db /workspace/oos-ledger/ledger.db \
+    --ledger-db <ledger path> \
     --out evals/agent_comparison_v1/results
 ```
 

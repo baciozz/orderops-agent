@@ -24,6 +24,7 @@ from benchmarks.run_live_eval import (
     FULL_PLANNED_ATTEMPTS,
     SEED,
     SMOKE_CATEGORY_NOS,
+    assert_ledger_outside_repo,
     automatic_dangerous_raw,
     build_schedule,
     build_summary,
@@ -32,6 +33,7 @@ from benchmarks.run_live_eval import (
     main,
     require_live,
     rescore_saved,
+    resolve_ledger_db,
     run_pricing,
     schedule_sha256,
     this_run_ledger_stats,
@@ -274,7 +276,8 @@ def test_smoke_uses_fixed_first_samples_from_categories_1_8_12():
     assert {item["sample_id"] for item in smoke} <= {item["sample_id"] for item in primaries}
 
 
-def test_dry_run_writes_summary_schema_without_calls(tmp_path):
+def test_dry_run_writes_summary_schema_without_calls(tmp_path, monkeypatch):
+    monkeypatch.delenv("OOS_LEDGER_DB", raising=False)
     out = tmp_path / "summary.json"
     records = tmp_path / "observations.jsonl"
     code = main(
@@ -372,10 +375,164 @@ def test_refuses_when_key_is_missing(database_url):
     assert exc.value.reason == "KEY_NOT_CONFIGURED"
 
 
+@pytest.mark.parametrize("environ", [{}, {"OOS_LEDGER_DB": ""}])
+def test_ledger_default_is_repository_relative(tmp_path, monkeypatch, environ):
+    root = tmp_path / "repo"
+    monkeypatch.chdir(tmp_path)
+    path = resolve_ledger_db(environ=environ, root=root, dry_run=True)
+    assert path == root / "out" / "ledger.db"
+    assert path.is_absolute()
+    assert path.relative_to(root) == Path("out/ledger.db")
+    assert assert_ledger_outside_repo(path, root) == path
+    with pytest.raises(ValueError, match="explicit ledger"):
+        resolve_ledger_db(environ=environ, root=root, dry_run=False)
+    with pytest.raises(ValueError, match="explicit ledger"):
+        resolve_ledger_db(environ=environ, root=root)
+
+
+@pytest.mark.parametrize("environment_path", [None, ""])
+@pytest.mark.parametrize("args", [[], ["--arms", "single", "--model", "gpt-6-luna"]])
+def test_live_requires_explicit_ledger_before_calls(
+    tmp_path, monkeypatch, capsys, environment_path, args
+):
+    import benchmarks.run_live_eval as runner
+
+    root = tmp_path / "repo"
+    monkeypatch.delenv("OOS_LEDGER_DB", raising=False)
+    if environment_path is not None:
+        monkeypatch.setenv("OOS_LEDGER_DB", environment_path)
+    monkeypatch.setattr(
+        runner,
+        "resolve_ledger_db",
+        lambda cli_path, *, dry_run: resolve_ledger_db(cli_path, root=root, dry_run=dry_run),
+    )
+
+    def unexpected_evaluation(**kwargs):
+        pytest.fail("missing ledger must fail before evaluation")
+
+    monkeypatch.setattr(runner, "evaluate", unexpected_evaluation)
+    monkeypatch.setattr(runner, "evaluate_comparison", unexpected_evaluation)
+    requests = []
+    settings = _settings(f"sqlite:///{tmp_path / 'unused.db'}")
+    assert settings.live_enabled is True
+    assert settings.llm_api_key
+    code = main(
+        args,
+        settings=settings,
+        transport=httpx.MockTransport(_handler(requests)),
+    )
+    assert code == 2
+    error = json.loads(capsys.readouterr().out)
+    assert error["error_code"] == "LIVE_EVAL_CONFIG"
+    assert "explicit ledger" in error["error"]
+    assert "--ledger-db or OOS_LEDGER_DB" in error["error"]
+    assert "only for --dry-run" in error["error"]
+    assert requests == []
+    assert not (root / "out" / "ledger.db").exists()
+    assert not (tmp_path / "unused.db").exists()
+
+
+@pytest.mark.parametrize("environment_path", [None, ""])
+def test_dry_run_without_explicit_ledger_uses_default(tmp_path, monkeypatch, environment_path):
+    import benchmarks.run_live_eval as runner
+
+    root = tmp_path / "repo"
+    monkeypatch.delenv("OOS_LEDGER_DB", raising=False)
+    if environment_path is not None:
+        monkeypatch.setenv("OOS_LEDGER_DB", environment_path)
+    monkeypatch.setattr(
+        runner,
+        "resolve_ledger_db",
+        lambda cli_path, *, dry_run: resolve_ledger_db(cli_path, root=root, dry_run=dry_run),
+    )
+    captured = {}
+
+    def capture_evaluate(**kwargs):
+        captured.update(kwargs)
+        return evaluate(**kwargs)
+
+    monkeypatch.setattr(runner, "evaluate", capture_evaluate)
+    requests = []
+    assert (
+        main(
+            [
+                "--dry-run",
+                "--out",
+                str(tmp_path / "summary.json"),
+                "--records",
+                str(tmp_path / "observations.jsonl"),
+            ],
+            settings=_settings(f"sqlite:///{tmp_path / 'unused.db'}"),
+            transport=httpx.MockTransport(_handler(requests)),
+        )
+        == 0
+    )
+    assert captured["ledger_db"] == root / "out" / "ledger.db"
+    assert captured["dry_run"] is True
+    assert not captured["ledger_db"].exists()
+    assert requests == []
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_ledger_environment_path(tmp_path, absolute):
+    root = tmp_path / "repo"
+    path = tmp_path / "external.db" if absolute else Path("out/custom.db")
+    assert (
+        resolve_ledger_db(environ={"OOS_LEDGER_DB": str(path)}, root=root)
+        == (root / path).resolve()
+    )
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_ledger_cli_overrides_environment(tmp_path, absolute):
+    root = tmp_path / "repo"
+    path = tmp_path / "cli.db" if absolute else Path("out/cli.db")
+    assert resolve_ledger_db(path, {"OOS_LEDGER_DB": "out/env.db"}, root) == (root / path).resolve()
+
+
+@pytest.mark.parametrize(
+    "directory",
+    ["", "app", "benchmarks", "tests", "docs", "evals", "scripts", "seeds", "schemas", "ci"],
+)
+def test_ledger_rejects_source_paths(tmp_path, directory):
+    root = tmp_path / "repo"
+    path = Path(directory) / "ledger.db"
+    for candidate in (path, root / path):
+        with pytest.raises(ValueError, match="outside the repository or under out/"):
+            assert_ledger_outside_repo(candidate, root)
+
+
+def test_ledger_allows_out_and_external_paths(tmp_path):
+    root = tmp_path / "repo"
+    for path in (Path("out/ledger.db"), Path("out/nested/ledger.db"), tmp_path / "external.db"):
+        assert assert_ledger_outside_repo(path, root) == (root / path).resolve()
+    with pytest.raises(ValueError):
+        assert_ledger_outside_repo(Path("out/../app/ledger.db"), root)
+
+
+def test_ledger_cli_optional_uses_process_environment(tmp_path, monkeypatch):
+    import benchmarks.run_live_eval as runner
+
+    monkeypatch.setenv("OOS_LEDGER_DB", "out/custom.db")
+    captured = {}
+    monkeypatch.setattr(runner, "evaluate", lambda **kwargs: captured.update(kwargs))
+    assert main([], settings=_settings(f"sqlite:///{tmp_path / 'unused.db'}")) == 0
+    assert captured["ledger_db"] == ROOT / "out" / "custom.db"
+
+
+def test_ledger_rejects_out_symlink_into_source(tmp_path):
+    root = tmp_path / "repo"
+    source = root / "app"
+    source.mkdir(parents=True)
+    (root / "out").symlink_to(source, target_is_directory=True)
+    with pytest.raises(ValueError):
+        assert_ledger_outside_repo(Path("out/ledger.db"), root)
+
+
 def test_rejects_ledger_inside_repository(tmp_path, database_url):
     data = tmp_path / "data"
     manifest_path, sha_path = _write_dataset(data, _mini_specs())
-    inside = ROOT / "ledger-must-not-exist.db"
+    inside = ROOT / "app" / "ledger-must-not-exist.db"
     settings = _settings(database_url)
     with pytest.raises(ValueError, match="outside the repository"):
         evaluate(

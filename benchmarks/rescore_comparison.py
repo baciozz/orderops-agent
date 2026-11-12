@@ -12,7 +12,7 @@ Usage (repository root)::
     env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \\
       python -m benchmarks.rescore_comparison \\
         --inputs reports/agent_comparison_v1/inputs \\
-        --ledger-db /workspace/oos-ledger/ledger.db \\
+        --ledger-db <ledger path> \\
         --out evals/agent_comparison_v1/results
 """
 
@@ -665,7 +665,15 @@ def rescore(inputs: Path, ledger_db: Path | None, out: Path | None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inputs", type=Path, required=True)
-    parser.add_argument("--ledger-db", type=Path, default=None)
+    parser.add_argument(
+        "--ledger-db",
+        type=Path,
+        default=None,
+        help=(
+            "Optional read-only ledger for cost cross-checking; must be explicitly supplied. "
+            "Omitting it skips ledger reads, with no fallback to out/ledger.db."
+        ),
+    )
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     summary = rescore(args.inputs, args.ledger_db, args.out)
