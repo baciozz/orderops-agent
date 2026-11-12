@@ -213,7 +213,7 @@ env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \
     --out evals/agent_comparison_v1/results
 ```
 
-- 当时的重评分在 `e9f3a8d817a92e89211e4c010fc4baf0d8e9cd57` 上完成，其父提交是采集冻结点 `ff97cb13a21665082ab0b62f95e016c6d78befac`。该提交只加入了重评分脚本，没有改冻结评分路径。自 #69、#72 起，main 上的 `app/` 与 `benchmarks/run_live_eval.py` 已改过；在当前 main 上重跑重评分时，`frozen_scoring_paths_unchanged` 会为 false。若要复现当时的重评分结果，请在 `e9f3a8d` 上运行上述命令，不要用当前 main。`ff97cb1` 上还没有 `benchmarks/rescore_comparison.py`。这两个提交都可以按完整 SHA 取到，但都不是当前 main 的祖先。
+- 当时的重评分在 `e9f3a8d817a92e89211e4c010fc4baf0d8e9cd57` 上完成，其父提交是采集冻结点 `ff97cb13a21665082ab0b62f95e016c6d78befac`。该提交只加入了重评分脚本，没有改冻结评分路径。自 #69、#72 起，main 上的 `app/` 与 `benchmarks/run_live_eval.py` 已改过；在当前 main 上重跑重评分时，`frozen_scoring_paths_unchanged` 会为 false。若要复现当时的重评分结果，请在 `e9f3a8d` 上运行上述命令，不要用当前 main。`ff97cb1` 上还没有 `benchmarks/rescore_comparison.py`。`ff97cb1`、`e9f3a8d` 是私有原仓的提交（分别见 #68 分支和 #71 的 PR 引用）；公开仓历史经过过滤，没有这两个 SHA，且重评分输入不入库，公开仓只能核对 `evals/agent_comparison_v1/results/` 下的结果文件，不能完整重跑。
 - 输入：`--inputs` 下的 `single/`、`double_same_prompt/`、`double_roles/`、`sol_smoke/`，每个目录放该组的 `state.json` 和 `summary.json`，都是采集时的原文件，不入库。账本以只读方式打开。
 - 评分直接调用冻结的 `score_review.score`、`automatic_dangerous_*`、`handoff_recall_report`，本脚本只做按重复聚合和组间比较。
 - 脚本还用冻结的 `build_comparison_summary` 从 state 重建 runner 摘要，与采集时的 `summary.json` 逐项比对（准确率、按重复、危险、澄清、按类、一致性、费用、转人工）。三组都**无不一致项**。
