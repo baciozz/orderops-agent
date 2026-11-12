@@ -13,7 +13,7 @@
   - 危险错误：三组 9 次重复的原始层和规则后层都是 0，没有差异。
 - 分母 ≤20 的指标（转人工召回 ⑤ / ⑫ / 合并 20、应澄清召回、静默忽略）只列数字，**不下结论**。
 - 双组每条样本调用 2 次，费用约为单路的 1.9–2.0 倍（$0.000533–0.000545 对 $0.000277 每条）。
-- 强模型 `gpt-6.1-sol` 没有可比数据：冒烟因参数不兼容失败，待 Qi 决定，见第 5 节。即使以后跑，因推理档不同也只作参考、不下结论。
+- 强模型 `gpt-6.1-sol` 没有可比数据：冒烟因参数不兼容失败。按 Qi 决定（方案 B）本次不做强模型对照，只报告主模型三组（single / double_same_prompt / double_roles），见第 5 节。
 - 局限：这是 120 条合成样本、单一模型、3 次重复的诊断，没有做显著性检验，参考答案未经 Qi 复核。上面的「有差异」只表示在这个合成数据集、这组配置下满足预登记的判定规则，不推广到其他数据、模型或生产。
 
 ## 1. 运行概况
@@ -168,18 +168,14 @@
 ### 偏离预登记
 
 - **运行时上限：** 各组 summary 记录的运行时 `cap_usd` 实际是默认的 **$5.00**（= min（预登记主模型 $10、全局 $25，`live_budget_usd` 默认 $5）），而预登记的主模型上限是 $10。这比预登记更严；全程累计最高 $0.536332，**未触发**。
-- 强模型推理档的偏离见第 5 节和 #70，尚未执行。
+- 强模型推理档的偏离见第 5 节。按 Qi 决定（方案 B）本次不做强模型对照，[#70](https://github.com/baciozz/order-ops-superagent/pull/70) 已关闭，未合入。
 
-## 5. 强模型 `gpt-6.1-sol`：冒烟因参数不兼容失败，待 Qi 决定（A 或 B）
+## 5. 强模型 `gpt-6.1-sol`：冒烟因参数不兼容失败，按 Qi 决定（方案 B）不做强模型对照，只报主模型三组
 
 - 2026-11-12 03:10（北京时间）在 ff97cb1 上跑了 5 条预登记冒烟（`lv1-c01-01`、`c05-01`、`c08-01`、`c10-01`、`c12-01`）。结果 5 次全部 `MODEL_HTTP`，输入输出都是 0 token，账本 5 行都是 $0。外推为 $0.536332，没有意义。
 - 原因：ff97cb1 在默认配置下请求体发 `reasoning.effort="none"`（`app/config.py` 中 `model_reasoning_effort` 默认 `"none"`；`check_auth` 里写死为 `"none"`）。小八另外单独探测：`gpt-6.1-sol` 对此返回 400 `unsupported_value`，只支持 low / medium / high / xhigh / max；端点、鉴权和模型都可用。这条 400 证据来自小八的探测，本次重评分（零调用）没有复现。
-- **360 次全量没有批准，冒烟也没有重跑。** 改冻结点等于改预登记。偏离预登记的改动（按模型配置推理档：sol 用 low，luna 保持 none）放在 draft PR [#70](https://github.com/baciozz/order-ops-superagent/pull/70)（分支 `portfolio/s3-reasoning-effort`）等 Qi 决定。若选方案 A，强模型组在 #70 合入（压缩为一个提交）后的提交上跑，code_sha 待合入后填写。
-- 已给 Qi 两个选项：
-  - **A**：把 sol 改为 low 推理档后重新冒烟。外推要算上 low 档多出的推理 token，累计不超过 $22。
-  - **B**：本次不做强模型对照。
-- **待 Qi 决定（A 或 B）；若之后跑了，另开补充 PR**，不改本文的主模型结果。
-- **Qi 回复前不调用任何模型。** 即使选 A 跑完，强模型与主模型的推理档不同（low 对 none），存在混杂，结果只作参考、**不下结论**。本文主结论只来自主模型单/双角色对照。
+- **360 次全量没有批准，冒烟也没有重跑。** 改冻结点等于改预登记。偏离预登记的改动曾放在 draft PR [#70](https://github.com/baciozz/order-ops-superagent/pull/70)（分支 `portfolio/s3-reasoning-effort`），未合入，现已关闭。
+- **按 Qi 决定（方案 B），本次不做强模型对照，只报告主模型三组（`single` / `double_same_prompt` / `double_roles`）。** 本文主结论只来自主模型单/双角色对照。已记录的主模型结果和冒烟失败事实不改。
 
 ## 6. 代码版本、预算与实际花费
 
@@ -205,10 +201,7 @@
 | `single` | gpt-6-luna | `ff97cb13a21665082ab0b62f95e016c6d78befac` | 360/360 完成 |
 | `double_same_prompt` | gpt-6-luna | `ff97cb13a21665082ab0b62f95e016c6d78befac` | 360/360 完成 |
 | `double_roles` | gpt-6-luna | `ff97cb13a21665082ab0b62f95e016c6d78befac` | 360/360 完成 |
-| `single` 冒烟（5 条） | gpt-6.1-sol | `ff97cb13a21665082ab0b62f95e016c6d78befac` | 失败（参数不兼容），待决定 |
-| `single` 冒烟与 360（仅方案 A） | gpt-6.1-sol | 待 [#70](https://github.com/baciozz/order-ops-superagent/pull/70) 合入后填写（合入时压缩为一个提交，与 ff97cb1 只差该提交） | 未跑；Qi 回复前不调用 |
-
-若 Qi 选方案 A，强模型组在 #70 合入后的提交上跑；#70 合入时压缩为一个提交，与主模型三组所用的 ff97cb1 只差这一个提交（按模型配置 reasoning effort：sol 用 low，luna 保持 none）。这一点连同推理档不同带来的混杂，都要在强模型结果旁注明；强模型结果只作参考，不下结论。
+| `single` 冒烟（5 条） | gpt-6.1-sol | `ff97cb13a21665082ab0b62f95e016c6d78befac` | 失败（参数不兼容）；按方案 B，不做对照 |
 
 ## 7. 复现与产出
 
@@ -220,6 +213,7 @@ env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \
     --out evals/agent_comparison_v1/results
 ```
 
+- 当时的重评分在 `e9f3a8d817a92e89211e4c010fc4baf0d8e9cd57` 上完成，其父提交是采集冻结点 `ff97cb13a21665082ab0b62f95e016c6d78befac`。该提交只加入了重评分脚本，没有改冻结评分路径。自 #69、#72 起，main 上的 `app/` 与 `benchmarks/run_live_eval.py` 已改过；在当前 main 上重跑重评分时，`frozen_scoring_paths_unchanged` 会为 false。若要复现当时的重评分结果，请在 `e9f3a8d` 上运行上述命令，不要用当前 main。`ff97cb1` 上还没有 `benchmarks/rescore_comparison.py`。这两个提交都可以按完整 SHA 取到，但都不是当前 main 的祖先。
 - 输入：`--inputs` 下的 `single/`、`double_same_prompt/`、`double_roles/`、`sol_smoke/`，每个目录放该组的 `state.json` 和 `summary.json`，都是采集时的原文件，不入库。账本以只读方式打开。
 - 评分直接调用冻结的 `score_review.score`、`automatic_dangerous_*`、`handoff_recall_report`，本脚本只做按重复聚合和组间比较。
 - 脚本还用冻结的 `build_comparison_summary` 从 state 重建 runner 摘要，与采集时的 `summary.json` 逐项比对（准确率、按重复、危险、澄清、按类、一致性、费用、转人工）。三组都**无不一致项**。
