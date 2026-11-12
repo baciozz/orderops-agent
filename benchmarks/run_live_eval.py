@@ -2,8 +2,8 @@
 
 This module never prints credentials or request headers. Real-provider calls are
 opt-in: OOS_LIVE_ENABLED=true and a key must be present. CI and default check
-targets must keep live disabled. The ledger SQLite file must live outside the
-repository and is shared across stages.
+targets must keep live disabled. Live calls require an explicit shared ledger path;
+only dry-run defaults to the ignored out/ledger.db path.
 """
 
 from __future__ import annotations
@@ -12,10 +12,12 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 import uuid
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -97,7 +99,7 @@ PREREG_SINGLE_SHA256 = "3f29439b83758f7402f9066538a1017c4a0ad8418cccdff1e0fe7657
 DEFAULT_COMPARISON_SUMMARY = ROOT / "reports" / "agent_comparison_v1" / "summary.json"
 DEFAULT_COMPARISON_RECORDS = ROOT / "reports" / "agent_comparison_v1" / "observations.jsonl"
 DEFAULT_COMPARISON_STATE = ROOT / "reports" / "agent_comparison_v1" / "state.json"
-DEFAULT_LEDGER_DB = Path("/workspace/oos-ledger/ledger.db")
+DEFAULT_LEDGER_DB = ROOT / "out" / "ledger.db"
 
 ACCURACY_NOTICE = (
     "开发期新样本、参考待真人复核，不是正式准确率。"
@@ -293,19 +295,40 @@ def smoke_schedule(primaries: list[dict]) -> list[dict]:
     return picked
 
 
+def resolve_ledger_db(
+    cli_path: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    root: Path = ROOT,
+    *,
+    dry_run: bool = False,
+) -> Path:
+    """Resolve CLI > process environment; only dry-run may default to out/ledger.db."""
+    environment = os.environ if environ is None else environ
+    path = cli_path
+    if path is None:
+        environment_path = environment.get("OOS_LEDGER_DB")
+        if not environment_path and not dry_run:
+            raise ValueError(
+                "Live calls require an explicit ledger: --ledger-db or OOS_LEDGER_DB; "
+                "the default out/ledger.db path is only for --dry-run"
+            )
+        path = Path(environment_path or "out/ledger.db")
+    return (root / path).resolve()
+
+
 def assert_ledger_outside_repo(ledger_db: Path, root: Path = ROOT) -> Path:
-    path = Path(ledger_db)
-    if not path.is_absolute() or path == Path("/") or ".." in path.parts:
-        raise ValueError("ledger database must be an absolute path outside the repository")
-    resolved = path.resolve()
+    """Allow ledgers outside the repository or inside its ignored out/ directory."""
     repo = root.resolve()
-    if resolved == repo or repo in resolved.parents or resolved == repo / resolved.name:
-        raise ValueError("ledger database must live outside the repository")
+    resolved = (repo / ledger_db).resolve()
     try:
-        resolved.relative_to(repo)
+        relative = resolved.relative_to(repo)
     except ValueError:
-        return resolved
-    raise ValueError("ledger database must live outside the repository")
+        if resolved != Path(resolved.anchor):
+            return resolved
+    else:
+        if len(relative.parts) > 1 and relative.parts[0] == "out":
+            return resolved
+    raise ValueError("ledger database must live outside the repository or under out/")
 
 
 def stage_cap(*, smoke: bool, settings: Settings) -> Decimal:
@@ -2389,9 +2412,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--ledger-db",
         type=Path,
         help=(
-            "Persistent SQLite ledger outside the repository (required unless --dry-run). "
-            "S3 shares the S2B ledger, typically "
-            "/workspace/oos-ledger/ledger.db, or another path you pass."
+            "Persistent SQLite ledger: --ledger-db overrides OOS_LEDGER_DB; "
+            "live (non-dry-run) requires explicit --ledger-db or OOS_LEDGER_DB. "
+            "The repository-relative out/ledger.db default is only for --dry-run. "
+            "S3 and S2B share this file."
         ),
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_SUMMARY)
@@ -2443,9 +2467,7 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None, tra
     args = build_parser().parse_args(argv)
     configured = settings if settings is not None else Settings(_env_file=None)
     try:
-        if not args.dry_run and args.ledger_db is None:
-            raise ValueError(" --ledger-db is required unless --dry-run")
-        ledger_db = args.ledger_db or Path("/tmp/oos-live-eval-unused-dry-run.db")
+        ledger_db = resolve_ledger_db(args.ledger_db, dry_run=args.dry_run)
         if args.arms:
             if not args.model:
                 raise ValueError("--model is required when --arms is set")

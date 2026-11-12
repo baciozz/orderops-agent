@@ -31,17 +31,17 @@ env -u OOS_LLM_API_KEY -u OPENAI_API_KEY OOS_LIVE_ENABLED=false \
 
 冒烟 3 条，本阶段上限 $0.05。样本从冻结索引里固定选取，不是前 3 条：① `lv1-c01-01`（`set_total`）、⑧ `lv1-c08-01`（`prompt_injection`）、⑫ `lv1-c12-01`（`out_of_scope`），即各类在 manifest 顺序中的第一条。
 
-全量 168 次（120 条各 1 次，每类再抽 2 条各加跑 2 次），累计上限 $1.50。两者都要求 `OOS_LIVE_ENABLED=true` 且密钥已注入，并指定仓库外账本：
+全量 168 次（120 条各 1 次，每类再抽 2 条各加跑 2 次），累计上限 $1.50。两者都要求 `OOS_LIVE_ENABLED=true` 且密钥已注入；以下示例显式指定共享账本：
 
 ```
-python -m benchmarks.run_live_eval --smoke --ledger-db /workspace/oos-ledger/ledger.db \
+python -m benchmarks.run_live_eval --smoke --ledger-db <ledger path> \
   --out reports/live_v1/summary.json --records reports/live_v1/observations.jsonl
 
-python -m benchmarks.run_live_eval --ledger-db /workspace/oos-ledger/ledger.db \
+python -m benchmarks.run_live_eval --ledger-db <ledger path> \
   --out reports/live_v1/summary.json --records reports/live_v1/observations.jsonl
 ```
 
-共享账本现为仓库外的 `/workspace/oos-ledger/ledger.db`（不再使用 `/tmp/oos-s2b-live-eval/ledger.db` 作为默认路径）。S3 对照与 S2B 共用此文件。文件中已重建 S2B 全量 168 次（$0.045366）及冒烟合计 $0.000751（补充行来自本文冒烟记录与 commit `b8098c5`），账本累计 **$0.046117**。
+账本路径由 `--ledger-db` 或进程环境变量 `OOS_LEDGER_DB` 指定（CLI 优先，只读进程环境，不读 `.env`）；真实调用（非 dry-run）必须显式指定 `--ledger-db` 或非空的 `OOS_LEDGER_DB`，否则在调用前报错退出。仅 `--dry-run` 在两者均未设置（空环境变量视为未设置）时，默认使用仓库相对路径 `out/ledger.db`（已 gitignore）。相对路径均相对于仓库根目录解析。S3 对照与 S2B 仍可共用同一账本文件。文件中已重建 S2B 全量 168 次（$0.045366）及冒烟合计 $0.000751（补充行来自本文冒烟记录与 commit `b8098c5`），账本累计 **$0.046117**。
 
 种子固定为 `20261111`。启动时和每 20 次会打印已花费金额与账本调用次数。遇到 `MODEL_AUTH`、`MODEL_RATE_LIMIT` 或 `BUDGET_EXCEEDED` 立即停止，并写出已完成部分。超时、拒答、坏 JSON 和未开始的尝试都进分母。CI 和 `make check` 不得跑真实评测。
 
@@ -61,7 +61,7 @@ python -m benchmarks.run_live_eval --ledger-db /workspace/oos-ledger/ledger.db \
 | manifest SHA | `f5c2488645672d51560440e9bdcb06a8d71b22b97b72eb1d1cc2f17941a68cb1` |
 | 运行时 `code_sha` | `0d60dfb00a7c18a7ad7011546e3488426d1f7cb5` |
 | 调用 | 168 次全部完成，`stop_reason` 无 |
-| 本轮费用 | $0.045366（账本现为 `/workspace/oos-ledger/ledger.db`；共享账本另含此前 smoke 3 次 $0.000751，累计 $0.046117） |
+| 本轮费用 | $0.045366（账本现为 `<ledger path>`；共享账本另含此前 smoke 3 次 $0.000751，累计 $0.046117） |
 | 标题结论 | 危险错误 0；转人工召回 9/20；静默忽略 11 |
 
 首次 120 条：原始准确率 100/120，规则后准确率 100/120。这不是唯一该看的数字。同一次运行里，危险错误为 0（原始层 0、规则后 0、⑤ 代码规则 0），转人工召回只有 9/20，另有 11 条静默忽略。⑫ 的 10/10 准确率被抬高了：参考答案接受 `no_change`，但转人工召回只有 2/10。下一阶段应优先提高转人工（只认 `clarify`），而不是继续把 `no_change` 当成已交接。
